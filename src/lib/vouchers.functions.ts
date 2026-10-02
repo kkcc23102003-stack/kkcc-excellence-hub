@@ -14,13 +14,14 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { DB as Database } from "@/integrations/supabase/db";
 import { getSupabasePublicConfig } from "@/integrations/supabase/env";
+import { getSandboxPreviewClient } from "@/integrations/supabase/sandbox-client";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { MONTHLY_VOUCHER_THRESHOLD } from "@/lib/coin-conversion";
 
 function publicClient() {
   const config = getSupabasePublicConfig();
-  if (!config) return null;
+  if (!config) return getSandboxPreviewClient();
   return createClient<Database>(config.url, config.publishableKey, {
     auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
     global: { fetch: createSupabaseFetch(config.publishableKey) },

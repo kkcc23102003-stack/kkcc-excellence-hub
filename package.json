@@ -14,9 +14,10 @@
     "check:pwa": "node scripts/pwa-readiness-check.mjs",
     "check:repo": "node scripts/repository-quality-check.mjs",
     "check:sandbox": "node --import tsx scripts/check-sandbox-preview.mjs",
+    "check:sandbox:flow": "node scripts/check-sandbox-live-flow.mjs",
     "check:series": "node --import tsx scripts/check-test-series-syllabus.ts",
     "check:sandbox:production": "node scripts/check-production-sandbox.mjs",
-    "check": "npm run check:repo && npm run check:questions && npm run check:series && npm run check:sandbox && npm run lint && tsc --noEmit && npm run build && npm run check:sandbox:production",
+    "check": "npm run check:repo && npm run check:questions && npm run check:series && npm run check:sandbox && npm run check:sandbox:flow && npm run lint && tsc --noEmit && npm run build && npm run check:sandbox:production",
     "check:questions": "node scripts/question-bank-quality-check.mjs"
   },
   "dependencies": {

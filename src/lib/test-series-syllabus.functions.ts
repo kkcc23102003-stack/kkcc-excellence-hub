@@ -2,8 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { DB, TestSeriesSyllabusRow } from "@/integrations/supabase/db";
-import { createSandboxSupabaseClient } from "@/integrations/supabase/sandbox-database";
-import { isSandboxPreviewAvailable } from "@/integrations/supabase/sandbox";
+import { getSandboxPreviewClient } from "@/integrations/supabase/sandbox-client";
 import { getSupabasePublicConfig } from "@/integrations/supabase/env";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -19,8 +18,7 @@ function publicClient(): SupabaseClient<DB> | null {
       global: { fetch: createSupabaseFetch(config.publishableKey) },
     });
   }
-  if (import.meta.env.DEV && isSandboxPreviewAvailable()) return createSandboxSupabaseClient();
-  return null;
+  return getSandboxPreviewClient();
 }
 
 async function assertAdmin(context: { supabase: SupabaseClient<DB>; userId: string }) {

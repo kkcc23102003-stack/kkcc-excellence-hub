@@ -19,7 +19,7 @@ function expiryLabel(value: string | null) {
   });
 }
 
-/** Personalized active series summary shared by the home and courses dashboard. */
+/** Personalized active series summary shared by home, courses, and student dashboard. */
 export function MyEnrolledSeriesPanel({ compact = false }: { compact?: boolean }) {
   const { user } = useAuthUser();
   const list = useServerFn(listMySeriesAccess);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { DB as Database } from "@/integrations/supabase/db";
 import { getSupabasePublicConfig } from "@/integrations/supabase/env";
+import { getSandboxPreviewClient } from "@/integrations/supabase/sandbox-client";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 
 const UI_TEXT_KEY = "ui_text_json";
@@ -153,7 +154,7 @@ export const DEFAULT_UI_TEXT: UiTextSettings = {
 
 function publicClient() {
   const config = getSupabasePublicConfig();
-  if (!config) return null;
+  if (!config) return getSandboxPreviewClient();
 
   return createClient<Database>(config.url, config.publishableKey, {
     auth: { storage: undefined, persistSession: false, autoRefreshToken: false },

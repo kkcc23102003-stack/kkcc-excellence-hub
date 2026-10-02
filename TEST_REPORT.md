@@ -1378,3 +1378,23 @@ Notes:
 - Admin navigation includes Amazon / Flipkart reward-card management; the existing migration remains required before those database-backed options can operate.
 - Repository-quality check passed on 348 source files after this pass.
 - Full TypeScript/build verification could not be rerun in this isolated ZIP because dependencies are not installed and `npm ci` timed out. A direct `tsc` invocation confirmed the environment is missing project type dependencies; it did not report a syntax error in the edited files before dependency-resolution errors.
+
+## 2026-10-02 — Series learning, admin sandbox, and release verification
+
+Result: **Passed locally**. This verification supersedes the isolated-ZIP/dependency limitation recorded in the 2026-10-01 note above; dependencies were installed and the complete current branch was checked.
+
+Verified:
+
+- `npm run check` passed: repository quality, full question-bank audit, syllabus parser/mapping tests, Supabase-independent sandbox tests, live Vite/RPC sandbox flow, ESLint, TypeScript, production build, and production sandbox isolation.
+- `npm run check:pwa`, `node --check public/sw.js`, and `git diff --check` passed.
+- Rebuilt the 374-file source ZIP and its public download copy; both archives passed `unzip -t`, their SHA-256 values match, and the ZIP contains the SQL migrations, setup guide, and live sandbox flow check.
+- The live sandbox smoke starts a fresh Vite server with Supabase variables removed, visits public/student/admin routes, and calls the real TanStack server-function RPC endpoints.
+- Combined, subject, chapter, and topic learning tests returned 200, 100, 60, and 20 real bank questions respectively for the seeded Punjab PCS/Punjab GK outline, with no duplicate stems. A deliberately unmapped syllabus topic was rejected rather than replaced.
+- The published sandbox sample test generated 20 real Punjab GK question-bank questions. Admin editing of the seeded test was verified through public readback.
+- Draft/publish syllabus save/readback, exact mapping validation, offline series grant/renew/revoke, public payment-settings readback, Razorpay disconnect, and AI settings off → on → off all passed in the isolated sandbox.
+- AI is off by default. The Razorpay controls store/disconnect setup values but do not claim or activate live online checkout.
+- The full question-bank audit found 6,595 source definitions/templates, 12,376,086 publishable positions, zero null/undefined/throwing/non-publishable positions, zero dead templates or duplicate-ID groups, and all 66 old-NCERT templates retained. The 95,139 structural holes are represented in the compacted index and are not invalid questions.
+
+Known coverage limit (not padded or silently substituted): the paid-catalogue audit found 1,101 of 5,423 subject/topic slices can fill a 60-question paper; 4,322 are incomplete. Across all exam-topic slices, 1,936 of 11,169 fill 60 questions; 9,233 are incomplete. Specific launch choices are exact-bank-backed; requests that exceed a topic's real coverage fail with an explicit shortfall.
+
+Production boundary: no remote Supabase migration was applied or verified, and no live Razorpay account/webhook or AI provider was configured. Apply the timestamped SQL migration history to the intended Supabase project only through the documented deployment process; see `docs/test-series-sandbox-setup.md` and `AI_QUESTION_ENGINE_SETUP.md`.

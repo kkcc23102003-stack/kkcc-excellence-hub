@@ -5,6 +5,7 @@ import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { useWebsiteContent } from "@/components/kkcc/website-content-provider";
 import { CustomPageSections } from "@/components/kkcc/custom-page-sections";
 import { CourseCard } from "@/components/kkcc/course-card";
+import { MyEnrolledSeriesPanel } from "@/components/kkcc/my-enrolled-series-panel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -92,6 +93,10 @@ function CoursesPage() {
       />
 
       <CustomPageSections page="courses" position="top" />
+
+      <section className="mx-auto w-full max-w-7xl px-4 pt-8 sm:px-6">
+        <MyEnrolledSeriesPanel compact />
+      </section>
 
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center">

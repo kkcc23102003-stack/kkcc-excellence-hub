@@ -5,8 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { DB as Database, PrivateSettingRow, SiteSettingRow } from "@/integrations/supabase/db";
 import { getSupabasePublicConfig } from "@/integrations/supabase/env";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
-import { createSandboxSupabaseClient } from "@/integrations/supabase/sandbox-database";
-import { isSandboxPreviewAvailable } from "@/integrations/supabase/sandbox";
+import { getSandboxPreviewClient } from "@/integrations/supabase/sandbox-client";
 
 const OWNER_EMAIL = "kkcc23102003@gmail.com";
 
@@ -28,11 +27,7 @@ type PublicSettingKey = (typeof publicSettingKeys)[number];
 
 function publicClient() {
   const config = getSupabasePublicConfig();
-  if (!config) {
-    return import.meta.env.DEV && isSandboxPreviewAvailable()
-      ? createSandboxSupabaseClient()
-      : null;
-  }
+  if (!config) return getSandboxPreviewClient();
 
   return createClient<Database>(config.url, config.publishableKey, {
     auth: { storage: undefined, persistSession: false, autoRefreshToken: false },

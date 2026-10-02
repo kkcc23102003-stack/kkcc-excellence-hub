@@ -13,6 +13,21 @@ assert.deepEqual(parsed.errors, [], "the labelled nested syllabus format should 
 assert.equal(parsed.syllabus.subjects.length, 1);
 assert.equal(parsed.syllabus.subjects[0]?.chapters[0]?.topics.length, 2);
 
+const numbered = parseSyllabusOutline(
+  `1. Punjab GK\n1.1 Punjab at a glance\n1.1.1 Districts and Headquarters`,
+);
+assert.deepEqual(numbered.errors, [], "numbered syllabus outlines should infer their hierarchy");
+assert.equal(
+  numbered.syllabus.subjects[0]?.chapters[0]?.topics[0]?.name,
+  "Districts and Headquarters",
+);
+
+const labelledVariants = parseSyllabusOutline(
+  `Subject — Punjab GK\nChapter 1: Punjab at a glance\nTopic 1.1: Districts and Headquarters`,
+);
+assert.deepEqual(labelledVariants.errors, [], "dash and numbered labels should parse cleanly");
+assert.equal(labelledVariants.syllabus.subjects[0]?.chapters[0]?.topics.length, 1);
+
 const mapped = mapSyllabusToBank(parsed.syllabus, "Punjab PCS");
 const coverage = countSyllabusMatches(mapped, "Punjab PCS");
 assert.equal(coverage.missingSubjects.length, 0, "exact bank subjects should map");

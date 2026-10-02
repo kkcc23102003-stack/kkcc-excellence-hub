@@ -33,8 +33,8 @@ const cleanLine = (line: string) =>
 
 /**
  * Paste format: one subject per top-level line, chapters indented two spaces,
- * and topics indented four spaces. Explicit Subject:/Chapter:/Topic: labels
- * are also accepted and make the indentation optional.
+ * and topics indented four spaces. Explicit Subject/Chapter/Topic labels and
+ * dotted numeric outlines (1, 1.1, 1.1.1) are also accepted.
  */
 export function parseSyllabusOutline(text: string): ParsedSyllabus {
   const subjects: SyllabusSubject[] = [];
@@ -48,15 +48,30 @@ export function parseSyllabusOutline(text: string): ParsedSyllabus {
     if (!raw.trim() || /^\s*#/.test(raw)) continue;
 
     const indent = (raw.match(/^[\t ]*/) ?? [""])[0]!.replace(/\t/g, "  ").length;
-    const explicit = raw.trim().match(/^(subject|chapter|topic)\s*:\s*(.*)$/i);
+    const line = raw.trim().replace(/^[-*•]+\s*/, "");
+    const explicit =
+      line.match(/^(subject|chapter|topic)\s*(?:\d+(?:\.\d+)*)?\s*[:.\u2013\u2014-]\s*(.*)$/i) ??
+      line.match(/^(subject|chapter|topic)\s+\d+(?:\.\d+)*\s*[.)]?\s+(.+)$/i);
+    const dottedNumber = line.match(/^(\d+(?:\.\d+)+)[.)]?\s+(.+)$/);
     const label = explicit?.[1]?.toLowerCase();
-    const name = cleanLine(explicit?.[2] ?? raw.trim());
+    const name = cleanLine(explicit?.[2] ?? dottedNumber?.[2] ?? line);
     if (!name) {
       errors.push(`Line ${index + 1}: add a name after the heading.`);
       continue;
     }
 
-    const level = label ?? (indent >= 4 ? "topic" : indent >= 2 ? "chapter" : "subject");
+    const dottedLevel = dottedNumber?.[1]?.split(".").length;
+    const level =
+      label ??
+      (dottedLevel && dottedLevel >= 3
+        ? "topic"
+        : dottedLevel === 2
+          ? "chapter"
+          : indent >= 4
+            ? "topic"
+            : indent >= 2
+              ? "chapter"
+              : "subject");
     if (level === "subject") {
       currentSubject = { name, bank_subject: "", chapters: [] };
       subjects.push(currentSubject);

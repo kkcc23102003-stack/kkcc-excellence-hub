@@ -5,13 +5,18 @@ This feature is intentionally **disabled by default**. It uses Gemini with Googl
 ## What you need
 
 1. A Gemini API key from Google AI Studio.
-2. Deploy the included Supabase Edge Function:
-   `supabase/functions/ai-question-research/index.ts`
-3. Run migration:
-   `supabase/migrations/20261001010000_kkcc_ai_question_engine.sql`
+2. Apply the outstanding migrations through the existing Supabase migration history, in timestamp order. The AI review flow uses:
+   - `supabase/migrations/20261001010000_kkcc_ai_question_engine.sql`
+   - `supabase/migrations/20261001020000_kkcc_external_question_archive.sql`
+   - `supabase/migrations/20261002110000_reviewed_ai_question_bank.sql`
+
+   Apply earlier pending migrations too; these additive files are not a replacement for the full migration history. No remote migration is applied by this setup guide.
+
+3. Deploy the included Edge Function with the Supabase CLI:
+   `npx supabase functions deploy ai-question-research`
 4. Open **Admin → AI question engine**.
 5. Paste the Gemini key once, enable Google Search grounding, keep **Auto-publish OFF** initially, and save.
-6. Click **Sync all topics**, then **Run AI now**.
+6. Click **Sync all topics**, then **Run AI now**. Review a candidate, approve it, then use **Push to question bank** to promote it into the admin-only reviewed bank.
 
 ## 24-hour automation
 
@@ -26,6 +31,7 @@ The app code itself adds no paid AI subscription. Gemini API and Google Search g
 ## Database-saving design
 
 Only these compact records are retained:
+
 - question + four options
 - correct option + explanation
 - exam/subject/topic/difficulty

@@ -97,9 +97,10 @@ const SANDBOX_SEED: Record<string, SandboxRow[]> = {
       id: SANDBOX_STUDENT_TEST_ID,
       course_id: SANDBOX_COURSE_ID,
       lecture_id: null,
-      title: "Sandbox generated test — editable draft",
-      instructions: "Preview the admin test editor. No exam questions are seeded in this test.",
-      subject: "Physics",
+      title: "Sandbox bank-sourced Punjab GK practice",
+      instructions:
+        "A local preview paper generated fresh from the existing Punjab PCS question bank. Edit the exam, subject, topic, difficulty or size from Admin → Tests.",
+      subject: "Punjab GK",
       duration_minutes: 30,
       question_timer_seconds: 0,
       timer_mode: "test",
@@ -115,8 +116,8 @@ const SANDBOX_SEED: Record<string, SandboxRow[]> = {
       price_coins: 0,
       question_source: "deterministic",
       generation_exam: "Punjab PCS",
-      generation_subject: "Physics",
-      generation_topic: "Mixed",
+      generation_subject: "Punjab GK",
+      generation_topic: "Districts and Headquarters",
       generation_difficulty: "Mixed",
       generation_count: 20,
       created_at: "2026-10-02T00:00:00.000Z",
@@ -302,6 +303,12 @@ function withDefaults(table: string, row: SandboxRow): SandboxRow {
   } else if (["site_settings", "private_settings"].includes(table)) {
     next["created_at"] ??= now();
     next["updated_at"] ??= now();
+  } else if (["series_access_grants", "test_access_grants"].includes(table)) {
+    next["revoked_at"] ??= null;
+    next["expires_at"] ??= null;
+    next["created_at"] ??= now();
+    next["updated_at"] ??= now();
+    if (!("id" in next)) next["id"] = globalThis.crypto?.randomUUID?.() ?? `sandbox-${Date.now()}`;
   } else {
     if (!("id" in next)) next["id"] = globalThis.crypto?.randomUUID?.() ?? `sandbox-${Date.now()}`;
     next["created_at"] ??= now();

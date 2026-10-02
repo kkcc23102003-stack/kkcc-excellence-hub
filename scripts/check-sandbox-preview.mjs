@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createSandboxSupabaseClient } from "../src/integrations/supabase/sandbox-database.ts";
 import { SANDBOX_ADMIN_ID } from "../src/integrations/supabase/sandbox.ts";
+import { generateOnDemandTestPaper } from "../src/lib/generated-test.ts";
 
 const supabase = createSandboxSupabaseClient();
 const adminRole = await supabase.rpc("has_role", {
@@ -30,6 +31,27 @@ assert.equal(adminRole.data, true, "the local sandbox user should be recognized 
 assert.equal(otherUserRole.data, false, "the sandbox must not grant admin to another user ID");
 assert.equal(seededTests.error, null, "seeded test reads should work without Supabase");
 assert.equal(seededTests.data.length, 2, "the sandbox should have editable seeded tests");
+const sampleTest = seededTests.data.find((test) => test.is_published);
+assert.ok(sampleTest, "the sandbox should have one published sample test");
+const sampleQuestions = generateOnDemandTestPaper({
+  exam: sampleTest.generation_exam,
+  subject: sampleTest.generation_subject,
+  topic: sampleTest.generation_topic,
+  difficulty: sampleTest.generation_difficulty,
+  count: sampleTest.generation_count,
+  marks: 1,
+  negative_marks: 0,
+});
+assert.equal(
+  sampleQuestions.length,
+  20,
+  "the published sandbox sample should use real bank questions",
+);
+assert.equal(
+  new Set(sampleQuestions.map((question) => question.question_text.trim().toLowerCase())).size,
+  20,
+  "the published sandbox sample should not repeat question stems",
+);
 assert.equal(
   seededSeriesAccess.data.length,
   1,

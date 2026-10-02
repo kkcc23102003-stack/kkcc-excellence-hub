@@ -172,10 +172,20 @@ function TestSeries() {
     queryFn: () => safeServerCall(() => listMySeriesAccess({} as never), []),
     staleTime: 30_000,
   });
-  const accessBySeries = useMemo(
-    () => new Map((myAccessQuery.data ?? []).map((item) => [item.series_id, item])),
-    [myAccessQuery.data],
-  );
+  const accessBySeries = useMemo(() => {
+    const grants = myAccessQuery.data ?? [];
+    const byCatalogueId = new Map<string, (typeof grants)[number]>();
+    for (const grant of grants) {
+      const normalizedId = grant.series_id.trim().toLowerCase();
+      const series = PAID_TEST_SERIES.find(
+        (item) =>
+          item.id.trim().toLowerCase() === normalizedId ||
+          item.name.trim().toLowerCase() === normalizedId,
+      );
+      if (series) byCatalogueId.set(series.id, grant);
+    }
+    return byCatalogueId;
+  }, [myAccessQuery.data]);
   const unlocked = useMemo(() => new Set(accessBySeries.keys()), [accessBySeries]);
 
   const enrolledSeries = useMemo(() => {

@@ -1325,6 +1325,8 @@ npm run check:pwa
 
 Apply the timestamped migrations in `supabase/migrations/` in order with the Supabase CLI (`supabase db push`) or the Supabase Dashboard SQL Editor. Do not use legacy combined-schema or destructive reset scripts; production changes are tracked only in the migration history. The resulting admin page is `/admin/security`, with content-protection, maintenance, feature-switch, Kit 2 Coins reward pacing and compact Supabase health controls.
 
+For the Supabase-independent local admin preview, paid-series syllabus workflow, offline access grants, honest Razorpay readiness, feature-specific migration list, and verification commands, see [`docs/test-series-sandbox-setup.md`](docs/test-series-sandbox-setup.md).
+
 Browser/PWA content protection is intentionally implemented as the strongest practical web-level deterrent:
 copy/context/right-click/print/selection/drag guards, protected-key interception, screenshot shortcut blocking,
 identity watermarks, screen focus/visibility isolation, and inspection-tool blocking. Normal web apps cannot
