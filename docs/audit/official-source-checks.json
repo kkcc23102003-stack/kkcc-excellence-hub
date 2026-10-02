@@ -1,0 +1,58 @@
+[
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart1/Maths_SecP1IX_2026-27.pdf",
+    "status": 200,
+    "sha256": "932ea66d6fbfcefce8182f28ab921c886187f5dea674321088b5c7230bbe6c32",
+    "pages": 13,
+    "extracted": "/home/user/syllabus-Maths_SecP1IX_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart1/ScienceSt_SecP1_2026-27.pdf",
+    "status": 200,
+    "sha256": "ab19589aede5ad8b0b2f87964914c1a55a987f39032903871baa973c02ed6e24",
+    "pages": 20,
+    "extracted": "/home/user/syllabus-ScienceSt_SecP1_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart1/SocialScience_SecP1IX_2026-27.pdf",
+    "status": 200,
+    "sha256": "c81d9237b8e74d462e57776e162d534ff04feff27ed72eb236621361a9061735",
+    "pages": 14,
+    "extracted": "/home/user/syllabus-SocialScience_SecP1IX_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart1/Science_SecP1_2026-27.pdf",
+    "status": 200,
+    "sha256": "1bec4a9e44452b22c9d422d8cb528b4de30598f56c243461845165771df7bc37",
+    "pages": 9,
+    "extracted": "/home/user/syllabus-Science_SecP1_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart2/Biology_SecP2_2026-27.pdf",
+    "status": 200,
+    "sha256": "3a5767515b41b12b9356151e759beba48bb15a1b711b96c321fa273a7fa7a6ee",
+    "pages": 15,
+    "extracted": "/home/user/syllabus-Biology_SecP2_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart2/Physics_SecP2_2026-27.pdf",
+    "status": 200,
+    "sha256": "9e32271cf5a86caa605cffe2a4b5e19710abc3d3a8715ef725ba78cd94caf1f7",
+    "pages": 23,
+    "extracted": "/home/user/syllabus-Physics_SecP2_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart2/Chemistry_SecP2_2026-27.pdf",
+    "status": 200,
+    "sha256": "5610f09d357d3ccc9a7b39fc29cb7b1f4530847753783b16c72fff691acd2418",
+    "pages": 15,
+    "extracted": "/home/user/syllabus-Chemistry_SecP2_2026-27.pdf.txt"
+  },
+  {
+    "url": "https://cbseacademic.nic.in/web_material/CurriculumMain27/SecPart2/Maths_SecP2_2026-27.pdf",
+    "status": 200,
+    "sha256": "5bf4105d4076189fe00b879fd6d41ffadec87a894a078a7fb912b2f219769572",
+    "pages": 12,
+    "extracted": "/home/user/syllabus-Maths_SecP2_2026-27.pdf.txt"
+  }
+]

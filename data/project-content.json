@@ -1,0 +1,506 @@
+{
+  "version": 1,
+  "tables": {
+    "courses": [],
+    "lectures": [],
+    "materials": [],
+    "tests": [],
+    "test_questions": [],
+    "site_settings": [
+      {
+        "key": "social_youtube",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "social_instagram",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "social_facebook",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "social_telegram",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "social_whatsapp",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "social_links_json",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "app_builder_json",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_app_name",
+        "value": "Kusum Kartik Coaching Centre",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_short_name",
+        "value": "KKCC",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_tagline",
+        "value": "Learn Better. Understand Deeper. Achieve More.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_logo_url",
+        "value": "/logo.png",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_logo_alt",
+        "value": "KKCC logo",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_show_logo_text",
+        "value": "true",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_primary_color",
+        "value": "#18f4d6",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_accent_color",
+        "value": "#f5d78e",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_background_color",
+        "value": "#050605",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_foreground_color",
+        "value": "#fff8e7",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_hero_eyebrow",
+        "value": "Learn Better. Understand Deeper. Achieve More.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_cta_primary_label",
+        "value": "Find My Next Win",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_cta_secondary_label",
+        "value": "Continue Learning",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "website_content_json",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "payment_provider",
+        "value": "razorpay",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "payment_enabled",
+        "value": "false",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "payment_mode",
+        "value": "test",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "razorpay_key_id",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "offline_payment_instructions",
+        "value": "Use the KKCC inquiry flow for UPI, cash or bank-transfer access. Course access is activated after the KKCC team confirms the payment.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_provider",
+        "value": "supabase",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_bucket",
+        "value": "course-content",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_region",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_endpoint",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_public_base_url",
+        "value": "",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "storage_migration_status",
+        "value": "idle",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T13:55:32.627047+00:00"
+      },
+      {
+        "key": "brand_hero_title",
+        "value": "KKCC Excellence Hub — Study That Makes You Return.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T14:08:30.869963+00:00"
+      },
+      {
+        "key": "security_shortcut_guard_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "brand_hero_description",
+        "value": "KKCC turns lectures, notes, tests, and progress into a bright daily learning loop — so students know exactly what to open next and feel excited to continue.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T14:08:30.869963+00:00"
+      },
+      {
+        "key": "brand_hero_highlight",
+        "value": "Learn with clarity. Practice with courage. Rise with confidence.",
+        "created_at": "2026-09-30T13:55:32.627047+00:00",
+        "updated_at": "2026-09-30T14:15:05.948338+00:00"
+      },
+      {
+        "key": "ui_text_json",
+        "value": "{\"auth\":{\"side_heading\":\"Education That Builds Understanding. Learning That Builds Futures.\",\"side_description\":\"Learn Better. Understand Deeper. Achieve More.\",\"login_title\":\"Welcome back\",\"login_description\":\"Sign in to continue your lectures, tests and revision.\",\"login_submit_label\":\"Sign in\",\"login_footer_prompt\":\"New to KKCC?\",\"login_footer_link\":\"Create an account\",\"forgot_password_label\":\"Forgot password?\",\"secure_login_title\":\"Secure student login\",\"secure_login_description\":\"Your session is safely stored in this browser; dashboard and admin routes stay protected.\",\"signup_title\":\"Create your KKCC account\",\"signup_description\":\"Join KKCC to access courses, tests, notes and your learning progress.\",\"signup_submit_label\":\"Create account\",\"signup_footer_prompt\":\"Already have an account?\",\"signup_footer_link\":\"Sign in\",\"signup_success_title\":\"Check your email\",\"signup_success_description\":\"Your KKCC account was created. If email confirmation is enabled, open the verification link before signing in.\",\"forgot_title\":\"Reset your password\",\"forgot_description\":\"Enter your registered email and we will send a secure reset link.\",\"forgot_submit_label\":\"Send reset link\",\"forgot_back_label\":\"Back to login\",\"forgot_success_title\":\"Check your email\",\"forgot_success_description\":\"If this email is registered with KKCC, a password reset link has been sent.\",\"reset_title\":\"Set a new password\",\"reset_description\":\"Choose a strong password to continue your KKCC learning journey.\",\"reset_submit_label\":\"Update password\",\"reset_success_title\":\"Password updated\",\"reset_success_description\":\"You can now sign in with your new password.\"},\"dashboard\":{\"welcome_eyebrow\":\"Welcome back\",\"welcome_title\":\"Your learning today\",\"student_section_label\":\"Student Section\",\"student_profile_title\":\"Profile & batch validity\",\"student_profile_description\":\"View your profile, enrolled batches/courses, payment source, and remaining validity in one place.\",\"active_batches_title\":\"My active batches\",\"no_active_batch_title\":\"No active batch right now\",\"no_active_batch_description\":\"Start a free batch or contact KKCC support to activate paid/offline access.\",\"browse_courses_label\":\"Explore courses\",\"support_cta_title\":\"Need access extension?\",\"support_cta_description\":\"If your validity is about to expire, send a message from the Support page for renewal help.\",\"support_cta_label\":\"Contact support\"},\"system\":{\"not_found_title\":\"Page not found\",\"not_found_description\":\"The page you're looking for doesn't exist or has been moved.\",\"not_found_home_label\":\"Go home\",\"error_title\":\"This page didn't load\",\"error_description\":\"Something went wrong on our end. You can try refreshing or head back home.\",\"error_retry_label\":\"Try again\",\"error_home_label\":\"Go home\",\"install_title\":\"Install KKCC for a faster app feel\",\"install_chrome_description\":\"Add it from Chrome to open full screen, launch quickly, and keep core files cached.\",\"install_ios_description\":\"On iPhone or iPad, open the browser share menu and choose Add to Home Screen.\",\"install_button_label\":\"Install app\",\"offline_title\":\"You are offline\",\"offline_description\":\"KKCC is ready to continue when your connection returns. Some recently opened pages and app files may still work from cache.\",\"offline_retry_label\":\"Try again\"}}",
+        "created_at": "2026-09-30T14:15:05.948338+00:00",
+        "updated_at": "2026-09-30T14:15:05.948338+00:00"
+      },
+      {
+        "key": "app_maintenance_mode",
+        "value": "false",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "app_maintenance_message",
+        "value": "KKCC learning services are temporarily being refreshed. Please check back shortly.",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_protection_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_copy_guard_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_context_menu_guard_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_watermark_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_screenshot_blur_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "security_print_guard_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "feature_kittu_quiz_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "feature_test_series_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "feature_study_material_enabled",
+        "value": "true",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "kittu_daily_reward_cap",
+        "value": "160",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "kittu_daily_practice_hours",
+        "value": "8",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "kittu_daily_gift",
+        "value": "5",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      },
+      {
+        "key": "kittu_practice_batches",
+        "value": "[]",
+        "created_at": "2026-09-30T14:23:49.531495+00:00",
+        "updated_at": "2026-09-30T17:09:45.787481+00:00"
+      }
+    ],
+    "test_series_overrides": [
+      {
+        "series_id": "ppsc-pcs",
+        "enabled": true,
+        "name": "Punjab PCS (PPSC) Chapterwise Series",
+        "summary": "Chapterwise Punjab GK, history, geography, economy and polity in the statement-based format PPSC now sets.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:14:46.851345+00:00",
+        "updated_at": "2026-09-30T15:14:46.851345+00:00"
+      },
+      {
+        "series_id": "psssb",
+        "enabled": true,
+        "name": "PSSSB Combined Recruitment Series",
+        "summary": "Clerk, VDO and technical posts: Punjab awareness, Punjabi language, maths and reasoning, chapter by chapter.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:15:06.769212+00:00",
+        "updated_at": "2026-09-30T15:15:06.769212+00:00"
+      },
+      {
+        "series_id": "punjab-patwari",
+        "enabled": true,
+        "name": "Punjab Patwari Chapterwise Series",
+        "summary": "Revenue-department oriented: Punjab land and geography, awareness, maths, reasoning.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:15:30.509587+00:00",
+        "updated_at": "2026-09-30T15:15:30.509587+00:00"
+      },
+      {
+        "series_id": "punjab-police",
+        "enabled": true,
+        "name": "Punjab Police Constable & SI Series",
+        "summary": "Constable and Sub-Inspector pattern with Punjab-heavy general awareness.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:15:51.512563+00:00",
+        "updated_at": "2026-09-30T15:15:51.512563+00:00"
+      },
+      {
+        "series_id": "master-cadre-punjabi",
+        "enabled": true,
+        "name": "Master Cadre Punjabi Series",
+        "summary": "The 150 question Punjabi subject paper: ਸਾਹਿਤ ਦਾ ਇਤਿਹਾਸ, ਗੁਰਮਤਿ ਤੇ ਸੂਫ਼ੀ ਕਾਵਿ, ਕਿੱਸਾ, ਗਲਪ, ਨਾਟਕ, ਭਾਸ਼ਾ ਵਿਗਿਆਨ ਅਤੇ ਵਿਆਕਰਨ।",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:16:10.42826+00:00",
+        "updated_at": "2026-09-30T15:16:10.42826+00:00"
+      },
+      {
+        "series_id": "master-cadre-english",
+        "enabled": true,
+        "name": "Master Cadre English Series",
+        "summary": "The 150 question English subject paper: grammar, vocabulary, comprehension, phonetics and the British and Indian literary periods.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:16:33.862832+00:00",
+        "updated_at": "2026-09-30T15:16:33.862832+00:00"
+      },
+      {
+        "series_id": "master-cadre-hindi",
+        "enabled": true,
+        "name": "Master Cadre Hindi Series",
+        "summary": "हिंदी विषय का 150 प्रश्नों वाला स्नातक स्तरीय पेपर — व्याकरण के साथ आदिकाल, भक्तिकाल, रीतिकाल, आधुनिक काव्य, गद्य विधाएँ, काव्यशास्त्र, हिंदी भाषा का विकास और हिंदी शिक्षण विधियाँ।",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:16:57.856708+00:00",
+        "updated_at": "2026-09-30T15:16:57.856708+00:00"
+      },
+      {
+        "series_id": "master-cadre-maths",
+        "enabled": true,
+        "name": "Master Cadre Mathematics Series",
+        "summary": "The 150 question Mathematics paper at graduation level: matrices and determinants, set theory, sequences and series, binomial theorem, limits, continuity, derivatives, integrals, differential equations, straight lines, conic sections, three dimensional geometry, complex numbers, trigonometry, permutations and combinations, statistics, probability and linear programming.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:17:48.916836+00:00",
+        "updated_at": "2026-09-30T15:17:48.916836+00:00"
+      },
+      {
+        "series_id": "master-cadre-science",
+        "enabled": true,
+        "name": "Master Cadre Science Series",
+        "summary": "The 150 question Science subject paper covering physics, chemistry and biology at graduation depth, with the school pedagogy base.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:18:10.403849+00:00",
+        "updated_at": "2026-09-30T15:18:10.403849+00:00"
+      },
+      {
+        "series_id": "master-cadre-sst",
+        "enabled": true,
+        "name": "Master Cadre Social Science Series",
+        "summary": "The 150 question Social Science subject paper: history, geography, political science and economics at graduation depth.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:18:46.572185+00:00",
+        "updated_at": "2026-09-30T15:18:46.572185+00:00"
+      },
+      {
+        "series_id": "master-cadre-physical-education",
+        "enabled": true,
+        "name": "Master Cadre Physical Education (DPE) Series",
+        "summary": "The 150 question DPE subject paper: foundations of physical education, fitness components, training principles, anatomy and physiology, sports injuries, rules of major games and sports awards.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:19:08.445259+00:00",
+        "updated_at": "2026-09-30T15:19:08.445259+00:00"
+      },
+      {
+        "series_id": "master-cadre-music",
+        "enabled": true,
+        "name": "Master Cadre Music Series",
+        "summary": "The 150 question Music subject paper: swara and saptak, raga structure and jati, taal and laya, khayal and dhrupad, instrument classification, the history of Indian music and notation and teaching method.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:19:43.070838+00:00",
+        "updated_at": "2026-09-30T15:19:43.070838+00:00"
+      },
+      {
+        "series_id": "master-cadre-art-craft",
+        "enabled": true,
+        "name": "PSTET and TET Art and Craft Series",
+        "summary": "Art and Craft as the Paper II subject option in PSTET: elements and principles of art, colour theory, perspective, Indian painting traditions, folk crafts and craft pedagogy.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:20:09.433148+00:00",
+        "updated_at": "2026-09-30T15:20:09.433148+00:00"
+      },
+      {
+        "series_id": "master-cadre-punjabi-qualifying",
+        "enabled": true,
+        "name": "Master & Lecturer Cadre Punjabi Qualifying Paper",
+        "summary": "The compulsory 50 mark matric level Punjabi paper every Master Cadre and Lecturer Cadre candidate must clear, whatever the main subject.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:21:19.921401+00:00",
+        "updated_at": "2026-09-30T15:21:19.921401+00:00"
+      },
+      {
+        "series_id": "punjab-ett-paper-a",
+        "enabled": true,
+        "name": "Punjab ETT Cadre Paper A — Punjabi (Qualifying)",
+        "summary": "The 100 question Punjabi qualifying paper, exactly the six ERB sections: ਭਾਸ਼ਾ ਤੇ ਉਪਭਾਸ਼ਾ, ਲਿਪੀ ਤੇ ਗੁਰਮੁਖੀ, ਧੁਨੀ ਵਿਗਿਆਨ, ਸ਼ਬਦ ਬੋਧ ਤੇ ਸ਼ਬਦ ਬਣਤਰ, ਸ਼ਬਦਾਵਲੀ ਤੇ ਵਾਕ ਦੀ ਵੰਡ, ਅਤੇ ਵਿਆਕਰਨ ਜਿਸ ਵਿੱਚ ਪ੍ਰੇਰਨਾਰਥਕ ਕਿਰਿਆ ਤੇ ਸ਼ਬਦ ਜੋੜ ਸ਼ਾਮਲ ਹਨ। Clear this to reach Paper B.",
+        "price_inr": 999,
+        "price_coins": 999,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-09-30T15:21:54.507167+00:00",
+        "updated_at": "2026-09-30T15:21:54.507167+00:00"
+      }
+    ]
+  }
+}

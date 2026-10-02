@@ -1,0 +1,302 @@
+[
+  {
+    "file": "src/lib/exam-bank/ca-advanced.ts",
+    "sha256": "f462cb7f3a243d1a4dcc789861655893abaae4bfd2e4919db35c1809a4267c94"
+  },
+  {
+    "file": "src/lib/exam-bank/ca-final-full.ts",
+    "sha256": "a0477161252832edff91641d3efca5595256edcb1b5803899889b24ddb6ff680"
+  },
+  {
+    "file": "src/lib/exam-bank/ca-full.ts",
+    "sha256": "65d9c725892b650c9d75614b8a797904a34238f95145d66a12a8f45b4d874c7a"
+  },
+  {
+    "file": "src/lib/exam-bank/ca-inter-full.ts",
+    "sha256": "b137de74f2f73dcfec7a7804ed5091c394b5e64a615ab0dc5fea7b8f80936f48"
+  },
+  {
+    "file": "src/lib/exam-bank/ca.ts",
+    "sha256": "36c885be43d3a73f909d0054918abf95a905ede9893e91e8f88132cb1bb21b91"
+  },
+  {
+    "file": "src/lib/exam-bank/cadre-pro-full.ts",
+    "sha256": "0cc17a0581d77c4f205c56ae3ad67f607c37670398076b44343e2eea0276d75b"
+  },
+  {
+    "file": "src/lib/exam-bank/chemistry-full.ts",
+    "sha256": "d77ecbad5425d8028fbdf6ee0de6513752aef8de28576f68142e6d539e416c65"
+  },
+  {
+    "file": "src/lib/exam-bank/cma-papers.ts",
+    "sha256": "5f17c95303f8a5401a6870b0221737c5b201e522b478d3d440d894e2b58c84ce"
+  },
+  {
+    "file": "src/lib/exam-bank/commerce-school.ts",
+    "sha256": "6762619e70b37444b0e6da099b9a0790909fe8cb53f5c70445dbf9a29312d847"
+  },
+  {
+    "file": "src/lib/exam-bank/computer-banking.ts",
+    "sha256": "253f39a2f341f60072ccc8ba18de3b337298bdd55c1774d96dd141c4c0365b51"
+  },
+  {
+    "file": "src/lib/exam-bank/core.ts",
+    "sha256": "6a426daba75ab03ed6509b1f1419482f547959d27214532d71470c3d745ef324"
+  },
+  {
+    "file": "src/lib/exam-bank/csat.ts",
+    "sha256": "224790aa7c6c9243b5aa5c58ca58659870e38c4f4114f7a41cd79b1428d0cc7b"
+  },
+  {
+    "file": "src/lib/exam-bank/ctet-official.ts",
+    "sha256": "3e6c347b3d42f23cf8b9ab42ddd06e68ff9e6d69eb1bd2a77ee90146b2599245"
+  },
+  {
+    "file": "src/lib/exam-bank/deterministic-quality.ts",
+    "sha256": "7c0b08ef006757535fe2ceb700a4b0509cf754e9d3fefdc3a870ce09e23a2421"
+  },
+  {
+    "file": "src/lib/exam-bank/economy.ts",
+    "sha256": "8aeb9515a3a6ec4c2575cf1e4fe4f7e8722d5a9553311d02bb3ada51f0f97ce5"
+  },
+  {
+    "file": "src/lib/exam-bank/english-full.ts",
+    "sha256": "46d25449e762650d5c9b83682b3aa50b3048c8b772bf3940c35513b2efa6eca1"
+  },
+  {
+    "file": "src/lib/exam-bank/english-grammar.ts",
+    "sha256": "7a827d35d229f51b62efd060b59a6f53fe4b6666fb39678164df809bf20a9c18"
+  },
+  {
+    "file": "src/lib/exam-bank/english.ts",
+    "sha256": "168d6bebc6787ee3025c88e282563ba7955678621e21276ffe49d3a5fe5d9a01"
+  },
+  {
+    "file": "src/lib/exam-bank/environment.ts",
+    "sha256": "62b2633c9822fee8e86f650af6f859664dbbedafa45061cae25a5d8f71fe670a"
+  },
+  {
+    "file": "src/lib/exam-bank/ett-master-fix.ts",
+    "sha256": "ca844631bc14929ca478829269bac2338da7b1622ce97173ee28587eb248c678"
+  },
+  {
+    "file": "src/lib/exam-bank/facts-banking.ts",
+    "sha256": "b1fe79f2f8e5b4d64a45a18cf94051f59613856f9c7abe4844a17512013875db"
+  },
+  {
+    "file": "src/lib/exam-bank/facts-extra.ts",
+    "sha256": "827bc7389bbc5fa4847d3857220148e414c0022b25e7480b0e6c2b986e0e3cab"
+  },
+  {
+    "file": "src/lib/exam-bank/facts-gk.ts",
+    "sha256": "4a31da846b347bd575f655c0d950e45a000e040f798175dc7c6ac1586b4b6c0e"
+  },
+  {
+    "file": "src/lib/exam-bank/geography.ts",
+    "sha256": "82e24191a841263e37c40e2d5ee41c23fb0165c44e2e9750760be37bdf37c757"
+  },
+  {
+    "file": "src/lib/exam-bank/gs-commerce-full.ts",
+    "sha256": "95869700e6326ef8b994721abcf90c2772c2731b51490047a8f88ffd4250d6e5"
+  },
+  {
+    "file": "src/lib/exam-bank/gs-extra.ts",
+    "sha256": "1c25c254bb892c5ecbf768ee9cb49085c66b3c6ea09af1bbf8b2ffee7236dbd6"
+  },
+  {
+    "file": "src/lib/exam-bank/gs-full2.ts",
+    "sha256": "6b49122ab340de10fa5582b3c3e675facb6cb5df3749449fba884632ac4b67ac"
+  },
+  {
+    "file": "src/lib/exam-bank/high-yield.ts",
+    "sha256": "00eb1fd85fdba568f6c8c38dac507f8bae6163bb9bd121dd5d22f84afa34fb1e"
+  },
+  {
+    "file": "src/lib/exam-bank/hindi-full.ts",
+    "sha256": "0ecc6b68d9fa65bce21e67dda5ec0ddd7d3987b70d5e56b5946c31b85e328897"
+  },
+  {
+    "file": "src/lib/exam-bank/hindi-literature.ts",
+    "sha256": "3ea230c506c1dfb88d5b8f4869e4aa3dd076eb4deaf6887ddf5b371a454ff330"
+  },
+  {
+    "file": "src/lib/exam-bank/hindi.ts",
+    "sha256": "aafa08197622694114d4bc0f359c6287ad7e25adf7f203eef78c5a4253b0c970"
+  },
+  {
+    "file": "src/lib/exam-bank/history-full2.ts",
+    "sha256": "c88d4009f1ff7515edb656d205fce068f0dfda80587ec7f4fb97fa3fbec25ffa"
+  },
+  {
+    "file": "src/lib/exam-bank/history.ts",
+    "sha256": "513b2eff518f4e311501ea37db91adb83f332a373d47595fe44d84a7b17f65c4"
+  },
+  {
+    "file": "src/lib/exam-bank/humanities-school.ts",
+    "sha256": "789526b805f58ab9fd89e69808d51c1b701025fc59c999a679896ba8dafab94c"
+  },
+  {
+    "file": "src/lib/exam-bank/icse-bio-fix.ts",
+    "sha256": "82024443e43608f7156882d5dc65d3bcffb69a286798371ccade1a24f2fcfbd3"
+  },
+  {
+    "file": "src/lib/exam-bank/icse-full.ts",
+    "sha256": "8b64803a807016827fccf1a3bcae638694558d9314ddf22509cd4478ab285909"
+  },
+  {
+    "file": "src/lib/exam-bank/icse-maths-full.ts",
+    "sha256": "f78e6cc3063473cd4d353d2d2a9507fbf4bad2b2ee9ce3e2f0374934cb6886d3"
+  },
+  {
+    "file": "src/lib/exam-bank/icse-maths.ts",
+    "sha256": "5d232e3f72406b2a4df7c0b5c13955d4030ef3ac9394909d6f2a73d3ff31dbeb"
+  },
+  {
+    "file": "src/lib/exam-bank/icse.ts",
+    "sha256": "e6b86c51466b53877c47b8fc12422bec486165ef08b068acefb5ae5dd8eb6306"
+  },
+  {
+    "file": "src/lib/exam-bank/icse10-full.ts",
+    "sha256": "1d3dc4854ccb40d91829b43e590c06667438808dcab0023539210dd8fca0a36a"
+  },
+  {
+    "file": "src/lib/exam-bank/icse9-full.ts",
+    "sha256": "dcb6894ba9e0548da0a718c5e3cd19b2b653397703ff7b602cd44fc1e0d543e4"
+  },
+  {
+    "file": "src/lib/exam-bank/index.ts",
+    "sha256": "d5eb9f7973bf22526dc2a3924a75a094784cab254369db77cfb4b585243e1296"
+  },
+  {
+    "file": "src/lib/exam-bank/jee.ts",
+    "sha256": "635d9015a48d70befa35682249282d83a235d9c11777fae4328eeb9e321f87fb"
+  },
+  {
+    "file": "src/lib/exam-bank/lang-cadre-full.ts",
+    "sha256": "48ce99482f4d6e906d2b42be22acf97fcb1ae3809fbd996e032ffe382030dbfd"
+  },
+  {
+    "file": "src/lib/exam-bank/master-cadre-maths.ts",
+    "sha256": "c86f0e25849a2f3ab83bfc2a42050c43e4a909d8ebfe65a74a852400a31b6c1e"
+  },
+  {
+    "file": "src/lib/exam-bank/maths.ts",
+    "sha256": "a12d08a6ff31d7e28c27365e56e0a1aa37f4b5e3218d77011460dc6c3d5be388"
+  },
+  {
+    "file": "src/lib/exam-bank/music-cadre.ts",
+    "sha256": "ccdfc991fe2e83034cb04de8d4815aa8c68cf14819c6b3870d1b5e36e192d6eb"
+  },
+  {
+    "file": "src/lib/exam-bank/ncert10.ts",
+    "sha256": "2e5a82035cae811908751640f804781c0883421ae9508bca09c468873abd0fd0"
+  },
+  {
+    "file": "src/lib/exam-bank/ncert9.ts",
+    "sha256": "520c31ffcb56cf73c5764d91806c88c7b630a63c8ce2f15459d3dbce6729a002"
+  },
+  {
+    "file": "src/lib/exam-bank/neet-bio-official.ts",
+    "sha256": "e3067b277f737ff449246ae9502b5452faaaeb0349bd3f9cbc360b1207efc38c"
+  },
+  {
+    "file": "src/lib/exam-bank/neet-bio.ts",
+    "sha256": "e4e9dd7a59cb363c64c661c633d166fbd8cecdd4fe55589397909a0166b0480c"
+  },
+  {
+    "file": "src/lib/exam-bank/neet-chem.ts",
+    "sha256": "3d88d51f548d41c2e4db4a6d1f8b416e3a4ebb44a5ec1c05ee141470a8f5dad6"
+  },
+  {
+    "file": "src/lib/exam-bank/neet.ts",
+    "sha256": "31ec74da0fdbb9141b31cd0a5aec971274e9e4f663feb789111be73290c3f1a2"
+  },
+  {
+    "file": "src/lib/exam-bank/official-syllabus.ts",
+    "sha256": "cd9968c1a7f838f3fea677dfa7ec51c03ef77fa604e38f4965de834787305e7c"
+  },
+  {
+    "file": "src/lib/exam-bank/physics.ts",
+    "sha256": "f42b25483c9b3f3ad46f29fd926a39d3f54a6013da6d8801d84bd629405c4194"
+  },
+  {
+    "file": "src/lib/exam-bank/polity-full.ts",
+    "sha256": "ad02faad7dd06a0a6e2d09b312ef403a79174e633e84339ba13404e92268394d"
+  },
+  {
+    "file": "src/lib/exam-bank/pseb.ts",
+    "sha256": "48b5799fa98d6623eaee363072f22078db7da7d119b4bdc735dabaae2112c725"
+  },
+  {
+    "file": "src/lib/exam-bank/punjab-cadre-fix.ts",
+    "sha256": "3f1b95e597bb9aa00354acd8317875048f8cc17f87fd2847c061f5b72589e893"
+  },
+  {
+    "file": "src/lib/exam-bank/punjab-full.ts",
+    "sha256": "af5cd9838cadfceb340105f71b693646d4eca12295c9eb3a8f420642418ed48d"
+  },
+  {
+    "file": "src/lib/exam-bank/punjab.ts",
+    "sha256": "f5d9c5606eb4b3fcadf027bfa5e389621891458cca9b6dd7044cabc8eafda13d"
+  },
+  {
+    "file": "src/lib/exam-bank/punjabi-full.ts",
+    "sha256": "7d95bba0ee8a8f15b7059767f557ffcf87f5574acba9e459ec06fbd4459ece3e"
+  },
+  {
+    "file": "src/lib/exam-bank/punjabi.ts",
+    "sha256": "cce284c5a5f68d2a2f3a8f1972d63786983e95efd3d0c44c89d95edd5f6a1232"
+  },
+  {
+    "file": "src/lib/exam-bank/quality-audit.ts",
+    "sha256": "37751f720d74a5c03602ab2666456bb5947df511dbdd050b56c4444c71ba87c7"
+  },
+  {
+    "file": "src/lib/exam-bank/quant-full.ts",
+    "sha256": "e2727cbb7b96a76c1f53eaa909c73d954ae4dd0afdba1da8d5272af3c25a6302"
+  },
+  {
+    "file": "src/lib/exam-bank/quant.ts",
+    "sha256": "a314fb087c9b6035ac16783577854716b86191148686935c40b2df37b021bc3b"
+  },
+  {
+    "file": "src/lib/exam-bank/reasoning-full.ts",
+    "sha256": "a9f856bab1f4e7c2ef9dd9bd3be01e5288d9830f54129461607efbad9ad70187"
+  },
+  {
+    "file": "src/lib/exam-bank/reasoning.ts",
+    "sha256": "00817d9ab65b2fbcb5272631781fd916bfddfe4bdd9377a108850aea0f62822d"
+  },
+  {
+    "file": "src/lib/exam-bank/school-extra.ts",
+    "sha256": "8b86a8d26b8e5ba4d523434a4f7fdd2c9e38ff40dd1b2b5a675a77fc6d69e115"
+  },
+  {
+    "file": "src/lib/exam-bank/science-tech.ts",
+    "sha256": "98bfd914cee07aac1120650fabc3c6d558ccda46f43d91a830b8acb9a994f16f"
+  },
+  {
+    "file": "src/lib/exam-bank/sst-full.ts",
+    "sha256": "7fc47782ac8e5f8547c4fac710f2dc9481922ef745360b8f92d8f9842e65673a"
+  },
+  {
+    "file": "src/lib/exam-bank/sst.ts",
+    "sha256": "6ef43459a9313b324cf28b07940788b9a4e7cd3ab80fcf847df5de31a2d9724e"
+  },
+  {
+    "file": "src/lib/exam-bank/teaching-gs-full.ts",
+    "sha256": "21e6b74a832f7e4c16f031ac3d3205fbc2ee9b0aa424f7c53a2b972e63625b6a"
+  },
+  {
+    "file": "src/lib/exam-bank/teaching.ts",
+    "sha256": "717fb1e6775471b5b221f579d3c42c3a6ac94c8ce1cfba2e77250663ba3858d0"
+  },
+  {
+    "file": "src/lib/exam-bank/two-layer.ts",
+    "sha256": "f62a5805807745b54853407add60143d4e4e5504b608131cf035562f34ec2193"
+  },
+  {
+    "file": "src/lib/exam-bank/upsc.ts",
+    "sha256": "cce77b514cd6cb85e80b81e46cceb9b8509119b55b08240bf9b1da10ed4738cf"
+  }
+]

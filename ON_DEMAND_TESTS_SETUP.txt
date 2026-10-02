@@ -1,0 +1,66 @@
+KKCC EXCELLENCE HUB — ON-DEMAND TEST SETUP
+
+WHAT CHANGED
+- Admin chooses exam, subject, chapter, difficulty and question count.
+- The app stores only this small generation recipe in Supabase.
+- The actual MCQ text/options/explanation are generated fresh when a student opens the test.
+- Generated MCQs are NOT inserted into public.test_questions.
+- Closing/reopening the test creates a fresh draw.
+- Existing manual tests continue to use public.test_questions normally.
+- Student-facing colors/design/test UI are unchanged.
+
+SQL
+Run this in Supabase SQL Editor after your existing KKCC schema/migrations:
+
+--- BEGIN SQL ---
+ALTER TABLE public.tests
+  ADD COLUMN IF NOT EXISTS question_source text NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS generation_exam text NOT NULL DEFAULT 'All Exams',
+  ADD COLUMN IF NOT EXISTS generation_subject text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS generation_topic text NOT NULL DEFAULT 'Mixed',
+  ADD COLUMN IF NOT EXISTS generation_difficulty text NOT NULL DEFAULT 'Difficult',
+  ADD COLUMN IF NOT EXISTS generation_count integer NOT NULL DEFAULT 0;
+
+ALTER TABLE public.tests
+  DROP CONSTRAINT IF EXISTS tests_question_source_check;
+ALTER TABLE public.tests
+  ADD CONSTRAINT tests_question_source_check
+  CHECK (question_source IN ('manual', 'deterministic'));
+
+ALTER TABLE public.tests
+  DROP CONSTRAINT IF EXISTS tests_generation_difficulty_check;
+ALTER TABLE public.tests
+  ADD CONSTRAINT tests_generation_difficulty_check
+  CHECK (generation_difficulty IN ('Easy', 'Moderate', 'Difficult', 'Mixed'));
+
+ALTER TABLE public.tests
+  DROP CONSTRAINT IF EXISTS tests_generation_count_check;
+ALTER TABLE public.tests
+  ADD CONSTRAINT tests_generation_count_check
+  CHECK (generation_count >= 0 AND generation_count <= 1000);
+
+COMMENT ON COLUMN public.tests.question_source IS
+  'manual = questions come from public.test_questions; deterministic = fresh questions are generated on demand and are never stored.';
+
+INSERT INTO public.private_settings(key, value)
+VALUES
+  ('ai_question_engine_enabled', 'false'),
+  ('ai_question_engine_auto_publish', 'false'),
+  ('ai_question_engine_google_search', 'false'),
+  ('ai_question_engine_gemini_api_key', '')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+--- END SQL ---
+
+CRON SECRET — SIMPLE EXPLANATION
+
+A CRON_SECRET is simply a private password used to prove that a scheduled server request is allowed.
+It must never be put in browser/frontend code or exposed to students.
+
+For THIS no-AI on-demand test system:
+- You do NOT need a cron job.
+- You do NOT need CRON_SECRET for question generation.
+- You do NOT need AI_CRON_SECRET.
+- Do NOT add a Gemini API key.
+
+The old project contains legacy AI/cron files for compatibility, but the current test-generation path does not call them.
+If you later use another scheduled server task, put its secret in Vercel Environment Variables / Supabase Edge Function Secrets, not in React code.

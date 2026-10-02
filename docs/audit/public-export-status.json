@@ -1,0 +1,23 @@
+{
+  "courses": {
+    "public_rows": 0
+  },
+  "lectures": {
+    "public_rows": 0
+  },
+  "materials": {
+    "public_rows": 0
+  },
+  "tests": {
+    "public_rows": 0
+  },
+  "test_questions": {
+    "public_rows": 0
+  },
+  "site_settings": {
+    "public_rows": 52
+  },
+  "test_series_overrides": {
+    "public_rows": 15
+  }
+}

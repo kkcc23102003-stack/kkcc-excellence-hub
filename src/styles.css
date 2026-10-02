@@ -1,0 +1,703 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * KKCC Design System
+ * UV neon palette inspired directly by the provided K-logo:
+ *  - deep black / ink base
+ *  - electric teal-cyan primary glow
+ *  - warm golden cream accent
+ *  - soft violet only as a supporting UV glow
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: #050605;
+  --foreground: #fff8e7;
+  --surface: #07110f;
+  --surface-foreground: #fff8e7;
+  --card: #0d1411;
+  --card-foreground: #fff8e7;
+  --popover: #0f1714;
+  --popover-foreground: #fff8e7;
+  --primary: #18f4d6;
+  --primary-foreground: #02110f;
+  --secondary: #14231f;
+  --secondary-foreground: #f8fff8;
+  --muted: #111b18;
+  --muted-foreground: #c9d7ce;
+  --accent: #f5d78e;
+  --accent-foreground: #181004;
+  --destructive: #ffb000;
+  --destructive-foreground: #ffffff;
+  --success: #00f5a0;
+  --success-foreground: #02120c;
+  --warning: #ffd166;
+  --warning-foreground: #1a0b00;
+  --border: color-mix(in oklab, #18f4d6 22%, #f5d78e 20%, transparent);
+  --input: color-mix(in oklab, #fff8e7 14%, transparent);
+  --ring: #18f4d6;
+  --ink: #030403;
+  --ink-foreground: #fff8e7;
+  --chart-1: #18f4d6;
+  --chart-2: #f5d78e;
+  --chart-3: #38e8ff;
+  --chart-4: #00f5a0;
+  --chart-5: #a78bfa;
+  --sidebar: #070d0c;
+  --sidebar-foreground: #fff8e7;
+  --sidebar-primary: #18f4d6;
+  --sidebar-primary-foreground: #02110f;
+  --sidebar-accent: #14231f;
+  --sidebar-accent-foreground: #f8fff8;
+  --sidebar-border: color-mix(in oklab, #18f4d6 20%, #f5d78e 16%, transparent);
+  --sidebar-ring: #18f4d6;
+
+  --shadow-soft:
+    0 1px 2px rgb(0 0 0 / 0.35), 0 0 24px color-mix(in oklab, var(--primary) 16%, transparent),
+    0 14px 42px rgb(0 0 0 / 0.28);
+  --shadow-lift:
+    0 2px 8px rgb(0 0 0 / 0.45), 0 0 32px color-mix(in oklab, var(--accent) 18%, transparent),
+    0 22px 60px rgb(0 0 0 / 0.48);
+}
+.dark {
+  --background: #030403;
+  --foreground: #fff8e7;
+  --surface: #060d0b;
+  --surface-foreground: #fff8e7;
+  --card: #0b120f;
+  --card-foreground: #fff8e7;
+  --popover: #0d1512;
+  --popover-foreground: #fff8e7;
+  --primary: #18f4d6;
+  --primary-foreground: #02110f;
+  --secondary: #12211d;
+  --secondary-foreground: #f8fff8;
+  --muted: #101a17;
+  --muted-foreground: #c9d7ce;
+  --accent: #f5d78e;
+  --accent-foreground: #181004;
+  --destructive: #ffb000;
+  --destructive-foreground: #ffffff;
+  --success: #00f5a0;
+  --success-foreground: #02120c;
+  --warning: #ffd166;
+  --warning-foreground: #1a0b00;
+  --border: color-mix(in oklab, #18f4d6 24%, #f5d78e 18%, transparent);
+  --input: color-mix(in oklab, #fff8e7 16%, transparent);
+  --ring: #18f4d6;
+  --ink: #020302;
+  --ink-foreground: #fff8e7;
+  --chart-1: #18f4d6;
+  --chart-2: #f5d78e;
+  --chart-3: #38e8ff;
+  --chart-4: #00f5a0;
+  --chart-5: #a78bfa;
+  --sidebar: #060c0a;
+  --sidebar-foreground: #fff8e7;
+  --sidebar-primary: #18f4d6;
+  --sidebar-primary-foreground: #02110f;
+  --sidebar-accent: #12211d;
+  --sidebar-accent-foreground: #f8fff8;
+  --sidebar-border: color-mix(in oklab, #18f4d6 22%, #f5d78e 16%, transparent);
+  --sidebar-ring: #18f4d6;
+
+  --shadow-soft:
+    0 1px 2px rgb(0 0 0 / 0.42), 0 0 24px color-mix(in oklab, var(--primary) 18%, transparent),
+    0 14px 42px rgb(0 0 0 / 0.34);
+  --shadow-lift:
+    0 2px 8px rgb(0 0 0 / 0.55), 0 0 36px color-mix(in oklab, var(--accent) 20%, transparent),
+    0 22px 64px rgb(0 0 0 / 0.55);
+}
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background:
+      radial-gradient(
+        circle at 8% -10%,
+        color-mix(in oklab, var(--primary) 24%, transparent),
+        transparent 34rem
+      ),
+      radial-gradient(
+        circle at 92% 0%,
+        color-mix(in oklab, var(--accent) 20%, transparent),
+        transparent 32rem
+      ),
+      linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--background) 86%, #240018),
+        var(--background) 58%,
+        #030106
+      );
+    background-attachment: fixed;
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.022em;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+}
+
+@utility shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+@utility shadow-lift {
+  box-shadow: var(--shadow-lift);
+}
+
+@utility glass {
+  background: color-mix(in oklab, var(--background) 68%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent) 20%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: 0 0 20px color-mix(in oklab, var(--primary) 10%, transparent);
+}
+
+@utility surface-panel {
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--card) 92%, var(--primary) 8%),
+    var(--card)
+  );
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility text-gradient-brand {
+  background: linear-gradient(100deg, #18f4d6 0%, #38e8ff 30%, #f5d78e 68%, #fff8e7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility neon-text {
+  text-shadow:
+    0 0 14px color-mix(in oklab, var(--primary) 55%, transparent),
+    0 0 28px color-mix(in oklab, var(--accent) 36%, transparent);
+}
+
+/* Colourful quiz question text. Only the question sentence uses this treatment,
+   so the rest of the quiz layout stays calm and readable. */
+@utility quiz-question-text {
+  background: linear-gradient(
+    96deg,
+    #18f4d6 0%,
+    #38e8ff 26%,
+    #9cff6e 52%,
+    #ffd166 76%,
+    #ff9ad5 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+/* Fallback for browsers without background-clip: text support. */
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .quiz-question-text {
+    background: none;
+    color: var(--primary);
+  }
+}
+@utility hover-lift {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease;
+  &:hover {
+    transform: translate3d(0, -3px, 0);
+    box-shadow: var(--shadow-lift);
+  }
+}
+
+@utility reveal {
+  animation: kkcc-reveal 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility float-slow {
+  animation: kkcc-float 7s ease-in-out infinite;
+}
+
+@keyframes kkcc-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kkcc-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Performance layer: keeps the neon look smooth on phones, tablets and low-power devices. */
+@layer base {
+  html {
+    min-height: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    min-height: 100dvh;
+    overflow-x: clip;
+    text-rendering: optimizeLegibility;
+    touch-action: manipulation;
+  }
+
+  img,
+  video,
+  iframe,
+  svg {
+    max-width: 100%;
+  }
+
+  img,
+  video {
+    height: auto;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+@utility content-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 760px;
+}
+
+@media (pointer: coarse), (max-width: 1024px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .glass {
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    backdrop-filter: blur(10px) saturate(140%);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 8%, transparent);
+  }
+
+  .surface-panel {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.34),
+      0 10px 28px rgb(0 0 0 / 0.26);
+  }
+
+  .shadow-lift {
+    box-shadow:
+      0 2px 8px rgb(0 0 0 / 0.42),
+      0 14px 38px rgb(0 0 0 / 0.36);
+  }
+
+  .neon-text {
+    text-shadow: 0 0 12px color-mix(in oklab, var(--primary) 34%, transparent);
+  }
+
+  .hover-lift:hover {
+    transform: none;
+  }
+}
+
+html.lite-motion *,
+html.lite-motion *::before,
+html.lite-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 120ms !important;
+}
+
+html.lite-motion .float-slow,
+html.lite-motion .reveal {
+  animation: none !important;
+}
+
+html.lite-motion .glass,
+html.lite-motion .surface-panel,
+html.lite-motion .shadow-soft,
+html.lite-motion .shadow-lift {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.32),
+    0 10px 24px rgb(0 0 0 / 0.24) !important;
+}
+
+html.lite-motion .neon-text {
+  text-shadow: none !important;
+}
+
+@media (prefers-reduced-data: reduce) {
+  body {
+    background-image: linear-gradient(135deg, var(--background), #07110f 62%, #030403);
+  }
+
+  .float-slow {
+    animation: none !important;
+  }
+}
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@layer utilities {
+  .gpu-stable {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: color-mix(in oklab, var(--background) 94%, var(--primary) 6%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .surface-panel {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: color-mix(in oklab, var(--background) 94%, var(--primary) 6%) !important;
+  }
+}
+
+html.save-data body {
+  background-image: linear-gradient(135deg, var(--background), #07110f 62%, #030403) !important;
+}
+
+html.save-data .glass,
+html.save-data .surface-panel,
+html.save-data .shadow-soft,
+html.save-data .shadow-lift {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 8px 18px rgb(0 0 0 / 0.2) !important;
+}
+
+html.high-refresh:not(.lite-motion) .hover-lift {
+  transition-duration: 170ms;
+}
+
+html.high-refresh:not(.lite-motion) .reveal {
+  animation-duration: 480ms;
+}
+
+@media (max-width: 640px) {
+  :root,
+  .dark {
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 22px rgb(0 0 0 / 0.22);
+    --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.34), 0 12px 30px rgb(0 0 0 / 0.28);
+  }
+
+  .neon-text {
+    text-shadow: 0 0 10px color-mix(in oklab, var(--primary) 30%, transparent);
+  }
+}
+
+/* KKCC protection layer: reduces accidental copying/long-press selection on student/public UI.
+   Inputs, textareas, admin pages and explicit allow-select areas remain selectable. */
+.kkcc-copy-guard main,
+.kkcc-copy-guard header,
+.kkcc-copy-guard footer,
+.kkcc-copy-guard nav,
+.kkcc-copy-guard button,
+.kkcc-copy-guard a,
+.kkcc-copy-guard [role="button"],
+.kkcc-copy-guard img,
+.kkcc-copy-guard video,
+.kkcc-copy-guard iframe {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.kkcc-copy-guard input,
+.kkcc-copy-guard textarea,
+.kkcc-copy-guard select,
+.kkcc-copy-guard [contenteditable="true"],
+.kkcc-copy-guard [data-allow-copy="true"],
+.kkcc-copy-guard .allow-select,
+.kkcc-copy-guard .cm-editor,
+.kkcc-copy-guard .cm-editor * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.kkcc-page-hidden main {
+  filter: blur(16px) brightness(0.45);
+}
+
+.kkcc-guard-pill {
+  pointer-events: none;
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 400;
+  max-width: min(24rem, calc(100vw - 2rem));
+  border: 1px solid color-mix(in oklab, var(--primary) 45%, var(--border));
+  border-radius: 1.1rem;
+  background: color-mix(in oklab, var(--background) 95%, black 5%);
+  box-shadow: var(--shadow-lift);
+  color: var(--foreground);
+  padding: 1rem 1.1rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.kkcc-guard-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  overflow: auto;
+  padding: max(1.25rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right))
+    max(1.25rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+  background: color-mix(in oklab, var(--background) 91%, black 9%);
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.6;
+  text-align: center;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.kkcc-guard-title {
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kkcc-guard-modal p,
+.kkcc-guard-pill p {
+  max-width: 42rem;
+}
+
+.kkcc-watermark {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3.5rem;
+  overflow: hidden;
+  padding: 2rem;
+  opacity: 0.105;
+  mix-blend-mode: screen;
+}
+
+.kkcc-watermark span {
+  align-self: center;
+  justify-self: center;
+  width: 24rem;
+  max-width: 80vw;
+  transform: rotate(-28deg);
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 16px color-mix(in oklab, var(--primary) 36%, transparent);
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .kkcc-watermark {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5rem;
+    padding: 1rem;
+  }
+
+  .kkcc-watermark span {
+    width: 18rem;
+    font-size: 0.68rem;
+  }
+}
+
+.kkcc-screenshot-guard main,
+.kkcc-print-guard main {
+  filter: blur(16px) brightness(0.45);
+}
+
+.kkcc-screenshot-guard::after,
+.kkcc-print-guard::after {
+  content: "Protected KKCC learning content";
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--background) 82%, black 18%);
+  color: var(--foreground);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+@media print {
+  .kkcc-copy-guard main,
+  .kkcc-copy-guard header,
+  .kkcc-copy-guard footer,
+  .kkcc-copy-guard nav,
+  .kkcc-page-hidden > * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+
+
+/* Test Series uses the same KKCC design tokens as the rest of the app.
+   Keep the page stable on phones, tablets, foldables and desktop widths. */
+.kkcc-test-series-page {
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  background: transparent;
+}
+
+.kkcc-test-series-page input,
+.kkcc-test-series-page button,
+.kkcc-test-series-page a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 480px) {
+  .kkcc-test-series-page .surface-panel {
+    border-radius: 1.25rem;
+  }
+
+  .kkcc-test-series-page [data-testid="enrolled-series"] {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 900px) {
+  .kkcc-test-series-page {
+    contain: layout paint;
+  }
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
