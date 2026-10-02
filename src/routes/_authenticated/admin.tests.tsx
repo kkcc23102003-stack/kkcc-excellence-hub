@@ -1,0 +1,1369 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Loader2,
+  Lock,
+  Pencil,
+  Plus,
+  Save,
+  Trash2,
+  Unlock,
+  UserPlus,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  deleteTest,
+  deleteTestQuestion,
+  listAdminTests,
+  listTestQuestions,
+  reorderTestQuestions,
+  saveTest,
+  saveTestQuestion,
+  pullQuestionsFromBank,
+} from "@/lib/admin.functions";
+import { ALL_TEMPLATES } from "@/lib/exam-bank";
+import { cn } from "@/lib/utils";
+import {
+  adminGrantTestAccess,
+  adminListTestGrants,
+  adminRevokeTestAccess,
+  adminSetTestFree,
+} from "@/lib/test-access.functions";
+
+/** Exam tracks the bank actually carries, plus an everything option. */
+const BANK_EXAMS = ["All Exams", ...[...new Set(ALL_TEMPLATES.flatMap((t) => t.exams))].sort()];
+
+/** One price across the whole app, in rupees and in coins alike. */
+const DEFAULT_TEST_PRICE = 999;
+
+export const Route = createFileRoute("/_authenticated/admin/tests")({
+  head: () => ({
+    meta: [
+      { title: "Admin — Test Question Writer | KKCC" },
+      {
+        name: "description",
+        content: "Write, edit and publish your own MCQs for KKCC test series.",
+      },
+      { name: "robots", content: "noindex" },
+    ],
+  }),
+  component: TestQuestionWriter,
+  errorComponent: ({ error }) => (
+    <SiteLayout>
+      <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
+        <h1 className="text-2xl font-bold">Admin access required</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <Button asChild className="rounded-full">
+            <Link to="/dashboard">Back to dashboard</Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-full">
+            <Link to="/login" search={{ redirectTo: "/admin/tests" }}>
+              Sign in as admin
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </SiteLayout>
+  ),
+});
+
+const OPTION_LABELS = ["A", "B", "C", "D", "E", "F"];
+
+type TestPayload = {
+  id?: string;
+  course_id?: string | null;
+  lecture_id?: string | null;
+  title: string;
+  instructions: string;
+  subject: string;
+  duration_minutes: number;
+  question_timer_seconds: number;
+  timer_mode: "test" | "question" | "unlimited";
+  questions_count: number;
+  total_marks: number;
+  is_published: boolean;
+  sort_order: number;
+  exam_track: string;
+  level: "Easy" | "Moderate" | "Difficult" | "Mixed";
+  series_name: string;
+  is_paid: boolean;
+  price_inr: number;
+  price_coins: number;
+  question_source: "manual" | "deterministic";
+  generation_exam: string;
+  generation_subject: string;
+  generation_topic: string;
+  generation_difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
+  generation_count: number;
+};
+
+/** Narrow a DB row to the exact shape saveTest validates. */
+function toTestPayload(
+  test: {
+    id: string;
+    course_id: string | null;
+    lecture_id: string | null;
+    title: string;
+    instructions: string | null;
+    subject: string | null;
+    duration_minutes: number;
+    question_timer_seconds: number | null;
+    timer_mode: string | null;
+    questions_count: number;
+    total_marks: number;
+    is_published: boolean;
+    sort_order: number;
+    exam_track?: string | null;
+    level?: string | null;
+    series_name?: string | null;
+    is_paid?: boolean | null;
+    price_inr?: number | null;
+    price_coins?: number | null;
+    question_source?: "manual" | "deterministic" | null;
+    generation_exam?: string | null;
+    generation_subject?: string | null;
+    generation_topic?: string | null;
+    generation_difficulty?: "Easy" | "Moderate" | "Difficult" | "Mixed" | null;
+    generation_count?: number | null;
+  },
+  patch: Partial<TestPayload> = {},
+): TestPayload {
+  const mode =
+    test.timer_mode === "question" || test.timer_mode === "unlimited" ? test.timer_mode : "test";
+  return {
+    id: test.id,
+    course_id: test.course_id,
+    lecture_id: test.lecture_id,
+    title: test.title,
+    instructions: test.instructions ?? "",
+    subject: test.subject ?? "",
+    duration_minutes: test.duration_minutes,
+    question_timer_seconds: test.question_timer_seconds ?? 0,
+    timer_mode: mode,
+    questions_count: test.questions_count,
+    total_marks: test.total_marks,
+    is_published: test.is_published,
+    sort_order: test.sort_order,
+    exam_track: test.exam_track ?? "",
+    level:
+      test.level === "Easy" || test.level === "Moderate" || test.level === "Difficult"
+        ? test.level
+        : "Mixed",
+    series_name: test.series_name ?? "",
+    is_paid: test.is_paid ?? false,
+    // Every paper is priced the same across the app: 999 rupees or 999
+    // coins. A new test starts there rather than at zero.
+    price_inr: test.price_inr ?? DEFAULT_TEST_PRICE,
+    price_coins: test.price_coins ?? DEFAULT_TEST_PRICE,
+    question_source: test.question_source === "deterministic" ? "deterministic" : "manual",
+    generation_exam: test.generation_exam ?? "All Exams",
+    generation_subject: test.generation_subject ?? test.subject ?? "",
+    generation_topic: test.generation_topic ?? "Mixed",
+    generation_difficulty:
+      test.generation_difficulty === "Easy" ||
+      test.generation_difficulty === "Moderate" ||
+      test.generation_difficulty === "Difficult"
+        ? test.generation_difficulty
+        : "Mixed",
+    generation_count: test.generation_count ?? test.questions_count ?? 0,
+    ...patch,
+  };
+}
+
+type QuestionDraft = {
+  id?: string;
+  question_text: string;
+  subject: string;
+  options: string[];
+  correct_index: number;
+  marks: number;
+  negative_marks: number;
+  explanation: string;
+};
+
+function emptyDraft(subject: string): QuestionDraft {
+  return {
+    question_text: "",
+    subject,
+    options: ["", "", "", ""],
+    correct_index: 0,
+    marks: 4,
+    negative_marks: 1,
+    explanation: "",
+  };
+}
+
+function TestQuestionWriter() {
+  const queryClient = useQueryClient();
+  const fetchTests = useServerFn(listAdminTests);
+  const fetchQuestions = useServerFn(listTestQuestions);
+  const putTest = useServerFn(saveTest);
+  const dropTest = useServerFn(deleteTest);
+  const putQuestion = useServerFn(saveTestQuestion);
+  const dropQuestion = useServerFn(deleteTestQuestion);
+  const reorder = useServerFn(reorderTestQuestions);
+
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<QuestionDraft | null>(null);
+  const [confirmDeleteQuestion, setConfirmDeleteQuestion] = useState<string | null>(null);
+  const [confirmDeleteTest, setConfirmDeleteTest] = useState<string | null>(null);
+
+  const testsQuery = useQuery({
+    queryKey: ["admin", "tests"],
+    queryFn: () => fetchTests(),
+  });
+
+  const tests = useMemo(() => testsQuery.data ?? [], [testsQuery.data]);
+  const activeTest = tests.find((t) => t.id === activeTestId) ?? null;
+
+  // Pulling straight from the question bank. The lists come from the bank
+  // itself, so a chapter can never be offered that has nothing behind it.
+  const [pullExam, setPullExam] = useState<string>("All Exams");
+  const [pullSubject, setPullSubject] = useState("");
+  const [pullTopic, setPullTopic] = useState("Mixed");
+  const [pullCount, setPullCount] = useState("20");
+  const [pullLevel, setPullLevel] = useState<"Easy" | "Moderate" | "Difficult" | "Mixed">(
+    "Difficult",
+  );
+
+  const pullSubjects = useMemo(() => {
+    const out = new Set<string>();
+    for (const t of ALL_TEMPLATES) {
+      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
+      out.add(t.subject);
+    }
+    return [...out].sort();
+  }, [pullExam]);
+
+  const pullTopics = useMemo(() => {
+    if (!pullSubject) return [];
+    const out = new Set<string>();
+    for (const t of ALL_TEMPLATES) {
+      if (t.subject !== pullSubject) continue;
+      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
+      out.add(t.topic);
+    }
+    return [...out].sort();
+  }, [pullExam, pullSubject]);
+
+  const pullFromBank = useServerFn(pullQuestionsFromBank);
+  const pull = useMutation({
+    mutationFn: (input: Parameters<typeof pullQuestionsFromBank>[0]) => pullFromBank(input),
+    onSuccess: (r) => {
+      toast.success(`${r.added} fresh questions configured — 0 question rows saved`);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "test-questions", activeTestId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  useEffect(() => {
+    if (!activeTestId && tests.length > 0) setActiveTestId(tests[0]?.id ?? null);
+  }, [tests, activeTestId]);
+
+  const questionsQuery = useQuery({
+    queryKey: ["admin", "test-questions", activeTestId],
+    queryFn: () => fetchQuestions({ data: { test_id: activeTestId as string } }),
+    enabled: Boolean(activeTestId),
+  });
+
+  const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
+
+  const invalidateAll = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "tests"] });
+    void queryClient.invalidateQueries({ queryKey: ["admin", "test-questions", activeTestId] });
+  };
+
+  const createTest = useMutation({
+    mutationFn: () =>
+      putTest({
+        data: {
+          title: "New test",
+          instructions: "Read every question carefully before answering.",
+          subject: "General",
+          duration_minutes: 30,
+          question_timer_seconds: 0,
+          timer_mode: "test" as const,
+          questions_count: 0,
+          total_marks: 0,
+          is_published: false,
+          sort_order: 0,
+          exam_track: "",
+          level: "Mixed" as const,
+          series_name: "",
+          is_paid: false,
+          price_inr: 0,
+          price_coins: 0,
+          question_source: "manual" as const,
+          generation_exam: "All Exams",
+          generation_subject: "General",
+          generation_topic: "Mixed",
+          generation_difficulty: "Difficult" as const,
+          generation_count: 0,
+        },
+      }),
+    onSuccess: (row) => {
+      toast.success("Test created. Now add your questions.");
+      setActiveTestId(row.id);
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const updateTest = useMutation({
+    mutationFn: (payload: TestPayload) => putTest({ data: payload }),
+    onSuccess: () => {
+      toast.success("Test updated");
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const setTestFree = useServerFn(adminSetTestFree);
+  const setFree = useMutation({
+    mutationFn: (input: { id: string; free: boolean }) => setTestFree({ data: input }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "tests"] });
+      toast.success(
+        result.free
+          ? "This test is now free. Students can open it directly, with no payment."
+          : "This test is paid again. Only granted students can open it.",
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const removeTest = useMutation({
+    mutationFn: (id: string) => dropTest({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Test deleted");
+      setActiveTestId(null);
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const saveQuestion = useMutation({
+    mutationFn: (payload: QuestionDraft) =>
+      putQuestion({
+        data: {
+          ...(payload.id ? { id: payload.id } : {}),
+          test_id: activeTestId as string,
+          question_text: payload.question_text,
+          subject: payload.subject,
+          options: payload.options.map((o) => o.trim()).filter(Boolean),
+          correct_index: payload.correct_index,
+          marks: payload.marks,
+          negative_marks: payload.negative_marks,
+          explanation: payload.explanation,
+          sort_order: payload.id ? 0 : questions.length,
+        },
+      }),
+    onSuccess: () => {
+      toast.success(draft?.id ? "Question updated" : "Question added");
+      setDraft(null);
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const removeQuestion = useMutation({
+    mutationFn: (id: string) => dropQuestion({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Question deleted");
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const moveQuestion = useMutation({
+    mutationFn: (ids: string[]) => reorder({ data: { test_id: activeTestId as string, ids } }),
+    onSuccess: invalidateAll,
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...questions];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    const a = next[index];
+    const b = next[target];
+    if (!a || !b) return;
+    next[index] = b;
+    next[target] = a;
+    moveQuestion.mutate(next.map((q) => q.id));
+  };
+
+  const startEdit = (question: (typeof questions)[number]) => {
+    setDraft({
+      id: question.id,
+      question_text: question.question_text,
+      subject: question.subject ?? "",
+      options: [...question.options, "", "", "", ""].slice(0, Math.max(4, question.options.length)),
+      correct_index: question.correct_index,
+      marks: question.marks,
+      negative_marks: question.negative_marks,
+      explanation: question.explanation ?? "",
+    });
+  };
+
+  const submitDraft = () => {
+    if (!draft) return;
+    if (!activeTestId) {
+      toast.error("Select a test first.");
+      return;
+    }
+    if (draft.question_text.trim().length < 3) {
+      toast.error("Please write the question text.");
+      return;
+    }
+    const filled = draft.options.map((o) => o.trim()).filter(Boolean);
+    if (filled.length < 2) {
+      toast.error("Please write at least two options.");
+      return;
+    }
+    if (!draft.options[draft.correct_index]?.trim()) {
+      toast.error("The option you marked correct is empty.");
+      return;
+    }
+    saveQuestion.mutate(draft);
+  };
+
+  return (
+    <SiteLayout>
+      <div className="mx-auto w-full max-w-6xl px-4 py-8">
+        <Button asChild variant="ghost" size="sm" className="mb-4 rounded-full">
+          <Link to="/admin">
+            <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to admin
+          </Link>
+        </Button>
+
+        <PageHeader
+          title="Test question writer"
+          description="Write your own MCQs for the test series. Each question is stored with the test, so students see exactly what you type."
+        />
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
+          {/* ------------------------------------------------ test list */}
+          <aside className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Tests ({tests.length})</h2>
+              <Button
+                size="sm"
+                className="rounded-full"
+                onClick={() => createTest.mutate()}
+                disabled={createTest.isPending}
+              >
+                {createTest.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-1.5 h-4 w-4" />
+                )}
+                New test
+              </Button>
+            </div>
+
+            {testsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading tests…</p>
+            ) : tests.length === 0 ? (
+              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                No test yet. Create one, then start writing questions into it.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {tests.map((test) => (
+                  <li key={test.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTestId(test.id);
+                        setDraft(null);
+                      }}
+                      className={cn(
+                        "w-full rounded-2xl border p-3 text-left transition",
+                        activeTestId === test.id
+                          ? "border-primary bg-primary/5"
+                          : "hover:border-primary/40",
+                      )}
+                    >
+                      <span className="block truncate text-sm font-medium">{test.title}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {test.questions_count} Q
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {test.total_marks} marks
+                        </Badge>
+                        <Badge
+                          variant={test.is_published ? "default" : "outline"}
+                          className="text-[10px]"
+                        >
+                          {test.is_published ? "Published" : "Draft"}
+                        </Badge>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
+
+          {/* --------------------------------------------- question editor */}
+          <section className="space-y-5">
+            {!activeTest ? (
+              <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                Select a test on the left, or create a new one.
+              </div>
+            ) : (
+              <>
+                {/* test settings */}
+                <div className="rounded-3xl border bg-background/60 p-4">
+                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                    <ClipboardList className="h-4 w-4 text-primary" /> Test settings
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Test title</Label>
+                      <Input
+                        className="mt-1.5"
+                        defaultValue={activeTest.title}
+                        onBlur={(event) => {
+                          const title = event.target.value.trim();
+                          if (title && title !== activeTest.title) {
+                            updateTest.mutate(toTestPayload(activeTest, { title }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Subject</Label>
+                      <Input
+                        className="mt-1.5"
+                        defaultValue={activeTest.subject ?? ""}
+                        onBlur={(event) => {
+                          const subject = event.target.value.trim();
+                          if (subject !== (activeTest.subject ?? "")) {
+                            updateTest.mutate(toTestPayload(activeTest, { subject }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Duration (minutes)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        className="mt-1.5"
+                        defaultValue={activeTest.duration_minutes}
+                        onBlur={(event) => {
+                          const duration_minutes = Number(event.target.value || 0);
+                          if (duration_minutes !== activeTest.duration_minutes) {
+                            updateTest.mutate(toTestPayload(activeTest, { duration_minutes }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Oriented for (exam)</Label>
+                      <Input
+                        className="mt-1.5"
+                        placeholder="e.g. Punjab PCS, PSSSB, UPSC CSE"
+                        defaultValue={activeTest.exam_track ?? ""}
+                        onBlur={(event) => {
+                          const exam_track = event.target.value.trim();
+                          if (exam_track !== (activeTest.exam_track ?? "")) {
+                            updateTest.mutate(toTestPayload(activeTest, { exam_track }));
+                          }
+                        }}
+                      />
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Shown on the test card so students know the paper is for them.
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Series name</Label>
+                      <Input
+                        className="mt-1.5"
+                        placeholder="e.g. Punjab PCS Prelims Power Series"
+                        defaultValue={activeTest.series_name ?? ""}
+                        onBlur={(event) => {
+                          const series_name = event.target.value.trim();
+                          if (series_name !== (activeTest.series_name ?? "")) {
+                            updateTest.mutate(toTestPayload(activeTest, { series_name }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Level</Label>
+                      <select
+                        className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={
+                          activeTest.level === "Easy" ||
+                          activeTest.level === "Moderate" ||
+                          activeTest.level === "Difficult"
+                            ? activeTest.level
+                            : "Mixed"
+                        }
+                        onChange={(event) => {
+                          const level = event.target.value as TestPayload["level"];
+                          updateTest.mutate(toTestPayload(activeTest, { level }));
+                        }}
+                      >
+                        <option value="Easy">Level 1 — Easy</option>
+                        <option value="Moderate">Level 2 — Moderate</option>
+                        <option value="Difficult">Level 3 — Difficult</option>
+                        <option value="Mixed">Mixed (full-length paper)</option>
+                      </select>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Students attempt a series in this order: Easy, then Moderate, then
+                        Difficult.
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Price in rupees</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        className="mt-1.5"
+                        defaultValue={activeTest.price_inr ?? 0}
+                        onBlur={(event) => {
+                          const price_inr = Number(event.target.value || 0);
+                          if (price_inr !== (activeTest.price_inr ?? 0)) {
+                            updateTest.mutate(toTestPayload(activeTest, { price_inr }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Price in Kit 2 Coins</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        className="mt-1.5"
+                        defaultValue={activeTest.price_coins ?? 0}
+                        onBlur={(event) => {
+                          const price_coins = Number(event.target.value || 0);
+                          if (price_coins !== (activeTest.price_coins ?? 0)) {
+                            updateTest.mutate(toTestPayload(activeTest, { price_coins }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col justify-end">
+                      <Label className="mb-1.5">Access</Label>
+                      <Button
+                        variant={activeTest.is_paid ? "outline" : "default"}
+                        className="rounded-full"
+                        disabled={setFree.isPending}
+                        onClick={() =>
+                          setFree.mutate({ id: activeTest.id, free: activeTest.is_paid })
+                        }
+                      >
+                        {setFree.isPending ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : activeTest.is_paid ? (
+                          <Unlock className="mr-1.5 h-4 w-4" />
+                        ) : (
+                          <Lock className="mr-1.5 h-4 w-4" />
+                        )}
+                        {activeTest.is_paid ? "Make this free" : "Make this paid"}
+                      </Button>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {activeTest.is_paid
+                          ? "Paid: only students you have granted access can open it."
+                          : "Free: opens directly for everyone, like a free course. No payment step."}
+                      </p>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        variant={activeTest.is_published ? "secondary" : "default"}
+                        className="rounded-full"
+                        onClick={() =>
+                          updateTest.mutate(
+                            toTestPayload(activeTest, { is_published: !activeTest.is_published }),
+                          )
+                        }
+                      >
+                        {activeTest.is_published ? "Unpublish" : "Publish"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-full text-destructive"
+                        onClick={() => setConfirmDeleteTest(activeTest.id)}
+                      >
+                        <Trash2 className="mr-1.5 h-4 w-4" /> Delete test
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <OfflineAccessPanel testId={activeTest.id} isPaid={activeTest.is_paid} />
+
+                {/* Fill the paper from the question bank instead of typing
+                    every question by hand. Everything pulled stays editable. */}
+                <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4">
+                  <h3 className="text-sm font-semibold">Generate fresh questions on demand</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose the exam, subject, chapter, level and count. Only this small recipe is
+                    saved. The actual questions are generated fresh when a student opens the test
+                    and are never saved in Supabase.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <label className="text-xs font-semibold">
+                      Exam
+                      <select
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                        value={pullExam}
+                        onChange={(e) => {
+                          setPullExam(e.target.value);
+                          setPullSubject("");
+                          setPullTopic("Mixed");
+                        }}
+                      >
+                        {BANK_EXAMS.map((x) => (
+                          <option key={x} value={x}>
+                            {x}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Subject
+                      <select
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                        value={pullSubject}
+                        onChange={(e) => {
+                          setPullSubject(e.target.value);
+                          setPullTopic("Mixed");
+                        }}
+                      >
+                        <option value="">Choose a subject</option>
+                        {pullSubjects.map((x) => (
+                          <option key={x} value={x}>
+                            {x}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Chapter
+                      <select
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                        value={pullTopic}
+                        onChange={(e) => setPullTopic(e.target.value)}
+                      >
+                        <option value="Mixed">All chapters mixed</option>
+                        {pullTopics.map((x) => (
+                          <option key={x} value={x}>
+                            {x}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold">
+                      How many
+                      <Input
+                        className="mt-1"
+                        inputMode="numeric"
+                        value={pullCount}
+                        onChange={(e) => setPullCount(e.target.value)}
+                      />
+                    </label>
+                    <label className="text-xs font-semibold">
+                      Level
+                      <select
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                        value={pullLevel}
+                        onChange={(e) =>
+                          setPullLevel(
+                            e.target.value as "Easy" | "Moderate" | "Difficult" | "Mixed",
+                          )
+                        }
+                      >
+                        <option value="Difficult">Difficult — High-Yield / exam oriented</option>
+                        <option value="Moderate">Moderate — practice</option>
+                        <option value="Easy">Easy — foundation</option>
+                        <option value="Mixed">Mixed — all three levels</option>
+                      </select>
+                    </label>
+                    <div className="flex items-end">
+                      <Button
+                        className="w-full rounded-full"
+                        disabled={!pullSubject || pull.isPending}
+                        onClick={() =>
+                          pull.mutate({
+                            data: {
+                              test_id: activeTest.id,
+                              exam: pullExam,
+                              subject: pullSubject,
+                              topic: pullTopic,
+                              difficulty: pullLevel,
+                              count: Number(pullCount || 20),
+                              marks: 1,
+                              negative_marks: 0,
+                            },
+                          })
+                        }
+                      >
+                        {pull.isPending ? "Configuring…" : "Set up fresh generation"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                {/* write / edit a question */}
+                <div className="rounded-3xl border bg-background/60 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">
+                      {draft?.id ? "Edit question" : "Write a new question"}
+                    </h3>
+                    {draft ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full"
+                        onClick={() => setDraft(null)}
+                      >
+                        <X className="mr-1.5 h-4 w-4" /> Cancel
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                      >
+                        <Plus className="mr-1.5 h-4 w-4" /> Add question
+                      </Button>
+                    )}
+                  </div>
+
+                  {draft ? (
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Question</Label>
+                        <Textarea
+                          rows={3}
+                          className="mt-1.5"
+                          placeholder="e.g. The Constitution of India came into force on which date?"
+                          value={draft.question_text}
+                          onChange={(event) =>
+                            setDraft({ ...draft, question_text: event.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="mb-1.5 block">
+                          Options — tap the circle to mark the correct answer
+                        </Label>
+                        <div className="space-y-2">
+                          {draft.options.map((option, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                aria-label={`Mark option ${OPTION_LABELS[index]} correct`}
+                                onClick={() => setDraft({ ...draft, correct_index: index })}
+                                className={cn(
+                                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition",
+                                  draft.correct_index === index
+                                    ? "border-emerald-500 bg-emerald-500 text-white"
+                                    : "hover:border-primary",
+                                )}
+                              >
+                                {draft.correct_index === index ? (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                ) : (
+                                  OPTION_LABELS[index]
+                                )}
+                              </button>
+                              <Input
+                                placeholder={`Option ${OPTION_LABELS[index]}`}
+                                value={option}
+                                onChange={(event) => {
+                                  const options = [...draft.options];
+                                  options[index] = event.target.value;
+                                  setDraft({ ...draft, options });
+                                }}
+                              />
+                              {draft.options.length > 2 ? (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label={`Remove option ${OPTION_LABELS[index]}`}
+                                  onClick={() => {
+                                    const options = draft.options.filter((_, i) => i !== index);
+                                    setDraft({
+                                      ...draft,
+                                      options,
+                                      correct_index:
+                                        draft.correct_index >= options.length
+                                          ? 0
+                                          : draft.correct_index,
+                                    });
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        {draft.options.length < 6 ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="mt-2 rounded-full"
+                            onClick={() => setDraft({ ...draft, options: [...draft.options, ""] })}
+                          >
+                            <Plus className="mr-1.5 h-4 w-4" /> Add option
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <Label>Subject tag</Label>
+                          <Input
+                            className="mt-1.5"
+                            value={draft.subject}
+                            onChange={(event) =>
+                              setDraft({ ...draft, subject: event.target.value })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>Marks</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            className="mt-1.5"
+                            value={draft.marks}
+                            onChange={(event) =>
+                              setDraft({ ...draft, marks: Number(event.target.value || 0) })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>Negative marks</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            className="mt-1.5"
+                            value={draft.negative_marks}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                negative_marks: Number(event.target.value || 0),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>Explanation (shown after submit)</Label>
+                        <Textarea
+                          rows={2}
+                          className="mt-1.5"
+                          placeholder="Why this answer is correct."
+                          value={draft.explanation}
+                          onChange={(event) =>
+                            setDraft({ ...draft, explanation: event.target.value })
+                          }
+                        />
+                      </div>
+
+                      <Button
+                        className="rounded-full"
+                        onClick={submitDraft}
+                        disabled={saveQuestion.isPending}
+                      >
+                        {saveQuestion.isPending ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-1.5 h-4 w-4" />
+                        )}
+                        {draft.id ? "Save changes" : "Add to test"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Tap <strong>Add question</strong> to write a new MCQ for this test.
+                    </p>
+                  )}
+                </div>
+
+                {/* existing questions */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold">
+                    Questions in this test ({questions.length})
+                  </h3>
+                  {questionsQuery.isLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading questions…</p>
+                  ) : questions.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                      No question written yet for this test.
+                    </p>
+                  ) : (
+                    <ol className="space-y-3">
+                      {questions.map((question, index) => (
+                        <li key={question.id} className="rounded-3xl border bg-background/60 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-medium">
+                              {index + 1}. {question.question_text}
+                            </p>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label="Move up"
+                                disabled={index === 0}
+                                onClick={() => move(index, -1)}
+                              >
+                                <ChevronUp className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label="Move down"
+                                disabled={index === questions.length - 1}
+                                onClick={() => move(index, 1)}
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label="Edit question"
+                                onClick={() => startEdit(question)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label="Delete question"
+                                className="text-destructive"
+                                onClick={() => setConfirmDeleteQuestion(question.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                            {question.options.map((option, optionIndex) => (
+                              <li
+                                key={optionIndex}
+                                className={cn(
+                                  "rounded-xl border px-3 py-1.5 text-xs",
+                                  optionIndex === question.correct_index
+                                    ? "border-emerald-500/60 bg-emerald-500/10 font-semibold"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {OPTION_LABELS[optionIndex]}) {option}
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            +{question.marks} / -{question.negative_marks}
+                            {question.explanation ? ` · ${question.explanation}` : ""}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <AlertDialog
+        open={Boolean(confirmDeleteQuestion)}
+        onOpenChange={(open) => !open && setConfirmDeleteQuestion(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The question will be removed from the test permanently.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteQuestion) removeQuestion.mutate(confirmDeleteQuestion);
+                setConfirmDeleteQuestion(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(confirmDeleteTest)}
+        onOpenChange={(open) => !open && setConfirmDeleteTest(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this test?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The test and all of its questions will be deleted permanently.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteTest) removeTest.mutate(confirmDeleteTest);
+                setConfirmDeleteTest(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </SiteLayout>
+  );
+}
+
+/**
+ * Offline payments.
+ *
+ * A student pays at the centre, by UPI to the desk, or by bank transfer. The
+ * admin records that here against their email and the paid paper opens for
+ * them immediately. Nothing is charged online and no payment gateway is
+ * involved.
+ *
+ * Grants are never deleted, only revoked, so there is always a record of who
+ * opened what and why.
+ */
+function OfflineAccessPanel({ testId, isPaid }: { testId: string; isPaid: boolean }) {
+  const queryClient = useQueryClient();
+  const listGrants = useServerFn(adminListTestGrants);
+  const grantAccess = useServerFn(adminGrantTestAccess);
+  const revokeAccess = useServerFn(adminRevokeTestAccess);
+
+  const [email, setEmail] = useState("");
+  const [method, setMethod] = useState("cash");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  // Blank or 0 means lifetime access, which is the old behaviour.
+  const [validDays, setValidDays] = useState("");
+
+  const grantsQuery = useQuery({
+    queryKey: ["admin", "test-grants"],
+    queryFn: () => listGrants(),
+    retry: false,
+  });
+
+  const rows = useMemo(
+    () => (grantsQuery.data ?? []).filter((g) => g.test_id === testId),
+    [grantsQuery.data, testId],
+  );
+  const live = rows.filter((g) => !g.revoked_at);
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin", "test-grants"] });
+
+  const grant = useMutation({
+    mutationFn: () =>
+      grantAccess({
+        data: {
+          test_id: testId,
+          email: email.trim(),
+          method,
+          amount_inr: Number(amount || 0),
+          note: note.trim(),
+          valid_days: Number(validDays || 0),
+        },
+      }),
+    onSuccess: (result) => {
+      void refresh();
+      setEmail("");
+      setAmount("");
+      setValidDays("");
+      setNote("");
+      toast.success(
+        result.alreadyHadAccess
+          ? "That student already had access to this test."
+          : `Access granted to ${result.student.full_name || result.student.email}.`,
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const revoke = useMutation({
+    mutationFn: (id: string) => revokeAccess({ data: { id } }),
+    onSuccess: () => {
+      void refresh();
+      toast.success("Access withdrawn.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  return (
+    <div className="mt-6 rounded-2xl border bg-card p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <UserPlus className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Offline payment access</h3>
+        <Badge variant="secondary" className="rounded-full text-[11px]">
+          {live.length} student{live.length === 1 ? "" : "s"} unlocked
+        </Badge>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {isPaid
+          ? "Paid at the centre, by UPI, or by bank transfer? Enter the student's registered email and this paper opens for them straight away."
+          : "This test is currently free, so every student can already open it. Grants below only matter if you switch it back to paid."}
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <Label htmlFor="grant-email">Student email</Label>
+          <Input
+            id="grant-email"
+            type="email"
+            placeholder="student@example.com"
+            className="mt-1.5"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="grant-method">Paid by</Label>
+          <Input
+            id="grant-method"
+            placeholder="cash, upi, bank transfer"
+            className="mt-1.5"
+            value={method}
+            onChange={(event) => setMethod(event.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="grant-amount">Amount collected</Label>
+          <Input
+            id="grant-amount"
+            type="number"
+            min={0}
+            placeholder="0"
+            className="mt-1.5"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="grant-validity">Validity in days</Label>
+          <Input
+            id="grant-validity"
+            inputMode="numeric"
+            placeholder="Blank = lifetime, e.g. 30, 90, 365"
+            value={validDays}
+            onChange={(event) => setValidDays(event.target.value)}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="grant-note">Receipt or note</Label>
+          <Input
+            id="grant-note"
+            placeholder="Receipt 1042"
+            className="mt-1.5"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <Button
+        className="mt-4 rounded-full"
+        disabled={!email.trim() || grant.isPending}
+        onClick={() => grant.mutate()}
+      >
+        {grant.isPending ? (
+          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+        ) : (
+          <UserPlus className="mr-1.5 h-4 w-4" />
+        )}
+        Grant access
+      </Button>
+
+      {rows.length > 0 && (
+        <ul className="mt-5 space-y-2">
+          {rows.map((row) => (
+            <li
+              key={row.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs"
+            >
+              <span className="min-w-0">
+                <span className="font-medium">{row.studentName || row.studentEmail}</span>
+                {row.studentName && (
+                  <span className="text-muted-foreground"> · {row.studentEmail}</span>
+                )}
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {row.method}
+                  {row.amount_inr > 0 ? ` · ₹${row.amount_inr}` : ""}
+                  {row.note ? ` · ${row.note}` : ""}
+                  {row.expires_at
+                    ? new Date(row.expires_at) > new Date()
+                      ? ` · expires ${new Date(row.expires_at).toLocaleDateString("en-IN")} (${Math.max(
+                          0,
+                          Math.ceil((new Date(row.expires_at).getTime() - Date.now()) / 86_400_000),
+                        )} days left)`
+                      : ` · expired ${new Date(row.expires_at).toLocaleDateString("en-IN")}`
+                    : " · lifetime"}
+                </span>
+              </span>
+              {row.revoked_at ? (
+                <Badge variant="outline" className="rounded-full text-[11px]">
+                  Withdrawn
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full text-[11px]"
+                  disabled={revoke.isPending}
+                  onClick={() => revoke.mutate(row.id)}
+                >
+                  Withdraw
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
