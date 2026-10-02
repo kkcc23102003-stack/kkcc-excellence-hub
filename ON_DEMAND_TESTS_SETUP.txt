@@ -1,0 +1,27 @@
+KKCC EXCELLENCE HUB — ON-DEMAND TEST SETUP
+
+WHAT CHANGED
+- Admin chooses exam, subject, chapter, difficulty and question count.
+- The app stores only this small generation recipe in Supabase.
+- The actual MCQ text/options/explanation are generated fresh when a student opens the test.
+- Generated MCQs are NOT inserted into public.test_questions.
+- Closing/reopening the test creates a fresh draw.
+- Existing manual tests continue to use public.test_questions normally.
+- Student-facing colors/design/test UI are unchanged.
+
+DATABASE MIGRATION
+Apply the timestamped migration `supabase/migrations/20261001030000_on_demand_deterministic_tests.sql` through the existing Supabase migration history. Do not paste or distribute standalone schema SQL; the migration is the source of truth for these columns and constraints.
+
+CRON SECRET — SIMPLE EXPLANATION
+
+A CRON_SECRET is simply a private password used to prove that a scheduled server request is allowed.
+It must never be put in browser/frontend code or exposed to students.
+
+For THIS no-AI on-demand test system:
+- You do NOT need a cron job.
+- You do NOT need CRON_SECRET for question generation.
+- You do NOT need AI_CRON_SECRET.
+- Do NOT add a Gemini API key.
+
+The old project contains legacy AI/cron files for compatibility, but the current test-generation path does not call them.
+If you later use another scheduled server task, put its secret in Vercel Environment Variables / Supabase Edge Function Secrets, not in React code.

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KKCC Excellence Hub Downloads</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050605;
+        --card: #0d1411;
+        --text: #fff8e7;
+        --muted: #c9d7ce;
+        --primary: #18f4d6;
+        --accent: #f5d78e;
+        --border: rgba(24, 244, 214, 0.22);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 15% 0%, rgba(24, 244, 214, 0.16), transparent 34rem),
+          radial-gradient(circle at 85% 10%, rgba(245, 215, 142, 0.14), transparent 32rem),
+          linear-gradient(135deg, #050605, #07110f 62%, #030403);
+      }
+      main {
+        width: min(920px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0;
+      }
+      .hero {
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        padding: 28px;
+        background: rgba(13, 20, 17, 0.84);
+        box-shadow:
+          0 0 30px rgba(24, 244, 214, 0.12),
+          0 24px 80px rgba(0, 0, 0, 0.38);
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 4rem);
+        line-height: 1;
+      }
+      p {
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .file {
+        display: grid;
+        gap: 12px;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 18px;
+        background: rgba(5, 6, 5, 0.58);
+      }
+      .file h2 {
+        margin: 0;
+        font-size: 1.1rem;
+      }
+      .hash {
+        overflow-wrap: anywhere;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.78rem;
+        color: var(--accent);
+      }
+      a.button {
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 10px 16px;
+        color: #02110f;
+        background: linear-gradient(135deg, var(--primary), var(--accent));
+        font-weight: 800;
+        text-decoration: none;
+      }
+      .note {
+        margin-top: 22px;
+        font-size: 0.92rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <h1>KKCC Excellence Hub Downloads</h1>
+        <p>Download the repaired website source archive.</p>
+        <div class="grid">
+          <article class="file">
+            <h2>KKCC Excellence Hub Website ZIP</h2>
+            <p>Complete repaired source archive for the existing website app.</p>
+            <a class="button" href="kkcc-excellence-hub.zip" download>Download ZIP</a>
+            <div class="hash">SHA-256 checksum: kkcc-excellence-hub.zip.sha256</div>
+          </article>
+        </div>
+        <p class="note">
+          Supabase database changes are maintained only in the timestamped migration history; this
+          download page does not distribute manual reset or combined-schema SQL files.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

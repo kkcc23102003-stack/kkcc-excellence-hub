@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import {
+  countSyllabusMatches,
+  mapSyllabusToBank,
+  parseSyllabusOutline,
+} from "../src/lib/test-series-syllabus";
+
+const parsed = parseSyllabusOutline(`Subject: Punjab GK
+  Chapter: Punjab at a glance
+    Topic: Districts and Headquarters
+    Topic: Folk Dances and Fairs`);
+assert.deepEqual(parsed.errors, [], "the labelled nested syllabus format should parse cleanly");
+assert.equal(parsed.syllabus.subjects.length, 1);
+assert.equal(parsed.syllabus.subjects[0]?.chapters[0]?.topics.length, 2);
+
+const mapped = mapSyllabusToBank(parsed.syllabus, "Punjab PCS");
+const coverage = countSyllabusMatches(mapped, "Punjab PCS");
+assert.equal(coverage.missingSubjects.length, 0, "exact bank subjects should map");
+assert.equal(coverage.missingTopics.length, 0, "exact bank topic tags should map");
+assert.equal(coverage.mappedTopics, 2);
+assert.ok(coverage.questionPositions > 0, "the preview should report real bank positions");
+
+const unknown = parseSyllabusOutline(`Subject: Not a bank subject
+  Chapter: Unmapped chapter
+    Topic: Unmapped topic`);
+assert.deepEqual(unknown.errors, []);
+const unknownCoverage = countSyllabusMatches(
+  mapSyllabusToBank(unknown.syllabus, "Punjab PCS"),
+  "Punjab PCS",
+);
+assert.equal(unknownCoverage.missingSubjects.length, 1);
+assert.equal(
+  unknownCoverage.mappedTopics,
+  0,
+  "unknown outline terms must not fuzzy-match another topic",
+);
+
+const malformed = parseSyllabusOutline(`  Chapter: Orphan chapter\n    Topic: Orphan topic`);
+assert.ok(malformed.errors.some((message) => message.includes("chapter must follow a subject")));
+
+console.log("Test-series syllabus parse, exact bank mapping, and no-fuzzy-fallback gates: PASS");
