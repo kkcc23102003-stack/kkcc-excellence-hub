@@ -167,13 +167,10 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
     const questionTimerSeconds =
       paper.test.timer_mode === "question" ? paper.test.question_timer_seconds : 0;
 
-    const sourceRefs =
-      questionTimerSeconds > 0
-        ? paper.questions.map((question) => question.id)
-        : [
-            ...paper.questions.map((question) => question.id),
-            encodeMetaRef(data.subject, data.chapter, seed),
-          ];
+    const sourceRefs = [
+      ...paper.questions.map((question) => question.id),
+      encodeMetaRef(data.subject, data.chapter, seed),
+    ];
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

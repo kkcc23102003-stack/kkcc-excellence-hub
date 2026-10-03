@@ -2084,8 +2084,7 @@ function generateQuestion(
   mode: PracticeMode,
 ): QuizQuestion {
   const availableSubjects = getSubjectsForExam(exam);
-  const subject =
-    filter === "Mixed" || !availableSubjects.includes(filter) ? pick(availableSubjects) : filter;
+  const subject = filter === "Mixed" ? pick(availableSubjects) : filter;
   const selectedTopic = normalizeTopic(exam, subject, topic);
 
   if (selectedTopic !== "Mixed") return makeTopicQuestion(exam, subject, selectedTopic, mode);
@@ -4023,6 +4022,52 @@ function makeHindiGrammarQuestion(topic: string, topicLabel: string): QuizQuesti
 }
 
 function makePolityTopicQuestion(topic: string, topicLabel: string): QuizQuestion {
+  if (topic.toLowerCase().includes("preamble")) {
+    const preambleQuestions = [
+      {
+        prompt:
+          "Which Constitutional Amendment Act added the words 'Socialist', 'Secular' and 'Integrity' to the Preamble?",
+        answer: "42nd Constitutional Amendment Act, 1976",
+        options: [
+          "42nd Constitutional Amendment Act, 1976",
+          "44th Constitutional Amendment Act, 1978",
+          "24th Constitutional Amendment Act, 1971",
+          "86th Constitutional Amendment Act, 2002",
+        ],
+        explanation:
+          "The 42nd Constitutional Amendment Act, 1976 added 'Socialist', 'Secular' and 'Integrity' to the Preamble of the Indian Constitution.",
+      },
+      {
+        prompt: "Who called the Preamble the 'Identity Card of the Constitution'?",
+        answer: "N. A. Palkhivala",
+        options: ["N. A. Palkhivala", "Dr. B. R. Ambedkar", "K. M. Munshi", "Sir B. N. Rau"],
+        explanation:
+          "Eminent jurist N. A. Palkhivala described the Preamble as the 'Identity Card of the Constitution'.",
+      },
+      {
+        prompt:
+          "Which landmark Supreme Court judgment held that the Preamble is an integral part of the Constitution and subject to the Basic Structure doctrine?",
+        answer: "Kesavananda Bharati v. State of Kerala (1973)",
+        options: [
+          "Kesavananda Bharati v. State of Kerala (1973)",
+          "Berubari Union Case (1960)",
+          "A. K. Gopalan Case (1950)",
+          "Golaknath Case (1967)",
+        ],
+        explanation:
+          "In Kesavananda Bharati (1973), the Supreme Court overruled Berubari Union (1960) and held that the Preamble is part of the Constitution.",
+      },
+    ];
+    const item = pick(preambleQuestions);
+    return makeConceptQuestion(
+      "Polity",
+      topicLabel,
+      item.prompt,
+      item.answer,
+      item.options,
+      item.explanation,
+    );
+  }
   if (topic === "Constitution Schedules" || topic === "Constitution Basics") {
     const schedules = [
       {
@@ -4094,6 +4139,57 @@ function makePolityTopicQuestion(topic: string, topicLabel: string): QuizQuestio
 }
 
 function makeSstTopicQuestion(topic: string, topicLabel: string): QuizQuestion {
+  if (topic.toLowerCase().includes("preamble")) {
+    const preambleQuestions = [
+      {
+        prompt: "With which words does the Preamble to the Constitution of India begin?",
+        answer: "We, the People of India",
+        options: [
+          "We, the People of India",
+          "In the Name of Parliament",
+          "By Order of the President",
+          "We, the States of the Union",
+        ],
+        explanation:
+          "The Preamble begins with 'We, the People of India', signifying that ultimate sovereignty rests with the citizens.",
+      },
+      {
+        prompt:
+          "The Preamble to the Indian Constitution is based on which historic resolution moved on 13 December 1946?",
+        answer: "Objectives Resolution moved by Pandit Jawaharlal Nehru",
+        options: [
+          "Objectives Resolution moved by Pandit Jawaharlal Nehru",
+          "Purna Swaraj Resolution moved by Mahatma Gandhi",
+          "Drafting Resolution moved by Dr. B. R. Ambedkar",
+          "Cabinet Mission Plan moved by Sardar Patel",
+        ],
+        explanation:
+          "Jawaharlal Nehru moved the Objectives Resolution on 13 December 1946, which became the basis of the Preamble.",
+      },
+      {
+        prompt:
+          "Which words were added to the Preamble by the 42nd Constitutional Amendment Act, 1976?",
+        answer: "Socialist, Secular and Integrity",
+        options: [
+          "Socialist, Secular and Integrity",
+          "Liberty, Equality and Fraternity",
+          "Sovereign, Democratic and Republic",
+          "Social, Economic and Political Justice",
+        ],
+        explanation:
+          "The 42nd Amendment Act of 1976 added the three words 'Socialist', 'Secular' and 'Integrity' to the Preamble.",
+      },
+    ];
+    const item = pick(preambleQuestions);
+    return makeConceptQuestion(
+      "SST",
+      topicLabel,
+      item.prompt,
+      item.answer,
+      item.options,
+      item.explanation,
+    );
+  }
   if (topic === "History" || topic === "Nationalism in India") {
     const historyQuestions = [
       {

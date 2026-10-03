@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  bulkAddTestQuestions,
   deleteTest,
   deleteTestQuestion,
   listAdminTests,
@@ -241,9 +242,14 @@ function TestQuestionWriter() {
   const putQuestion = useServerFn(saveTestQuestion);
   const dropQuestion = useServerFn(deleteTestQuestion);
   const reorder = useServerFn(reorderTestQuestions);
+  const bulkAddFn = useServerFn(bulkAddTestQuestions);
 
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
+  const [showBulkPaste, setShowBulkPaste] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkMarks, setBulkMarks] = useState("4");
+  const [bulkNegativeMarks, setBulkNegativeMarks] = useState("1");
   const [confirmDeleteQuestion, setConfirmDeleteQuestion] = useState<string | null>(null);
   const [confirmDeleteTest, setConfirmDeleteTest] = useState<string | null>(null);
 
@@ -448,6 +454,28 @@ function TestQuestionWriter() {
     onSuccess: () => {
       void invalidateLearningQueries(queryClient);
       toast.success("Question deleted");
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const bulkAdd = useMutation({
+    mutationFn: (switchToManual: boolean) =>
+      bulkAddFn({
+        data: {
+          test_id: activeTestId as string,
+          subject: activeTest?.syllabus_subject || activeTest?.subject || "General",
+          marks: Number(bulkMarks || 4),
+          negative_marks: Number(bulkNegativeMarks || 1),
+          text: bulkText,
+          switchToManual,
+        },
+      }),
+    onSuccess: (res) => {
+      void invalidateLearningQueries(queryClient);
+      toast.success(`Added ${res.addedCount} custom questions to this test!`);
+      setBulkText("");
+      setShowBulkPaste(false);
       invalidateAll();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -955,31 +983,134 @@ function TestQuestionWriter() {
                     </div>
                   </div>
                 </div>
-                {/* write / edit a question */}
+                {/* write / edit a question + bulk paste */}
                 <div className="rounded-3xl border bg-background/60 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">
-                      {draft?.id ? "Edit question" : "Write a new question"}
-                    </h3>
-                    {draft ? (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        {draft?.id ? "Edit question" : "Write or Paste Your Own Questions"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Mode:{" "}
+                        <strong>
+                          {activeTest.question_source === "manual"
+                            ? "Only Your Custom Questions (Manual)"
+                            : "Your Custom Questions First + Auto Bank Fill"}
+                        </strong>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         size="sm"
-                        variant="ghost"
-                        className="rounded-full"
-                        onClick={() => setDraft(null)}
+                        variant={activeTest.question_source === "manual" ? "default" : "outline"}
+                        className="rounded-full text-xs"
+                        onClick={() =>
+                          updateTest.mutate(
+                            toTestPayload(activeTest, {
+                              question_source:
+                                activeTest.question_source === "manual"
+                                  ? "deterministic"
+                                  : "manual",
+                            }),
+                          )
+                        }
                       >
-                        <X className="mr-1.5 h-4 w-4" /> Cancel
+                        {activeTest.question_source === "manual"
+                          ? "Mode: Only My Questions"
+                          : "Switch to Only My Questions"}
                       </Button>
-                    ) : (
                       <Button
                         size="sm"
+                        variant={showBulkPaste ? "secondary" : "outline"}
                         className="rounded-full"
-                        onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                        onClick={() => setShowBulkPaste((v) => !v)}
                       >
-                        <Plus className="mr-1.5 h-4 w-4" /> Add question
+                        <ClipboardList className="mr-1.5 h-4 w-4" />
+                        {showBulkPaste ? "Close Bulk Paste" : "Bulk Paste MCQs"}
                       </Button>
-                    )}
+                      {draft ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-full"
+                          onClick={() => setDraft(null)}
+                        >
+                          <X className="mr-1.5 h-4 w-4" /> Cancel
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                        >
+                          <Plus className="mr-1.5 h-4 w-4" /> Add question
+                        </Button>
+                      )}
+                    </div>
                   </div>
+
+                  {showBulkPaste ? (
+                    <div className="mb-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-bold">
+                          Paste Multiple MCQs at Once (Q1... A)... B)... C)... D)... Answer: A)
+                        </p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <label className="flex items-center gap-1">
+                            Marks:
+                            <input
+                              type="number"
+                              min={1}
+                              value={bulkMarks}
+                              onChange={(e) => setBulkMarks(e.target.value)}
+                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Negative:
+                            <input
+                              type="number"
+                              min={0}
+                              value={bulkNegativeMarks}
+                              onChange={(e) => setBulkNegativeMarks(e.target.value)}
+                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <Textarea
+                        rows={7}
+                        value={bulkText}
+                        onChange={(e) => setBulkText(e.target.value)}
+                        placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
+                        className="font-mono text-xs"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className="rounded-full font-bold"
+                          disabled={!bulkText.trim() || bulkAdd.isPending}
+                          onClick={() => bulkAdd.mutate(true)}
+                        >
+                          {bulkAdd.isPending ? (
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="mr-1.5 h-4 w-4" />
+                          )}
+                          Import Questions (Use Only My Questions)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full font-bold"
+                          disabled={!bulkText.trim() || bulkAdd.isPending}
+                          onClick={() => bulkAdd.mutate(false)}
+                        >
+                          Import Questions (Keep Auto Bank Fill)
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {draft ? (
                     <div className="space-y-4">

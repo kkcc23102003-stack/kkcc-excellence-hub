@@ -6,9 +6,12 @@ import {
   unwrap,
 } from "@/lib/learning.server";
 import {
+  makeCustomChapterKey,
   parseSeriesSyllabusText,
   SERIES_GROUPS,
   setRuntimeCustomSeriesCatalog,
+  type CustomChapterConfig,
+  type CustomChapterQuestion,
   type CustomSeriesCatalog,
   type PaidTestSeries,
   type SeriesGroup,
@@ -775,6 +778,34 @@ export const listTestQuestions = createServerFn({ method: "GET" })
     return rows ?? [];
   });
 
+async function syncTestQuestionStats(testId: string) {
+  const testRes = await projectContent.from("tests").select("*").eq("id", testId).maybeSingle();
+  if (testRes.error || !testRes.data) return;
+  const rowsRes = await projectContent.from("test_questions").select("*").eq("test_id", testId);
+  const rows = rowsRes.data ?? [];
+  if (testRes.data.question_source === "manual" || rows.length > 0) {
+    const count =
+      testRes.data.question_source === "manual"
+        ? rows.length
+        : Math.max(testRes.data.questions_count, rows.length);
+    const totalMarks =
+      testRes.data.question_source === "manual"
+        ? rows.reduce((sum, r) => sum + (r.marks || 1), 0)
+        : Math.max(
+            testRes.data.total_marks,
+            rows.reduce((sum, r) => sum + (r.marks || 1), 0),
+          );
+    await projectContent
+      .from("tests")
+      .update({
+        questions_count: count,
+        total_marks: totalMarks,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", testId);
+  }
+}
+
 /** Create or update a single hand-written question. */
 export const saveTestQuestion = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -817,6 +848,7 @@ export const saveTestQuestion = createServerFn({ method: "POST" })
           .select("*")
           .single();
     if (error) throw new Error(error.message);
+    await syncTestQuestionStats(data.test_id);
     return row;
   });
 
@@ -825,9 +857,72 @@ export const deleteTestQuestion = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
+    const existing = await projectContent
+      .from("test_questions")
+      .select("test_id")
+      .eq("id", data.id)
+      .maybeSingle();
     const { error } = await projectContent.from("test_questions").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+    if (existing.data?.test_id) {
+      await syncTestQuestionStats(existing.data.test_id);
+    }
     return { ok: true };
+  });
+
+export const bulkAddTestQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        test_id: z.string().uuid(),
+        subject: z.string().trim().max(80).default(""),
+        marks: z.number().int().min(1).max(100).default(4),
+        negative_marks: z.number().int().min(0).max(100).default(1),
+        text: z.string().trim().min(5).max(100000),
+        switchToManual: z.boolean().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const parent = unwrap(
+      await projectContent.from("tests").select("*").eq("id", data.test_id).maybeSingle(),
+    );
+    if (!parent) throw new Error("Parent test not found.");
+    const parsed = parseMcqText(data.text);
+    if (!parsed.length) {
+      throw new Error(
+        "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
+      );
+    }
+    const existing = await projectContent
+      .from("test_questions")
+      .select("id")
+      .eq("test_id", data.test_id);
+    const baseOrder = (existing.data ?? []).length;
+    const rows = parsed.map((q, idx) => ({
+      test_id: data.test_id,
+      question_text: q.question_text,
+      subject: data.subject || parent.subject || "General",
+      options: q.options,
+      correct_index: q.correct_index,
+      marks: data.marks,
+      negative_marks: data.negative_marks,
+      explanation:
+        q.explanation || buildFallbackExplanation(q, data.subject || parent.subject || "General"),
+      sort_order: baseOrder + idx,
+    }));
+    const { error } = await projectContent.from("test_questions").insert(rows as never);
+    if (error) throw new Error(error.message);
+    if (data.switchToManual) {
+      await projectContent
+        .from("tests")
+        .update({ question_source: "manual", updated_at: new Date().toISOString() } as never)
+        .eq("id", data.test_id);
+    }
+    await syncTestQuestionStats(data.test_id);
+    return { ok: true, addedCount: rows.length };
   });
 
 /** Persist a new display order after drag/move in the editor. */
@@ -1313,4 +1408,217 @@ export const adminOptimizeAndCleanServer = createServerFn({ method: "POST" })
       },
       optimizedAt: new Date().toISOString(),
     };
+  });
+
+const customChapterQuestionSchema = z.object({
+  series_id: z.string().trim().max(120).optional().default("*"),
+  subject: z.string().trim().min(1).max(120),
+  chapter: z.string().trim().min(1).max(200),
+  mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
+  question: z.object({
+    id: z.string().trim().max(120).optional(),
+    question_text: z.string().trim().min(3).max(2000),
+    options: z.array(z.string().trim().min(1).max(600)).min(2).max(6),
+    correct_index: z.number().int().min(0).max(5),
+    explanation: z.string().trim().max(4000).optional().default(""),
+    difficulty: z.enum(["Easy", "Moderate", "Difficult"]).optional().default("Moderate"),
+    marks: z.number().int().min(0).max(100).optional().default(1),
+    negative_marks: z.number().int().min(0).max(100).optional().default(0),
+  }),
+});
+
+export const adminSaveCustomChapterQuestion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => customChapterQuestionSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const options = data.question.options.map((o) => o.trim()).filter(Boolean);
+    if (options.length < 2) throw new Error("Please write at least 2 options.");
+    if (data.question.correct_index >= options.length) {
+      throw new Error("Please select which option is the correct answer.");
+    }
+
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode ?? "custom_plus_bank",
+      questions: [],
+    };
+    const qId =
+      data.question.id?.trim() || `cq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const nextItem: CustomChapterQuestion = {
+      id: qId,
+      question_text: data.question.question_text.trim(),
+      options,
+      correct_index: data.question.correct_index,
+      explanation:
+        data.question.explanation?.trim() ||
+        `Correct answer is ${options[data.question.correct_index]}.`,
+      difficulty: data.question.difficulty ?? "Moderate",
+      marks: data.question.marks ?? 1,
+      negative_marks: data.question.negative_marks ?? 0,
+    };
+
+    const hasExisting = existing.questions.some((q) => q.id === qId);
+    const nextQuestions = hasExisting
+      ? existing.questions.map((q) => (q.id === qId ? nextItem : q))
+      : [...existing.questions, nextItem];
+
+    const nextMap: Record<string, CustomChapterConfig> = {
+      ...(current.customQuestionsByChapter ?? {}),
+      [key]: {
+        mode: data.mode ?? existing.mode,
+        questions: nextQuestions,
+      },
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+
+    return { ok: true, key, totalCount: nextQuestions.length, question: nextItem };
+  });
+
+export const adminBulkImportCustomChapterQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
+        marks: z.number().int().min(0).max(100).optional().default(1),
+        negative_marks: z.number().int().min(0).max(100).optional().default(0),
+        text: z.string().trim().min(5).max(100000),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const parsed = parseMcqText(data.text);
+    if (!parsed.length) {
+      throw new Error(
+        "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
+      );
+    }
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode ?? "custom_plus_bank",
+      questions: [],
+    };
+    const newItems: CustomChapterQuestion[] = parsed.map((q, idx) => ({
+      id: `cq-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
+      question_text: q.question_text,
+      options: q.options,
+      correct_index: q.correct_index,
+      explanation: q.explanation || buildFallbackExplanation(q, data.subject),
+      difficulty: "Moderate",
+      marks: data.marks ?? 1,
+      negative_marks: data.negative_marks ?? 0,
+    }));
+
+    const nextQuestions = [...existing.questions, ...newItems];
+    const nextMap: Record<string, CustomChapterConfig> = {
+      ...(current.customQuestionsByChapter ?? {}),
+      [key]: {
+        mode: data.mode ?? existing.mode,
+        questions: nextQuestions,
+      },
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+
+    return { ok: true, key, addedCount: newItems.length, totalCount: nextQuestions.length };
+  });
+
+export const adminSetCustomChapterMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        mode: z.enum(["custom_only", "custom_plus_bank"]),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode,
+      questions: [],
+    };
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: {
+        ...(current.customQuestionsByChapter ?? {}),
+        [key]: { ...existing, mode: data.mode },
+      },
+    });
+    return { ok: true, key, mode: data.mode };
+  });
+
+export const adminDeleteCustomChapterQuestion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        question_id: z.string().trim().min(1).max(120),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing = current.customQuestionsByChapter?.[key];
+    if (!existing) return { ok: true, totalCount: 0 };
+    const nextQuestions = existing.questions.filter((q) => q.id !== data.question_id);
+    const nextMap = { ...(current.customQuestionsByChapter ?? {}) };
+    if (nextQuestions.length === 0) {
+      delete nextMap[key];
+    } else {
+      nextMap[key] = { ...existing, questions: nextQuestions };
+    }
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+    return { ok: true, totalCount: nextQuestions.length };
+  });
+
+export const adminClearCustomChapterQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const nextMap = { ...(current.customQuestionsByChapter ?? {}) };
+    delete nextMap[key];
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+    return { ok: true };
   });

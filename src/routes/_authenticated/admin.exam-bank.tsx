@@ -24,16 +24,21 @@ import { ACTIVE_TEMPLATES, EXAM_BANK_TOTAL, OFFICIAL_SYLLABUS_TAGS_REMOVED } fro
 import { OFFICIAL_SYLLABUS_RULES } from "@/lib/exam-bank/official-syllabus";
 import { auditQuestionBank } from "@/lib/exam-bank/quality-audit";
 import {
+  adminBulkImportCustomChapterQuestions,
   adminClearAllTestSeries,
+  adminClearCustomChapterQuestions,
   adminCreateCustomTestSeries,
+  adminDeleteCustomChapterQuestion,
   adminGetCustomSeriesCatalog,
   adminListSeriesOverrides,
   adminRemoveTestSeries,
   adminResetSeriesOverride,
   adminResetSeriesSyllabus,
   adminRestoreTestSeries,
+  adminSaveCustomChapterQuestion,
   adminSaveSeriesOverride,
   adminSaveSeriesSyllabus,
+  adminSetCustomChapterMode,
 } from "@/lib/admin.functions";
 import {
   adminGrantSeriesAccess,
@@ -46,6 +51,7 @@ import {
   SERIES_GROUPS,
   THEORY_TEST_SERIES,
   formatSeriesSyllabusText,
+  getCustomChapterConfig,
   getEffectivePaidTestSeries,
   parseSeriesSyllabusText,
   resolveSeriesPrice,
@@ -139,9 +145,32 @@ function AdminExamBankPage() {
   const restoreSeriesFn = useServerFn(adminRestoreTestSeries);
   const createCustomSeriesFn = useServerFn(adminCreateCustomTestSeries);
   const clearAllSeriesFn = useServerFn(adminClearAllTestSeries);
+  const saveCustomQFn = useServerFn(adminSaveCustomChapterQuestion);
+  const bulkCustomQFn = useServerFn(adminBulkImportCustomChapterQuestions);
+  const setCustomModeFn = useServerFn(adminSetCustomChapterMode);
+  const deleteCustomQFn = useServerFn(adminDeleteCustomChapterQuestion);
+  const clearCustomQFn = useServerFn(adminClearCustomChapterQuestions);
   const listGrants = useServerFn(adminListSeriesGrants);
   const grantSeries = useServerFn(adminGrantSeriesAccess);
   const revokeSeries = useServerFn(adminRevokeSeriesAccess);
+
+  const [showCustomQBuilder, setShowCustomQBuilder] = useState(false);
+  const [cqSeriesId, setCqSeriesId] = useState("*");
+  const [cqSubject, setCqSubject] = useState("SST");
+  const [cqChapter, setCqChapter] = useState("Preamble");
+  const [cqMode, setCqMode] = useState<"custom_plus_bank" | "custom_only">("custom_plus_bank");
+  const [cqEntryType, setCqEntryType] = useState<"single" | "bulk">("single");
+  const [cqSingle, setCqSingle] = useState({
+    id: "",
+    question_text: "",
+    options: ["", "", "", ""],
+    correct_index: 0,
+    explanation: "",
+    difficulty: "Moderate" as "Easy" | "Moderate" | "Difficult",
+    marks: "1",
+    negative_marks: "0",
+  });
+  const [cqBulkText, setCqBulkText] = useState("");
 
   const customCatalogQuery = useQuery({
     queryKey: ["admin", "custom-series-catalog"],
@@ -276,6 +305,130 @@ function AdminExamBankPage() {
       toast.success("All test series & tests cleared — catalogue is now 100% empty!");
       setEditing(null);
       setShowAddSeries(true);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const activeCustomChapterConfig = useMemo(
+    () => getCustomChapterConfig(cqSeriesId, cqSubject, cqChapter, customCatalog),
+    [cqSeriesId, cqSubject, cqChapter, customCatalog],
+  );
+  const customChapterQuestions = activeCustomChapterConfig?.questions ?? [];
+
+  const saveCustomQ = useMutation({
+    mutationFn: () =>
+      saveCustomQFn({
+        data: {
+          series_id: cqSeriesId || "*",
+          subject: cqSubject.trim(),
+          chapter: cqChapter.trim(),
+          mode: cqMode,
+          question: {
+            ...(cqSingle.id ? { id: cqSingle.id } : {}),
+            question_text: cqSingle.question_text,
+            options: cqSingle.options.map((o) => o.trim()).filter(Boolean),
+            correct_index: cqSingle.correct_index,
+            explanation: cqSingle.explanation,
+            difficulty: cqSingle.difficulty,
+            marks: Number(cqSingle.marks || 1),
+            negative_marks: Number(cqSingle.negative_marks || 0),
+          },
+        },
+      }),
+    onSuccess: (res) => {
+      invalidateAllSeries();
+      toast.success(
+        `Saved custom question for ${cqSubject} → ${cqChapter} (${res.totalCount} total custom questions)!`,
+      );
+      setCqSingle({
+        id: "",
+        question_text: "",
+        options: ["", "", "", ""],
+        correct_index: 0,
+        explanation: "",
+        difficulty: "Moderate",
+        marks: "1",
+        negative_marks: "0",
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkCustomQ = useMutation({
+    mutationFn: () =>
+      bulkCustomQFn({
+        data: {
+          series_id: cqSeriesId || "*",
+          subject: cqSubject.trim(),
+          chapter: cqChapter.trim(),
+          mode: cqMode,
+          marks: Number(cqSingle.marks || 1),
+          negative_marks: Number(cqSingle.negative_marks || 0),
+          text: cqBulkText,
+        },
+      }),
+    onSuccess: (res) => {
+      invalidateAllSeries();
+      toast.success(
+        `Imported ${res.addedCount} custom questions into ${cqSubject} → ${cqChapter} (${res.totalCount} total)!`,
+      );
+      setCqBulkText("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const changeCustomMode = useMutation({
+    mutationFn: (mode: "custom_only" | "custom_plus_bank") => {
+      setCqMode(mode);
+      return setCustomModeFn({
+        data: {
+          series_id: cqSeriesId || "*",
+          subject: cqSubject.trim(),
+          chapter: cqChapter.trim(),
+          mode,
+        },
+      });
+    },
+    onSuccess: (res) => {
+      invalidateAllSeries();
+      toast.success(
+        res.mode === "custom_only"
+          ? "Mode set: Test will show ONLY your custom questions!"
+          : "Mode set: Test will show your custom questions first + auto bank questions!",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteCustomQ = useMutation({
+    mutationFn: (question_id: string) =>
+      deleteCustomQFn({
+        data: {
+          series_id: cqSeriesId || "*",
+          subject: cqSubject.trim(),
+          chapter: cqChapter.trim(),
+          question_id,
+        },
+      }),
+    onSuccess: () => {
+      invalidateAllSeries();
+      toast.success("Custom question deleted");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const clearCustomQ = useMutation({
+    mutationFn: () =>
+      clearCustomQFn({
+        data: {
+          series_id: cqSeriesId || "*",
+          subject: cqSubject.trim(),
+          chapter: cqChapter.trim(),
+        },
+      }),
+    onSuccess: () => {
+      invalidateAllSeries();
+      toast.success(`Cleared all custom questions for ${cqSubject} → ${cqChapter}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -481,6 +634,17 @@ function AdminExamBankPage() {
                     <Plus className="mr-1.5 h-4 w-4" />
                     {showAddSeries ? "Close New Series Builder" : "Add New Test Series"}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant={showCustomQBuilder ? "default" : "outline"}
+                    onClick={() => setShowCustomQBuilder((v) => !v)}
+                    className="rounded-full font-bold"
+                  >
+                    <BookOpenCheck className="mr-1.5 h-4 w-4" />
+                    {showCustomQBuilder
+                      ? "Close Custom Question Writer"
+                      : "Add Custom Questions (Khud Ke Questions)"}
+                  </Button>
                   {series.length > 0 ? (
                     <Button
                       size="sm"
@@ -495,6 +659,354 @@ function AdminExamBankPage() {
                   ) : null}
                 </div>
               </div>
+
+              {showCustomQBuilder ? (
+                <div className="mt-4 rounded-2xl border border-primary/40 bg-background/95 p-5 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-black">
+                        Custom Question Writer — Add Your Own Questions to Any Subject &amp; Chapter
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Add questions 1-by-1 or paste multiple MCQs at once for any Series, Subject
+                        (e.g. SST) and Chapter (e.g. Preamble).
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          (activeCustomChapterConfig?.mode ?? cqMode) === "custom_plus_bank"
+                            ? "default"
+                            : "outline"
+                        }
+                        className="rounded-full text-xs"
+                        onClick={() => changeCustomMode.mutate("custom_plus_bank")}
+                      >
+                        My Questions + Auto Bank Fill
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          (activeCustomChapterConfig?.mode ?? cqMode) === "custom_only"
+                            ? "default"
+                            : "outline"
+                        }
+                        className="rounded-full text-xs"
+                        onClick={() => changeCustomMode.mutate("custom_only")}
+                      >
+                        Only My Custom Questions
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Target Series
+                      <select
+                        value={cqSeriesId}
+                        onChange={(e) => setCqSeriesId(e.target.value)}
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      >
+                        <option value="*">All Series (Global Subject + Chapter)</option>
+                        {activePaidSeries.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.id})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Subject (e.g. SST, Polity, Punjabi)
+                      <input
+                        value={cqSubject}
+                        onChange={(e) => setCqSubject(e.target.value)}
+                        placeholder="e.g. SST"
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Chapter (e.g. Preamble, Fundamental Rights)
+                      <input
+                        value={cqChapter}
+                        onChange={(e) => setCqChapter(e.target.value)}
+                        placeholder="e.g. Preamble"
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-b pb-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={cqEntryType === "single" ? "default" : "outline"}
+                      className="rounded-full text-xs"
+                      onClick={() => setCqEntryType("single")}
+                    >
+                      1-by-1 Question Form
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={cqEntryType === "bulk" ? "default" : "outline"}
+                      className="rounded-full text-xs"
+                      onClick={() => setCqEntryType("bulk")}
+                    >
+                      Bulk Paste MCQs (Copy-Paste Multiple)
+                    </Button>
+                    <span className="ml-auto text-xs font-bold text-primary">
+                      {customChapterQuestions.length} Custom Questions saved in {cqSubject || "—"} →{" "}
+                      {cqChapter || "—"}
+                    </span>
+                  </div>
+
+                  {cqEntryType === "single" ? (
+                    <div className="mt-4 space-y-3">
+                      <label className="block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        Question Text
+                        <textarea
+                          rows={2}
+                          value={cqSingle.question_text}
+                          onChange={(e) =>
+                            setCqSingle({ ...cqSingle, question_text: e.target.value })
+                          }
+                          placeholder="e.g. Which Constitutional Amendment added Socialist, Secular and Integrity to the Preamble?"
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                        />
+                      </label>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(["A", "B", "C", "D"] as const).map((label, idx) => (
+                          <div key={label} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCqSingle({ ...cqSingle, correct_index: idx })}
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition ${
+                                cqSingle.correct_index === idx
+                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  : "hover:border-primary"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                            <input
+                              value={cqSingle.options[idx] ?? ""}
+                              onChange={(e) => {
+                                const next = [...cqSingle.options];
+                                next[idx] = e.target.value;
+                                setCqSingle({ ...cqSingle, options: next });
+                              }}
+                              placeholder={`Option ${label}${cqSingle.correct_index === idx ? " (Correct Answer)" : ""}`}
+                              className="w-full rounded-lg border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          Difficulty
+                          <select
+                            value={cqSingle.difficulty}
+                            onChange={(e) =>
+                              setCqSingle({
+                                ...cqSingle,
+                                difficulty: e.target.value as "Easy" | "Moderate" | "Difficult",
+                              })
+                            }
+                            className="mt-1 w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-normal normal-case tracking-normal"
+                          >
+                            <option value="Easy">Easy</option>
+                            <option value="Moderate">Moderate</option>
+                            <option value="Difficult">Difficult</option>
+                          </select>
+                        </label>
+                        <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          Marks
+                          <input
+                            type="number"
+                            min={1}
+                            value={cqSingle.marks}
+                            onChange={(e) => setCqSingle({ ...cqSingle, marks: e.target.value })}
+                            className="mt-1 w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-normal normal-case tracking-normal"
+                          />
+                        </label>
+                        <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          Explanation (Optional)
+                          <input
+                            value={cqSingle.explanation}
+                            onChange={(e) =>
+                              setCqSingle({ ...cqSingle, explanation: e.target.value })
+                            }
+                            placeholder="Why this option is correct"
+                            className="mt-1 w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-normal normal-case tracking-normal"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={
+                            saveCustomQ.isPending ||
+                            !cqSubject.trim() ||
+                            !cqChapter.trim() ||
+                            !cqSingle.question_text.trim()
+                          }
+                          onClick={() => saveCustomQ.mutate()}
+                          className="rounded-full font-bold"
+                        >
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          {cqSingle.id
+                            ? "Update Custom Question"
+                            : `Save Question to ${cqSubject || "Subject"} → ${cqChapter || "Chapter"}`}
+                        </Button>
+                        {cqSingle.id ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setCqSingle({
+                                id: "",
+                                question_text: "",
+                                options: ["", "", "", ""],
+                                correct_index: 0,
+                                explanation: "",
+                                difficulty: "Moderate",
+                                marks: "1",
+                                negative_marks: "0",
+                              })
+                            }
+                          >
+                            Cancel Edit
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Paste as many questions as you want in standard format (`Q1...`, `A)...`,
+                        `B)...`, `C)...`, `D)...`, `Answer: A`, `Explanation: ...`):
+                      </p>
+                      <textarea
+                        rows={7}
+                        value={cqBulkText}
+                        onChange={(e) => setCqBulkText(e.target.value)}
+                        placeholder={`Q1. Who moved the Objectives Resolution which became the basis of the Preamble?\nA) Jawaharlal Nehru\nB) Dr. B.R. Ambedkar\nC) Sardar Patel\nD) Dr. Rajendra Prasad\nAnswer: A\nExplanation: Jawaharlal Nehru moved the Objectives Resolution on 13 December 1946.`}
+                        className="w-full rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-primary"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={
+                          bulkCustomQ.isPending ||
+                          !cqSubject.trim() ||
+                          !cqChapter.trim() ||
+                          !cqBulkText.trim()
+                        }
+                        onClick={() => bulkCustomQ.mutate()}
+                        className="rounded-full font-bold"
+                      >
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        Import All Pasted Questions to {cqSubject} → {cqChapter}
+                      </Button>
+                    </div>
+                  )}
+
+                  {customChapterQuestions.length > 0 ? (
+                    <div className="mt-5 border-t pt-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+                          Saved Custom Questions for {cqSubject} → {cqChapter} (
+                          {customChapterQuestions.length})
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-destructive"
+                          disabled={clearCustomQ.isPending}
+                          onClick={() => clearCustomQ.mutate()}
+                        >
+                          <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear All (
+                          {customChapterQuestions.length})
+                        </Button>
+                      </div>
+                      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {customChapterQuestions.map((q, idx) => (
+                          <div
+                            key={q.id}
+                            className="flex items-start justify-between gap-3 rounded-xl border bg-muted/20 p-3 text-xs"
+                          >
+                            <div className="space-y-1">
+                              <p className="font-bold">
+                                Q{idx + 1}. {q.question_text}
+                              </p>
+                              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                                {q.options.map((opt, oIdx) => (
+                                  <span
+                                    key={oIdx}
+                                    className={
+                                      oIdx === q.correct_index
+                                        ? "font-bold text-emerald-600 dark:text-emerald-400"
+                                        : ""
+                                    }
+                                  >
+                                    {["A", "B", "C", "D", "E", "F"][oIdx]}) {opt}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => {
+                                  setCqEntryType("single");
+                                  setCqSingle({
+                                    id: q.id,
+                                    question_text: q.question_text,
+                                    options: [
+                                      q.options[0] ?? "",
+                                      q.options[1] ?? "",
+                                      q.options[2] ?? "",
+                                      q.options[3] ?? "",
+                                    ],
+                                    correct_index: q.correct_index,
+                                    explanation: q.explanation ?? "",
+                                    difficulty: q.difficulty ?? "Moderate",
+                                    marks: String(q.marks ?? 1),
+                                    negative_marks: String(q.negative_marks ?? 0),
+                                  });
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-[11px] text-destructive"
+                                onClick={() => deleteCustomQ.mutate(q.id)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {showAddSeries ? (
                 <div className="mt-4 rounded-2xl border bg-background/90 p-5">

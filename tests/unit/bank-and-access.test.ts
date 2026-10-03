@@ -26,7 +26,9 @@ import {
   LEARNING_SERIES,
   PAID_TEST_SERIES,
   formatSeriesSyllabusText,
+  getCustomChapterConfig,
   getEffectivePaidTestSeries,
+  makeCustomChapterKey,
   parseSeriesSyllabusText,
   resolveSeriesPrice,
 } from "../../src/lib/test-series-catalog";
@@ -283,4 +285,53 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   assert.equal(autoPaper.filter((q) => q.difficulty === "Easy").length, 20);
   assert.equal(autoPaper.filter((q) => q.difficulty === "Moderate").length, 20);
   assert.equal(autoPaper.filter((q) => q.difficulty === "Difficult").length, 20);
+
+  for (const subj of ["SST", "Social Science", "Social Studies", "Polity", ""]) {
+    const preamblePaper = generateCustomSyllabusPaper({
+      exam: "Punjab ETT Cadre",
+      subject: subj,
+      topic: "Preamble",
+      difficulty: "Mixed",
+      count: 60,
+      marks: 1,
+      negative_marks: 0,
+      seed: "sst-preamble-check",
+    });
+    assert.equal(preamblePaper.length, 60);
+    for (const q of preamblePaper) {
+      assert.ok(
+        !/physics quantity|atmospheric pressure|electric current|ohm's law/i.test(q.question_text),
+        `Unexpected physics question in ${subj} -> Preamble: ${q.question_text}`,
+      );
+      assert.ok(
+        /preamble|constitution|sovereign|socialist|secular|justice|liberty|equality|fraternity|amendment/i.test(
+          `${q.question_text} ${q.explanation}`,
+        ),
+        `Expected Preamble content in ${subj} -> Preamble: ${q.question_text}`,
+      );
+    }
+  }
+
+  const key = makeCustomChapterKey("my-series", "SST", "Preamble");
+  const catalogWithCustom = {
+    customQuestionsByChapter: {
+      [key]: {
+        mode: "custom_only" as const,
+        questions: [
+          {
+            id: "cq-1",
+            question_text: "Who called the Preamble the Identity Card of the Constitution?",
+            options: ["N. A. Palkhivala", "Dr. B. R. Ambedkar", "K. M. Munshi", "Jawaharlal Nehru"],
+            correct_index: 0,
+            explanation:
+              "N. A. Palkhivala called the Preamble the Identity Card of the Constitution.",
+          },
+        ],
+      },
+    },
+  };
+  const resolvedCustom = getCustomChapterConfig("my-series", "SST", "Preamble", catalogWithCustom);
+  assert.equal(resolvedCustom?.mode, "custom_only");
+  assert.equal(resolvedCustom?.questions.length, 1);
+  assert.equal(resolvedCustom?.questions[0]?.options[0], "N. A. Palkhivala");
 });

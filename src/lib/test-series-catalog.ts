@@ -1120,12 +1120,56 @@ export type SubjectPlan = {
   chapters: string[];
 };
 
+export type CustomChapterQuestion = {
+  id: string;
+  question_text: string;
+  options: string[];
+  correct_index: number;
+  explanation?: string;
+  difficulty?: "Easy" | "Moderate" | "Difficult";
+  marks?: number;
+  negative_marks?: number;
+};
+
+export type CustomChapterConfig = {
+  mode: "custom_only" | "custom_plus_bank";
+  questions: CustomChapterQuestion[];
+};
+
 export type CustomSeriesCatalog = {
   syllabusBySeriesId?: Record<string, SubjectPlan[]>;
   removedSeriesIds?: string[];
   addedSeries?: PaidTestSeries[];
   includeBuiltIn?: boolean;
+  /** Keyed by makeCustomChapterKey(seriesId, subject, chapter) */
+  customQuestionsByChapter?: Record<string, CustomChapterConfig>;
 };
+
+export function makeCustomChapterKey(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+): string {
+  const sId = (seriesId || "*").trim().toLowerCase() || "*";
+  const subj = subject.trim().toLowerCase();
+  const chap = chapter.trim().toLowerCase();
+  return `${sId}::${subj}::${chap}`;
+}
+
+export function getCustomChapterConfig(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+  catalog: CustomSeriesCatalog = runtimeCustomCatalog,
+): CustomChapterConfig | undefined {
+  const map = catalog.customQuestionsByChapter;
+  if (!map) return undefined;
+  const exactKey = makeCustomChapterKey(seriesId, subject, chapter);
+  if (map[exactKey] && map[exactKey]!.questions.length > 0) return map[exactKey];
+  const globalKey = makeCustomChapterKey("*", subject, chapter);
+  if (map[globalKey] && map[globalKey]!.questions.length > 0) return map[globalKey];
+  return undefined;
+}
 
 let runtimeCustomCatalog: CustomSeriesCatalog = {};
 
@@ -1244,6 +1288,10 @@ export function parseCustomSeriesCatalog(raw: unknown): CustomSeriesCatalog {
           )
         : [],
       includeBuiltIn: Boolean(parsed.includeBuiltIn),
+      customQuestionsByChapter:
+        parsed.customQuestionsByChapter && typeof parsed.customQuestionsByChapter === "object"
+          ? parsed.customQuestionsByChapter
+          : {},
     };
   } catch {
     return {};
