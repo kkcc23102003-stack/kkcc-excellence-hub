@@ -362,66 +362,15 @@ function TestSeries() {
 
         <CustomPageSections page="test_series" position="top" />
 
-        <section className="mx-auto w-full max-w-7xl px-4 pt-12 sm:px-6">
-          <div className="surface-panel p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <Badge className="rounded-full border-primary/30 bg-primary/10 text-primary">
-                  <BookOpenCheck className="mr-1.5 h-3.5 w-3.5" /> Free chapterwise practice
-                </Badge>
-                <h2 className="mt-4 text-xl font-black sm:text-2xl">
-                  NCERT-style, subjectwise and chapterwise quiz practice
-                </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                  Start free local practice by course-style subject and chapter. Questions keep
-                  working even after the daily Kit 2 Coins reward cap, and this local quiz activity
-                  does not use the study database.
-                </p>
-              </div>
-              <Badge variant="secondary" className="rounded-full">
-                Unlimited questions
-              </Badge>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {FREE_CHAPTER_PRACTICE.map((item) => (
-                <article key={item.title} className="rounded-3xl border bg-background/65 p-5">
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-primary/10 text-primary">
-                    <BookOpenCheck className="h-5 w-5" />
-                  </span>
-                  <h3 className="mt-4 font-bold">{item.title}</h3>
-                  <p className="mt-2 min-h-12 text-xs leading-relaxed text-muted-foreground">
-                    {item.description}
-                  </p>
-                  <a
-                    className="mt-4 inline-flex h-10 items-center rounded-full border border-primary/35 bg-primary/10 px-4 text-sm font-bold text-primary transition hover:bg-primary/15"
-                    href={buildChapterPracticeUrl(item)}
-                  >
-                    Practice free
-                  </a>
-                </article>
-              ))}
-            </div>
-
-            <p className="mt-5 flex items-start gap-2 rounded-2xl border border-dashed p-4 text-xs leading-relaxed text-muted-foreground">
-              <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              For NEET, JEE, CA, UPSC, Banking, Railways, Punjab ETT, PSTET, PPSC and other exams,
-              open Kit 2 Coins Quiz and use its exam/chapter search. Reward coins are capped
-              locally, but learning and next questions never stop.
-            </p>
-          </div>
-        </section>
-
         <section className="border-t bg-muted/20">
           <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold">Paid test series</h2>
+                <h2 className="text-xl font-bold">Test Series Catalogue</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                  Every series is built for one exam and says so on its card. The work is arranged
-                  chapterwise: each chapter gets one {QUESTIONS_PER_CHAPTER} question test, and
-                  those {QUESTIONS_PER_CHAPTER} run in a fixed order — 20 Easy, then 20 Moderate,
-                  then 20 Difficult. You clear the concept before you meet its hardest version.
+                  Every series is built for one exam and arranged chapterwise: each chapter gets one{" "}
+                  {QUESTIONS_PER_CHAPTER} question test ({QUESTIONS_PER_CHAPTER} MCQs: 20 Easy → 20
+                  Moderate → 20 Difficult).
                 </p>
               </div>
               <Badge variant="secondary" className="rounded-full">
@@ -429,85 +378,85 @@ function TestSeries() {
               </Badge>
             </div>
 
-            <div className="mt-6">
-              <label htmlFor="series-search" className="sr-only">
-                Search test series
-              </label>
-              <div className="relative max-w-xl">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="series-search"
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search a series, exam or subject — try Master Cadre, ICSE, CA, Punjabi"
-                  className="h-12 w-full rounded-full border bg-background pl-11 pr-4 text-sm outline-none ring-primary/40 transition focus:ring-2"
-                />
-              </div>
-              {needle ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {matchCount === 0
-                    ? "No series matched. Try a shorter word, for example Punjabi or Class 10."
-                    : `${matchCount} series matched "${query.trim()}".`}
-                </p>
-              ) : null}
-            </div>
-
-            {SERIES_GROUPS.map((group) => {
-              const list = seriesByGroup(group, customCatalog)
-                .filter((series) => !matches || matches.has(series.id))
-                .filter(
-                  (series) =>
-                    !isHidden(series.id) &&
-                    !enrolledSeries.some((item) => item.series.id === series.id),
-                )
-                .map(applyOverride);
-              if (!list.length) return null;
-              return (
-                <div key={group} className="mt-8">
-                  <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-muted-foreground">
-                    <Layers className="h-4 w-4 text-primary" /> {group}
-                  </h3>
-                  <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                    {list.map((series) => (
-                      <SeriesCard
-                        key={series.id}
-                        series={series}
-                        unlocked={
-                          unlocked.has(series.id) ||
-                          (series.priceInr <= 0 && series.priceCoins <= 0)
-                        }
-                        expiresAt={accessBySeries.get(series.id)?.expires_at ?? null}
-                      />
-                    ))}
+            {activePaidSeries.length > 0 ? (
+              <>
+                <div className="mt-6">
+                  <label htmlFor="series-search" className="sr-only">
+                    Search test series
+                  </label>
+                  <div className="relative max-w-xl">
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      id="series-search"
+                      type="search"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search a series, exam or subject"
+                      className="h-12 w-full rounded-full border bg-background pl-11 pr-4 text-sm outline-none ring-primary/40 transition focus:ring-2"
+                    />
                   </div>
+                  {needle ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {matchCount === 0
+                        ? "No series matched your search."
+                        : `${matchCount} series matched "${query.trim()}".`}
+                    </p>
+                  ) : null}
                 </div>
-              );
-            })}
 
-            <details className="surface-panel mt-8 p-5">
-              <summary className="cursor-pointer font-bold">
-                Additional existing question-bank practice tracks
-              </summary>
-              <p className="mt-2 text-xs text-muted-foreground">
-                These are existing bank labels/families, not new official exams.
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {ADDITIONAL_PRACTICE_SERIES.filter(
-                  (series) => !enrolledSeries.some((item) => item.series.id === series.id),
-                ).map((series) => (
-                  <div key={series.id} className="rounded-xl border p-4">
-                    <p className="font-semibold">{series.examTrack}</p>
-                    <Button asChild className="mt-3 rounded-full">
-                      <Link to="/test-series/learn/$seriesId" params={{ seriesId: series.id }}>
-                        Start Learning
-                      </Link>
-                    </Button>
-                  </div>
-                ))}
+                {SERIES_GROUPS.map((group) => {
+                  const list = seriesByGroup(group, customCatalog)
+                    .filter((series) => !matches || matches.has(series.id))
+                    .filter(
+                      (series) =>
+                        !isHidden(series.id) &&
+                        !enrolledSeries.some((item) => item.series.id === series.id),
+                    )
+                    .map(applyOverride);
+                  if (!list.length) return null;
+                  return (
+                    <div key={group} className="mt-8">
+                      <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-muted-foreground">
+                        <Layers className="h-4 w-4 text-primary" /> {group}
+                      </h3>
+                      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                        {list.map((series) => (
+                          <SeriesCard
+                            key={series.id}
+                            series={series}
+                            unlocked={
+                              unlocked.has(series.id) ||
+                              (series.priceInr <= 0 && series.priceCoins <= 0)
+                            }
+                            expiresAt={accessBySeries.get(series.id)?.expires_at ?? null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <div className="surface-panel mt-6 p-8 text-center">
+                <BookOpenCheck className="mx-auto h-8 w-8 text-primary" />
+                <p className="mt-3 text-base font-bold">No Test Series Added Yet</p>
+                <p className="mx-auto mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  The test series catalogue is currently empty so Admin can create and manage custom
+                  test series and syllabuses from scratch.
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <Button asChild size="sm" className="rounded-full font-bold">
+                    <Link to="/admin/exam-bank">+ Create Test Series (Admin)</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
+                    <Link to="/admin/tests">+ Create Individual Test</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
+                    <Link to="/admin/syllabus">Syllabus Auto Builder</Link>
+                  </Button>
+                </div>
               </div>
-            </details>
-            <TheorySeriesSection visible={theoryMatches} />
+            )}
           </div>
         </section>
 

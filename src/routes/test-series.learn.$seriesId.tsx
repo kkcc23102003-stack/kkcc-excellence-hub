@@ -6,8 +6,12 @@ import { TestCard } from "@/components/kkcc/test-card";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { Button } from "@/components/ui/button";
 import { supabase, isSupabaseConfigured } from "@/integrations/supabase/client";
-import { listPublicTests } from "@/lib/content.functions";
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import { getCustomSeriesCatalog, listPublicTests } from "@/lib/content.functions";
+import {
+  getEffectiveLearningSeries,
+  LEARNING_SERIES,
+  setRuntimeCustomSeriesCatalog,
+} from "@/lib/test-series-catalog";
 import { canonicalSeriesId, prioritizeEnrolled } from "@/lib/learning-access";
 import { useLearningAccess } from "@/hooks/use-learning-access";
 
@@ -34,7 +38,16 @@ function SeriesLearningPage() {
   const { seriesId } = Route.useParams();
   const { subject, chapter, view } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const series = LEARNING_SERIES.find((item) => item.id === canonicalSeriesId(seriesId));
+  const customCatalogQuery = useQuery({
+    queryKey: ["public", "custom-series-catalog"],
+    queryFn: () => getCustomSeriesCatalog(),
+    staleTime: 60_000,
+  });
+  setRuntimeCustomSeriesCatalog(customCatalogQuery.data);
+  const allSeries = [...getEffectiveLearningSeries(customCatalogQuery.data), ...LEARNING_SERIES];
+  const series = allSeries.find(
+    (item) => item.id === canonicalSeriesId(seriesId) || item.id === seriesId,
+  );
   const access = useLearningAccess();
   const testsQuery = useQuery({
     queryKey: ["public", "tests"],

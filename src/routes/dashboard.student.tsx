@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { getMyStudentSection } from "@/lib/enrollments.functions";
 import { listMySeriesAccess } from "@/lib/test-access.functions";
-import { PAID_TEST_SERIES } from "@/lib/test-series-catalog";
+import { getEffectivePaidTestSeries, PAID_TEST_SERIES } from "@/lib/test-series-catalog";
 import { formatINR } from "@/lib/cms";
 import { useUiText } from "@/components/kkcc/ui-text-provider";
 
@@ -212,7 +212,7 @@ function StudentSection() {
         {seriesAccess.length ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {seriesAccess.map((access) => {
-              const series = PAID_TEST_SERIES.find(
+              const series = [...getEffectivePaidTestSeries(), ...PAID_TEST_SERIES].find(
                 (item) =>
                   item.id === access.series_id ||
                   item.name.trim().toLowerCase() === access.series_id.trim().toLowerCase(),

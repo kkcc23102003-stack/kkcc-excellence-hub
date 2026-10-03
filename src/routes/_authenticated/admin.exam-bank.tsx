@@ -24,6 +24,7 @@ import { ACTIVE_TEMPLATES, EXAM_BANK_TOTAL, OFFICIAL_SYLLABUS_TAGS_REMOVED } fro
 import { OFFICIAL_SYLLABUS_RULES } from "@/lib/exam-bank/official-syllabus";
 import { auditQuestionBank } from "@/lib/exam-bank/quality-audit";
 import {
+  adminClearAllTestSeries,
   adminCreateCustomTestSeries,
   adminGetCustomSeriesCatalog,
   adminListSeriesOverrides,
@@ -101,7 +102,7 @@ function AdminExamBankPage() {
   const [tab, setTab] = useState<"series" | "subjects" | "syllabus" | "quality">("series");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
-  const [showAddSeries, setShowAddSeries] = useState(false);
+  const [showAddSeries, setShowAddSeries] = useState(true);
   const [grantFor, setGrantFor] = useState("");
   const [gEmail, setGEmail] = useState("");
   const [gMethod, setGMethod] = useState("cash");
@@ -137,6 +138,7 @@ function AdminExamBankPage() {
   const removeSeriesFn = useServerFn(adminRemoveTestSeries);
   const restoreSeriesFn = useServerFn(adminRestoreTestSeries);
   const createCustomSeriesFn = useServerFn(adminCreateCustomTestSeries);
+  const clearAllSeriesFn = useServerFn(adminClearAllTestSeries);
   const listGrants = useServerFn(adminListSeriesGrants);
   const grantSeries = useServerFn(adminGrantSeriesAccess);
   const revokeSeries = useServerFn(adminRevokeSeriesAccess);
@@ -267,6 +269,16 @@ function AdminExamBankPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const clearAllSeries = useMutation({
+    mutationFn: () => clearAllSeriesFn({} as never),
+    onSuccess: () => {
+      invalidateAllSeries();
+      toast.success("All test series & tests cleared — catalogue is now 100% empty!");
+      setEditing(null);
+      setShowAddSeries(true);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   function openEditor(target: PaidTestSeries) {
     const o = overrides.get(target.id);
@@ -309,9 +321,10 @@ function AdminExamBankPage() {
     [customCatalog],
   );
   const removedBuiltInSeries = useMemo(() => {
+    if (!customCatalog.includeBuiltIn) return [];
     const removedSet = new Set(customCatalog.removedSeriesIds ?? []);
     return PAID_TEST_SERIES.filter((s) => removedSet.has(s.id));
-  }, [customCatalog.removedSeriesIds]);
+  }, [customCatalog.includeBuiltIn, customCatalog.removedSeriesIds]);
 
   const series = useMemo(
     () =>
@@ -369,8 +382,8 @@ function AdminExamBankPage() {
   }, [series]);
 
   const problemCount = series.reduce((n, r) => n + r.problems.length, 0);
-  const qualityReport = useMemo(() => auditQuestionBank(), []);
-  const recordedRules = new Set(OFFICIAL_SYLLABUS_RULES.map((r) => r.exam));
+  const qualityReport = useMemo(() => (tab === "quality" ? auditQuestionBank() : null), [tab]);
+  const recordedRules = useMemo(() => new Set(OFFICIAL_SYLLABUS_RULES.map((r) => r.exam)), []);
   const term = query.trim().toLowerCase();
   const hit = (s: string) => !term || s.toLowerCase().includes(term);
 
@@ -459,14 +472,28 @@ function AdminExamBankPage() {
                     generates 60 exam-grade MCQs (20 Easy → 20 Moderate → 20 Difficult).
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => setShowAddSeries((v) => !v)}
-                  className="rounded-full font-bold"
-                >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  {showAddSeries ? "Close New Series Builder" : "Add New Test Series"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowAddSeries((v) => !v)}
+                    className="rounded-full font-bold"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    {showAddSeries ? "Close New Series Builder" : "Add New Test Series"}
+                  </Button>
+                  {series.length > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={clearAllSeries.isPending}
+                      onClick={() => clearAllSeries.mutate()}
+                      className="rounded-full border-destructive/40 font-bold text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="mr-1.5 h-4 w-4" />
+                      Clear All Series
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
               {showAddSeries ? (
@@ -660,6 +687,17 @@ function AdminExamBankPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {series.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-sm text-muted-foreground">
+                        Test series catalogue is completely empty (0 series). Use the{" "}
+                        <strong className="text-foreground">
+                          Create New Test Series with Text Syllabus
+                        </strong>{" "}
+                        builder above to add your own test series and auto-generate questions!
+                      </td>
+                    </tr>
+                  ) : null}
                   {series
                     .filter((r) => hit(r.s.name) || hit(r.s.examTrack) || hit(r.s.id))
                     .map(({ s, totals: t, problems, hasCustomSyllabus, isAddedByAdmin }) => {
@@ -1009,7 +1047,7 @@ function AdminExamBankPage() {
           </div>
         ) : null}
 
-        {tab === "quality" ? (
+        {tab === "quality" && qualityReport ? (
           <div className="mt-4 space-y-4">
             <div className="surface-panel p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">

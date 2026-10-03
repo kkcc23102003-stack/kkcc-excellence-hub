@@ -1130,6 +1130,7 @@ export type CustomSeriesCatalog = {
   syllabusBySeriesId?: Record<string, SubjectPlan[]>;
   removedSeriesIds?: string[];
   addedSeries?: PaidTestSeries[];
+  includeBuiltIn?: boolean;
 };
 
 let runtimeCustomCatalog: CustomSeriesCatalog = {};
@@ -1248,6 +1249,7 @@ export function parseCustomSeriesCatalog(raw: unknown): CustomSeriesCatalog {
             Boolean(item && typeof item === "object" && typeof item.id === "string"),
           )
         : [],
+      includeBuiltIn: Boolean(parsed.includeBuiltIn),
     };
   } catch {
     return {};
@@ -1271,13 +1273,16 @@ export function getEffectivePaidTestSeries(
   custom: CustomSeriesCatalog = runtimeCustomCatalog,
 ): PaidTestSeries[] {
   const removed = new Set(custom.removedSeriesIds ?? []);
-  const builtIn = PAID_TEST_SERIES.filter((series) => !removed.has(series.id)).map((series) =>
-    applyCustomCatalogToSeries(series, custom),
-  );
-  const existingIds = new Set(builtIn.map((series) => series.id));
   const added = (custom.addedSeries ?? [])
-    .filter((series) => !removed.has(series.id) && !existingIds.has(series.id))
+    .filter((series) => !removed.has(series.id))
     .map((series) => applyCustomCatalogToSeries(series, custom));
+  if (!custom.includeBuiltIn) {
+    return added;
+  }
+  const existingIds = new Set(added.map((series) => series.id));
+  const builtIn = PAID_TEST_SERIES.filter(
+    (series) => !removed.has(series.id) && !existingIds.has(series.id),
+  ).map((series) => applyCustomCatalogToSeries(series, custom));
   return [...added, ...builtIn];
 }
 
@@ -1286,6 +1291,9 @@ export function getEffectiveLearningSeries(
 ): PaidTestSeries[] {
   const removed = new Set(custom.removedSeriesIds ?? []);
   const paid = getEffectivePaidTestSeries(custom);
+  if (!custom.includeBuiltIn) {
+    return paid;
+  }
   const existingIds = new Set(paid.map((series) => series.id));
   const practice = ADDITIONAL_PRACTICE_SERIES.filter(
     (series) => !removed.has(series.id) && !existingIds.has(series.id),

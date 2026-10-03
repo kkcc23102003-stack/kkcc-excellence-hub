@@ -1223,6 +1223,7 @@ export const adminCreateCustomTestSeries = createServerFn({ method: "POST" })
     };
 
     await writeCustomSeriesCatalog({
+      ...current,
       syllabusBySeriesId,
       removedSeriesIds: filteredRemoved,
       addedSeries: [newSeries, ...filteredAdded],
@@ -1236,4 +1237,22 @@ export const adminCreateCustomTestSeries = createServerFn({ method: "POST" })
       chaptersCount: totalChapters,
       totalAutoQuestions: totalChapters * 60,
     };
+  });
+
+export const adminClearAllTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    await writeCustomSeriesCatalog({
+      syllabusBySeriesId: {},
+      removedSeriesIds: [],
+      addedSeries: [],
+      includeBuiltIn: false,
+    });
+    const allTests = await projectContent.from("tests").select("id");
+    for (const row of allTests.data ?? []) {
+      await projectContent.from("test_questions").delete().eq("test_id", row.id);
+      await projectContent.from("tests").delete().eq("id", row.id);
+    }
+    return { ok: true };
   });

@@ -6,10 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import type { CourseRow, ProfileRow } from "@/integrations/supabase/db";
+import { getCustomSeriesCatalog } from "@/lib/content.functions";
 import { listAdminTests } from "@/lib/admin.functions";
 import { adminGrantEnrollment } from "@/lib/enrollments.functions";
 import { adminGrantSeriesAccess, adminGrantTestAccess } from "@/lib/test-access.functions";
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import {
+  getEffectiveLearningSeries,
+  LEARNING_SERIES,
+  setRuntimeCustomSeriesCatalog,
+} from "@/lib/test-series-catalog";
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 
 export function AdminEnrollmentPanel({
@@ -29,6 +34,19 @@ export function AdminEnrollmentPanel({
   const [item, setItem] = useState("");
   const [validDays, setValidDays] = useState("0");
   const tests = useQuery({ queryKey: ["admin", "tests"], queryFn: () => fetchTests() });
+  const customCatalog = useQuery({
+    queryKey: ["public", "custom-series-catalog"],
+    queryFn: () => getCustomSeriesCatalog(),
+    staleTime: 60_000,
+  });
+  setRuntimeCustomSeriesCatalog(customCatalog.data);
+  const allSeries = (() => {
+    const map = new Map<string, (typeof LEARNING_SERIES)[number]>();
+    for (const series of [...getEffectiveLearningSeries(customCatalog.data), ...LEARNING_SERIES]) {
+      if (!map.has(series.id)) map.set(series.id, series);
+    }
+    return [...map.values()];
+  })();
   const choices =
     kind === "course"
       ? courses
@@ -38,7 +56,7 @@ export function AdminEnrollmentPanel({
         ? (tests.data ?? [])
             .filter((test) => test.is_published)
             .map((test) => ({ id: test.id, title: test.title }))
-        : LEARNING_SERIES.map((series) => ({
+        : allSeries.map((series) => ({
             id: series.id,
             title: `${series.name} · ${series.examTrack}`,
           }));

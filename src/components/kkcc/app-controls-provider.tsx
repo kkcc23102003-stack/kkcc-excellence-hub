@@ -55,8 +55,8 @@ export function AppControlsProvider({ children }: { children: ReactNode }) {
     queryKey: ["public-app-controls"],
     queryFn: () => load(),
     placeholderData: cachedControls ?? DEFAULT_APP_CONTROLS,
-    staleTime: 60 * 1000,
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const controls = useMemo(

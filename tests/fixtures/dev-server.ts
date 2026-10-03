@@ -200,38 +200,66 @@ const testBase = {
   created_at: now,
   updated_at: now,
 };
-doc.tables["tests"] = [
-  { ...testBase, id: ids.test },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000002",
-    title: "Fixture Course-Linked Test",
-    course_id: ids.course,
-    series_name: "",
-    sort_order: 2,
-  },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000003",
-    title: "Fixture Free Test",
-    is_paid: false,
-    series_name: "",
-    sort_order: 3,
-  },
-  ...getExamBankExams().map((exam, index) => ({
-    ...testBase,
-    id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-    title: `Fixture ${exam}`,
-    exam_track: exam,
-    generation_exam: exam,
-    generation_subject: "",
-    subject: exam,
-    series_name: "",
-    is_paid: false,
-    sort_order: index + 10,
-  })),
-];
+const isLivePreview = process.env["KKCC_LIVE_PREVIEW"] === "1";
+doc.tables["tests"] = isLivePreview
+  ? []
+  : [
+      { ...testBase, id: ids.test },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000002",
+        title: "Fixture Course-Linked Test",
+        course_id: ids.course,
+        series_name: "",
+        sort_order: 2,
+      },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000003",
+        title: "Fixture Free Test",
+        is_paid: false,
+        series_name: "",
+        sort_order: 3,
+      },
+      ...getExamBankExams().map((exam, index) => ({
+        ...testBase,
+        id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        title: `Fixture ${exam}`,
+        exam_track: exam,
+        generation_exam: exam,
+        generation_subject: "",
+        subject: exam,
+        series_name: "",
+        is_paid: false,
+        sort_order: index + 10,
+      })),
+    ];
 doc.tables["test_questions"] = [];
+doc.tables["test_series_overrides"] = [];
+if (!isLivePreview) {
+  doc.tables["site_settings"] = [
+    ...(doc.tables["site_settings"] || []).filter(
+      (row) => row["key"] !== "test_series_custom_catalog",
+    ),
+    {
+      id: "99000000-0000-4000-8000-000000000099",
+      key: "test_series_custom_catalog",
+      value: JSON.stringify({
+        includeBuiltIn: true,
+        removedSeriesIds: [],
+        addedSeries: [],
+        syllabusBySeriesId: {},
+      }),
+      category: "exam-bank",
+      label: "Custom Test Series & Text Syllabus Catalog",
+      updated_at: now,
+    },
+  ];
+} else {
+  doc.tables["site_settings"] = (doc.tables["site_settings"] || []).filter(
+    (row) => row["key"] !== "test_series_custom_catalog",
+  );
+}
 doc.tables["private_settings"] = [];
 mkdirSync("data", { recursive: true });
 writeFileSync(runtime, JSON.stringify(doc), { mode: 0o600 });

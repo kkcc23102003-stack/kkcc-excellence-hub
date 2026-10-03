@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getMyStudentSection } from "@/lib/enrollments.functions";
 import { listMySeriesAccess } from "@/lib/test-access.functions";
-import { PAID_TEST_SERIES } from "@/lib/test-series-catalog";
+import { getEffectivePaidTestSeries, PAID_TEST_SERIES } from "@/lib/test-series-catalog";
 import { getMy23KaatWallet } from "@/lib/coins.functions";
 import { useUiText } from "@/components/kkcc/ui-text-provider";
 import { KaatCoin, KaatCoinStack } from "@/components/kkcc/kaat-coin";
@@ -214,7 +214,7 @@ function DashboardHome() {
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {data.seriesAccess.map((access) => {
-              const series = PAID_TEST_SERIES.find(
+              const series = [...getEffectivePaidTestSeries(), ...PAID_TEST_SERIES].find(
                 (item) =>
                   item.id.trim().toLowerCase() === access.series_id.trim().toLowerCase() ||
                   item.name.trim().toLowerCase() === access.series_id.trim().toLowerCase(),

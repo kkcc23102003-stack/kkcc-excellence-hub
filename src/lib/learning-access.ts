@@ -21,8 +21,7 @@ export function canonicalSeriesId(
 ): string | null {
   const key = value?.trim().toLocaleLowerCase();
   if (!key) return null;
-  const activeSeries = getEffectiveLearningSeries();
-  const pool = activeSeries.length > 0 ? activeSeries : LEARNING_SERIES;
+  const pool = [...getEffectiveLearningSeries(), ...LEARNING_SERIES];
   const exact = pool.find((item) => item.id.toLocaleLowerCase() === key);
   if (exact) return exact.id; // Canonical code IDs always win over mutable display names.
   if (aliases && Object.hasOwn(aliases, key)) return aliases[key] ?? null;
@@ -31,8 +30,7 @@ export function canonicalSeriesId(
 }
 export function seriesAliases(overrides: readonly { series_id: string; name: string | null }[]) {
   const matches = new Map<string, Set<string>>();
-  const activeSeries = getEffectiveLearningSeries();
-  const pool = activeSeries.length > 0 ? activeSeries : LEARNING_SERIES;
+  const pool = [...getEffectiveLearningSeries(), ...LEARNING_SERIES];
   for (const series of pool) {
     const key = series.name.trim().toLocaleLowerCase();
     if (!matches.has(key)) matches.set(key, new Set());

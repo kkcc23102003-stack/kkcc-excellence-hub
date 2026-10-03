@@ -98,6 +98,20 @@ function objectAddress() {
   return { Bucket, Key: process.env["KKCC_CONTENT_KEY"] || "kkcc/project-content-v1.json" };
 }
 
+let cachedFileDoc: { path: string; mtimeMs: number; document: ContentDocument } | null = null;
+const missingRemoteTables = new Set<string>();
+const remoteSelectCache = new Map<string, { expiresAt: number; result: Result<unknown> }>();
+
+export function invalidateProjectContentCache(table?: string) {
+  if (!table) {
+    remoteSelectCache.clear();
+    return;
+  }
+  for (const key of remoteSelectCache.keys()) {
+    if (key.startsWith(`${table}:`)) remoteSelectCache.delete(key);
+  }
+}
+
 export async function readProjectDocument(): Promise<{ document: ContentDocument; etag?: string }> {
   if (backend() === "s3") {
     try {
@@ -114,8 +128,19 @@ export async function readProjectDocument(): Promise<{ document: ContentDocument
     }
   }
   if (backend() === "readonly") return { document: seedDocument() };
+  const path = filePath();
   try {
-    return { document: JSON.parse(await readFile(filePath(), "utf8")) as ContentDocument };
+    const fileStat = await stat(path);
+    if (
+      cachedFileDoc &&
+      cachedFileDoc.path === path &&
+      cachedFileDoc.mtimeMs === fileStat.mtimeMs
+    ) {
+      return { document: copy(cachedFileDoc.document) };
+    }
+    const parsed = JSON.parse(await readFile(path, "utf8")) as ContentDocument;
+    cachedFileDoc = { path, mtimeMs: fileStat.mtimeMs, document: copy(parsed) };
+    return { document: parsed };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return { document: seedDocument() };
@@ -179,6 +204,7 @@ export async function mutateProjectDocument<T>(
     const result = mutate(document);
     await writeFile(temporary, JSON.stringify(document, null, 2), { mode: 0o600 });
     await rename(temporary, path);
+    cachedFileDoc = null;
     return result;
   } finally {
     await rm(temporary, { force: true });
@@ -570,8 +596,30 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     }
   }
   private async execute(): Promise<Result<Output>> {
-    if (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file") {
+    if (
+      process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" ||
+      missingRemoteTables.has(this.table)
+    ) {
       return this.executeLocal();
+    }
+    const table = this.table as string;
+    const cacheKey =
+      this.operation === "select"
+        ? `${table}:${this.selectColumns}:${this.cardinality}:${this.head}:${this.offset}:${this.cap}:${JSON.stringify(this.remoteFilters)}:${JSON.stringify(this.orders)}`
+        : "";
+    if (cacheKey) {
+      const hit = remoteSelectCache.get(cacheKey);
+      if (hit && hit.expiresAt > Date.now()) {
+        return copy(hit.result) as Result<Output>;
+      }
+    } else {
+      invalidateProjectContentCache(table);
+      if (table === "lectures" || table === "materials" || table === "tests") {
+        invalidateProjectContentCache("courses");
+      }
+      if (table === "test_questions") {
+        invalidateProjectContentCache("tests");
+      }
     }
     try {
       type RemoteQuery = PromiseLike<{
@@ -601,7 +649,6 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       };
       const client = supabaseAdmin as unknown as { from: (t: string) => RemoteQuery };
       let query: RemoteQuery;
-      const table = this.table as string;
 
       if (this.operation === "select") {
         query = client.from(table).select(this.selectColumns, {
@@ -650,6 +697,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
             result.error.message || "",
           )
         ) {
+          missingRemoteTables.add(table);
           return this.executeLocal();
         }
         return {
@@ -659,15 +707,23 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
         };
       }
       const data = result.data as Output;
-      return {
+      const outResult: Result<Output> = {
         data,
         error: null,
         count:
           result.count ?? (Array.isArray(result.data) ? result.data.length : result.data ? 1 : 0),
       };
+      if (cacheKey) {
+        remoteSelectCache.set(cacheKey, {
+          expiresAt: Date.now() + 4_000,
+          result: copy(outResult) as Result<unknown>,
+        });
+      }
+      return outResult;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (/not configured|Missing Supabase|unavailable in fixture|does not exist/i.test(msg)) {
+        missingRemoteTables.add(table);
         return this.executeLocal();
       }
       return {

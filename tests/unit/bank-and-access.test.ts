@@ -247,6 +247,8 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   assert.deepEqual(plan[0]?.chapters, ["ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ", "ਸ਼ਬਦ ਬੋਧ", "ਪੰਜਾਬੀ ਸਾਹਿਤ"]);
   assert.equal(formatSeriesSyllabusText(plan), text);
 
+  assert.equal(getEffectivePaidTestSeries({}).length, 0);
+
   const effective = getEffectivePaidTestSeries({
     removedSeriesIds: ["ppsc-pcs"],
     syllabusBySeriesId: { "punjab-ett-paper-a": plan },

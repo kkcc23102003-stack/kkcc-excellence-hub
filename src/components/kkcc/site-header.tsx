@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Gamepad2,
@@ -48,39 +49,33 @@ function Header23KaatWallet({
   userId: string | undefined;
   onNavigate?: () => void;
 }) {
-  const [balance, setBalance] = useState<number | null>(null);
+  const qc = useQueryClient();
+  const { data: balance = null } = useQuery<number | null>({
+    queryKey: ["my-23kaat-wallet-balance", userId],
+    enabled: Boolean(authed && userId),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 20 * 60 * 1000,
+    retry: 0,
+    queryFn: async () => {
+      try {
+        const wallet = await getMy23KaatWallet();
+        return wallet.balance;
+      } catch {
+        return null;
+      }
+    },
+  });
 
   useEffect(() => {
-    if (!authed || !userId) {
-      setBalance(null);
-      return;
-    }
-
-    let active = true;
-    void getMy23KaatWallet()
-      .then((wallet) => {
-        if (active) setBalance(wallet.balance);
-      })
-      .catch(() => {
-        if (active) setBalance(null);
-      });
-
+    if (!authed || !userId) return;
     const onRefresh = () => {
-      void getMy23KaatWallet()
-        .then((wallet) => {
-          if (active) setBalance(wallet.balance);
-        })
-        .catch(() => {
-          if (active) setBalance(null);
-        });
+      void qc.invalidateQueries({ queryKey: ["my-23kaat-wallet-balance", userId] });
     };
-
     window.addEventListener("kkcc:23kaat-refresh", onRefresh);
     return () => {
-      active = false;
       window.removeEventListener("kkcc:23kaat-refresh", onRefresh);
     };
-  }, [authed, userId]);
+  }, [authed, userId, qc]);
 
   return (
     <Link
