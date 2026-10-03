@@ -29,7 +29,7 @@ const serverUploadSchema = uploadTargetSchema.extend({
   base64: z
     .string()
     .min(1)
-    .max(1024 * 1024 * 4),
+    .max(1024 * 1024 * 16),
 });
 
 const recordFileSchema = z.object({
@@ -84,8 +84,16 @@ export const createStorageUploadTarget = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await assertAdmin(context);
     const settings = await contentStorageSettings();
-    if (!settings.bucket) throw new Error("Configure a storage bucket in Admin → Storage first.");
     const key = `${data.folder.replace(/\/+$/g, "")}/${Date.now()}-${safeFileName(data.file_name)}`;
+    if (!settings.bucket) {
+      return {
+        provider: "local",
+        bucket: "local-public",
+        path: key,
+        public_url: `/uploads/${key}`,
+        upload: null,
+      };
+    }
     const publicImage =
       data.content_type.startsWith("image/") &&
       (/^(branding|course-thumbnails|material-thumbnails|faculty-images|website-images|logos|banners)(?:\/|$)/.test(
@@ -142,11 +150,30 @@ export const uploadSmallContentFileViaServer = createServerFn({ method: "POST" }
   .handler(async ({ context, data }) => {
     await assertAdmin(context);
     const settings = await contentStorageSettings();
-    if (!settings.bucket) throw new Error("Configure a storage bucket in Admin → Storage first.");
     const buffer = Buffer.from(data.base64, "base64");
-    if (buffer.length > 3 * 1024 * 1024 || buffer.length !== data.size_bytes)
-      throw new Error("Invalid upload size; server fallback supports up to 3 MB.");
+    if (buffer.length > 10 * 1024 * 1024 || buffer.length !== data.size_bytes)
+      throw new Error("Invalid upload size; server fallback supports up to 10 MB.");
     const key = `${data.folder.replace(/\/+$/g, "")}/${Date.now()}-${safeFileName(data.file_name)}`;
+
+    if (!settings.bucket) {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const localPath = path.join(process.cwd(), "public", "uploads", key);
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.writeFile(localPath, buffer);
+      const localUrl = `/uploads/${key}`;
+      await projectContent.from("files").insert({
+        provider: "local",
+        bucket: "local-public",
+        path: key,
+        public_url: localUrl,
+        mime_type: data.content_type,
+        size_bytes: buffer.length,
+        created_by: context.userId,
+      });
+      return { provider: "local", bucket: "local-public", path: key, public_url: localUrl };
+    }
+
     const publicImage =
       data.content_type.startsWith("image/") &&
       (/^(branding|course-thumbnails|material-thumbnails|faculty-images|website-images|logos|banners)(?:\/|$)/.test(
@@ -164,7 +191,15 @@ export const uploadSmallContentFileViaServer = createServerFn({ method: "POST" }
         upsert: true,
         cacheControl: "3600",
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const localPath = path.join(process.cwd(), "public", "uploads", key);
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, buffer);
+        const localUrl = `/uploads/${key}`;
+        return { provider: "local", bucket: "local-public", path: key, public_url: localUrl };
+      }
     } else {
       const client = contentStorageClient(settings);
       if (!client) throw new Error("Storage provider is not configured.");

@@ -38,6 +38,8 @@ type LectureWithModule = { id: string; title: string; module: string; sort_order
 type MaterialWithOptionalAccess = {
   id: string;
   title: string;
+  description?: string | null;
+  subject?: string | null;
   material_type: string;
   chapter: string;
   module_title: string;
@@ -465,6 +467,12 @@ function LearnPage() {
                                 accessType={m.access_type ?? null}
                                 price={m.price ?? null}
                                 coinPrice={m.coin_price ?? null}
+                                courseId={m.course_id}
+                                title={m.title}
+                                subject={m.subject}
+                                chapter={m.chapter}
+                                description={m.description}
+                                materialType={m.material_type}
                                 className="w-auto"
                               />
                             ) : locked ? (
@@ -483,25 +491,21 @@ function LearnPage() {
                                   </Link>
                                 </Button>
                               )
-                            ) : courseIncluded ? (
+                            ) : (
                               <MaterialAccessButton
                                 fileUrl={m.file_url}
                                 materialId={m.id}
-                                accessType="course"
+                                accessType={courseIncluded ? "course" : "free"}
                                 price={m.price ?? null}
                                 coinPrice={m.coin_price ?? null}
+                                courseId={m.course_id}
+                                title={m.title}
+                                subject={m.subject}
+                                chapter={m.chapter}
+                                description={m.description}
+                                materialType={m.material_type}
                                 className="w-auto"
                               />
-                            ) : m.file_url ? (
-                              <Button asChild size="sm" variant="outline" className="rounded-full">
-                                <a href={m.file_url} target="_blank" rel="noreferrer">
-                                  <Download className="mr-1.5 h-3.5 w-3.5" /> Open PDF
-                                </a>
-                              </Button>
-                            ) : (
-                              <Badge variant="outline" className="rounded-full">
-                                File coming soon
-                              </Badge>
                             )}
                           </div>
                         </div>
@@ -587,6 +591,12 @@ function LearnPage() {
                           accessType={m.access_type ?? null}
                           price={m.price ?? null}
                           coinPrice={m.coin_price ?? null}
+                          courseId={m.course_id}
+                          title={m.title}
+                          subject={m.subject}
+                          chapter={m.chapter}
+                          description={m.description}
+                          materialType={m.material_type}
                           className="w-auto shrink-0"
                         />
                       ) : locked ? (
@@ -603,27 +613,22 @@ function LearnPage() {
                             </Link>
                           </Button>
                         )
-                      ) : courseIncluded ? (
+                      ) : (
                         <MaterialAccessButton
                           fileUrl={m.file_url}
                           materialId={m.id}
-                          accessType="course"
+                          accessType={courseIncluded ? "course" : "free"}
                           price={m.price ?? null}
                           coinPrice={m.coin_price ?? null}
+                          courseId={m.course_id}
+                          title={m.title}
+                          subject={m.subject}
+                          chapter={m.chapter}
+                          description={m.description}
+                          materialType={m.material_type}
                           className="w-auto shrink-0"
                         />
-                      ) : m.file_url ? (
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0 rounded-full"
-                        >
-                          <a href={m.file_url} target="_blank" rel="noreferrer">
-                            <Download className="mr-1.5 h-3.5 w-3.5" /> Open
-                          </a>
-                        </Button>
-                      ) : null}
+                      )}
                     </div>
                   );
                 })}

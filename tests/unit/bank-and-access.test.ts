@@ -26,12 +26,14 @@ import {
   LEARNING_SERIES,
   PAID_TEST_SERIES,
   formatSeriesSyllabusText,
+  getChapterQuestionCount,
   getCustomChapterConfig,
   getEffectivePaidTestSeries,
   makeCustomChapterKey,
   parseSeriesSyllabusText,
   resolveSeriesPrice,
 } from "../../src/lib/test-series-catalog";
+import { getAllBuiltInStudyNotes } from "../../src/lib/theory-bank";
 import { gradePaper, publicQuestions } from "../../src/lib/test-scoring";
 import { coinPriceOf, isFreeCourse } from "../../src/lib/cms";
 
@@ -313,10 +315,16 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   }
 
   const key = makeCustomChapterKey("my-series", "SST", "Preamble");
+  const globalKey = makeCustomChapterKey("*", "SST", "Preamble");
   const catalogWithCustom = {
+    defaultQuestionsPerChapter: 30,
+    questionsPerSeriesId: {
+      "my-series": 25,
+    },
     customQuestionsByChapter: {
       [key]: {
         mode: "custom_only" as const,
+        questionCount: 15,
         questions: [
           {
             id: "cq-1",
@@ -325,6 +333,20 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
             correct_index: 0,
             explanation:
               "N. A. Palkhivala called the Preamble the Identity Card of the Constitution.",
+            source: "manual" as const,
+          },
+        ],
+      },
+      [globalKey]: {
+        mode: "custom_plus_bank" as const,
+        questions: [
+          {
+            id: "cq-ai-1",
+            question_text: "Which amendment added Socialist and Secular to the Preamble?",
+            options: ["42nd Amendment, 1976", "44th Amendment, 1978", "1st Amendment, 1951", "86th Amendment, 2002"],
+            correct_index: 0,
+            explanation: "The 42nd Constitutional Amendment Act, 1976 added Socialist, Secular and Integrity.",
+            source: "ai" as const,
           },
         ],
       },
@@ -332,6 +354,17 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   };
   const resolvedCustom = getCustomChapterConfig("my-series", "SST", "Preamble", catalogWithCustom);
   assert.equal(resolvedCustom?.mode, "custom_only");
-  assert.equal(resolvedCustom?.questions.length, 1);
+  assert.equal(resolvedCustom?.questions.length, 2);
   assert.equal(resolvedCustom?.questions[0]?.options[0], "N. A. Palkhivala");
+  assert.equal(resolvedCustom?.questions[1]?.source, "ai");
+  assert.equal(getChapterQuestionCount("my-series", "SST", "Preamble", catalogWithCustom), 15);
+  assert.equal(getChapterQuestionCount("my-series", "SST", "Other Chapter", catalogWithCustom), 25);
+  assert.equal(getChapterQuestionCount("other-series", "SST", "Other Chapter", catalogWithCustom), 30);
+
+  const builtInNotes = getAllBuiltInStudyNotes();
+  assert.ok(builtInNotes.length >= 10, "Expected built-in study notes library to be populated");
+  assert.ok(
+    builtInNotes.some((n) => n.subject === "SST" && n.chapter === "Preamble"),
+    "Expected built-in study notes to include SST -> Preamble",
+  );
 });

@@ -423,22 +423,11 @@ function TestSeries() {
             ) : (
               <div className="surface-panel mt-6 p-8 text-center">
                 <BookOpenCheck className="mx-auto h-8 w-8 text-primary" />
-                <p className="mt-3 text-base font-bold">No Test Series Added Yet</p>
+                <p className="mt-3 text-base font-bold">No Test Series Available Right Now</p>
                 <p className="mx-auto mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-                  The test series catalogue is currently empty so Admin can create and manage custom
-                  test series and syllabuses from scratch.
+                  New chapterwise and full-length test series are being prepared and will appear
+                  here as soon as they are published.
                 </p>
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                  <Button asChild size="sm" className="rounded-full font-bold">
-                    <Link to="/admin/exam-bank">+ Create Test Series (Admin)</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
-                    <Link to="/admin/tests">+ Create Individual Test</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
-                    <Link to="/admin/syllabus">Syllabus Auto Builder</Link>
-                  </Button>
-                </div>
               </div>
             )}
           </div>
@@ -560,6 +549,15 @@ function SeriesCard({
   const plan = seriesPlan(series);
   const totals = seriesTotals(series);
   const isFree = series.priceInr <= 0 && series.priceCoins <= 0;
+  const qPerChapter = Math.max(1, series.questionsPerTest ?? 60);
+  const easyQ = Math.max(0, Math.floor(qPerChapter / 3));
+  const modQ = Math.max(0, Math.floor((qPerChapter - easyQ) / 2));
+  const diffQ = Math.max(1, qPerChapter - easyQ - modQ);
+  const levelBreakdown = [
+    { level: "Easy", questions: easyQ },
+    { level: "Moderate", questions: modQ },
+    { level: "Difficult", questions: diffQ },
+  ];
   return (
     <article className="surface-panel hover-lift flex h-full min-w-0 max-w-full flex-col break-words p-6">
       <div className="flex items-start justify-between gap-3">
@@ -600,7 +598,7 @@ function SeriesCard({
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{series.summary}</p>
 
       <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-        {CHAPTER_LEVELS.map((entry, index) => (
+        {levelBreakdown.map((entry, index) => (
           <span
             key={entry.level}
             className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-primary"
@@ -608,7 +606,7 @@ function SeriesCard({
             {index + 1}. {entry.level} · {entry.questions}Q
           </span>
         ))}
-        <span className="text-muted-foreground">target per chapter</span>
+        <span className="text-muted-foreground">({qPerChapter}Q per chapter)</span>
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-1.5">

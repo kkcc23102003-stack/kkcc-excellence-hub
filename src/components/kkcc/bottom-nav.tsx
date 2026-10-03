@@ -8,7 +8,7 @@ const ITEMS = [
   { label: "Learn", to: "/learn", icon: PlayCircle, exact: false, ariaLabel: undefined },
   {
     label: "Notes",
-    to: "/dashboard/materials",
+    to: "/study-material",
     icon: FileText,
     exact: false,
     ariaLabel: undefined,

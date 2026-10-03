@@ -94,11 +94,11 @@ export const ADMIN_TOOLS: AdminToolItem[] = [
   },
   {
     to: "/admin/exam-bank",
-    label: "Exam Bank & Test Series",
-    hint: "Create/remove Test Series, edit Text Syllabus & auto-generate MCQs",
+    label: "Question Bank & Test Series",
+    hint: "All Template Questions + Add Your Questions + AI Generator + Set Question Count",
     category: "Courses & Content",
     icon: Database,
-    badge: "Full Control",
+    badge: "Question Bank",
   },
   {
     to: "/admin/ai-question-engine",

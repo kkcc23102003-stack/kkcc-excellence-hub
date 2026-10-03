@@ -48,7 +48,11 @@ import {
   saveTestQuestion,
   pullQuestionsFromBank,
 } from "@/lib/admin.functions";
-import { ACTIVE_TEMPLATES } from "@/lib/exam-bank";
+import {
+  CATALOG_EXAMS_LIST,
+  CATALOG_SUBJECTS_BY_EXAM,
+  getCatalogTopicsForExam,
+} from "@/lib/test-series-catalog-meta";
 import { cn } from "@/lib/utils";
 import {
   adminGrantTestAccess,
@@ -58,7 +62,7 @@ import {
 } from "@/lib/test-access.functions";
 
 /** Exam tracks the bank actually carries, plus an everything option. */
-const BANK_EXAMS = ["All Exams", ...[...new Set(ACTIVE_TEMPLATES.flatMap((t) => t.exams))].sort()];
+const BANK_EXAMS = CATALOG_EXAMS_LIST;
 
 /** One price across the whole app, in rupees and in coins alike. */
 const DEFAULT_TEST_PRICE = 999;
@@ -300,24 +304,14 @@ function TestQuestionWriter() {
     "Difficult",
   );
 
-  const pullSubjects = useMemo(() => {
-    const out = new Set<string>();
-    for (const t of ACTIVE_TEMPLATES) {
-      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
-      out.add(t.subject);
-    }
-    return [...out].sort();
-  }, [pullExam]);
+  const pullSubjects = useMemo(
+    () => CATALOG_SUBJECTS_BY_EXAM[pullExam] ?? CATALOG_SUBJECTS_BY_EXAM["All Exams"] ?? [],
+    [pullExam],
+  );
 
   const pullTopics = useMemo(() => {
     if (!pullSubject) return [];
-    const out = new Set<string>();
-    for (const t of ACTIVE_TEMPLATES) {
-      if (t.subject !== pullSubject) continue;
-      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
-      out.add(t.topic);
-    }
-    return [...out].sort();
+    return getCatalogTopicsForExam(pullExam, pullSubject);
   }, [pullExam, pullSubject]);
 
   const pullFromBank = useServerFn(pullQuestionsFromBank);
@@ -875,12 +869,24 @@ function TestQuestionWriter() {
                 {/* Fill the paper from the question bank instead of typing
                     every question by hand. Everything pulled stays editable. */}
                 <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4">
-                  <h3 className="text-sm font-semibold">Generate fresh questions on demand</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Choose the exam, subject, chapter, level and count. Only this small recipe is
-                    saved. The actual questions are generated fresh when a student opens the test
-                    and are never saved in Supabase.
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        Pull from Question Bank (Priority #1 to Your Added &amp; AI Questions)
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Choose the exam, subject, chapter, level, and any question count (e.g. 10,
+                        20, 30, 60, 100). Questions you added or generated with AI in the Question
+                        Bank always get <strong>First Preference</strong>, and the rest fill from the
+                        template bank.
+                      </p>
+                    </div>
+                    <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
+                      <Link to="/admin/exam-bank">
+                        Open Question Bank (Templates + My Questions + AI)
+                      </Link>
+                    </Button>
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-semibold">
                       Exam
@@ -933,15 +939,34 @@ function TestQuestionWriter() {
                         ))}
                       </select>
                     </label>
-                    <label className="text-xs font-semibold">
-                      How many
+                    <div className="text-xs font-semibold">
+                      <span>How many questions (1–200)</span>
                       <Input
                         className="mt-1"
-                        inputMode="numeric"
+                        type="number"
+                        min={1}
+                        max={200}
                         value={pullCount}
                         onChange={(e) => setPullCount(e.target.value)}
                       />
-                    </label>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {[10, 15, 20, 25, 30, 50, 60, 100].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setPullCount(String(num))}
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[10px] font-bold transition",
+                              Number(pullCount) === num
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "bg-background hover:border-primary/50",
+                            )}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <label className="text-xs font-semibold">
                       Level
                       <select
@@ -971,14 +996,16 @@ function TestQuestionWriter() {
                               subject: pullSubject,
                               topic: pullTopic,
                               difficulty: pullLevel,
-                              count: Number(pullCount || 20),
+                              count: Math.max(1, Math.min(200, Number(pullCount || 20))),
                               marks: 1,
                               negative_marks: 0,
                             },
                           })
                         }
                       >
-                        {pull.isPending ? "Configuring…" : "Set up fresh generation"}
+                        {pull.isPending
+                          ? "Configuring…"
+                          : `Set Up (${Math.max(1, Math.min(200, Number(pullCount || 20)))} Questions)`}
                       </Button>
                     </div>
                   </div>

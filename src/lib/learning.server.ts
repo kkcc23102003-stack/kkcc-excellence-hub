@@ -11,6 +11,7 @@ import { projectContent } from "@/lib/project-content.server";
 import {
   FREE_SERIES_IDS,
   LEARNING_SERIES,
+  getChapterQuestionCount,
   getCustomChapterConfig,
   getEffectiveLearningSeries,
   parseCustomSeriesCatalog,
@@ -344,12 +345,18 @@ export async function buildSelectedPaper(
     };
   }
   const recipe = learning.test;
-  const targetCount = recipe?.generation_count || 60;
+  const customCatalog = await readCustomSeriesCatalog();
+  const configuredChapterCount = getChapterQuestionCount(
+    learning.series_id ?? undefined,
+    selection.subject,
+    selection.chapter,
+    customCatalog,
+  );
+  const targetCount = recipe?.generation_count || configuredChapterCount;
   const defaultMarks = recipe?.generation_marks ?? 1;
   const defaultNegative = recipe?.generation_negative_marks ?? 0;
 
   // Check if Admin added custom questions for this (series_id, subject, chapter) or globally for (subject, chapter)
-  const customCatalog = await readCustomSeriesCatalog();
   const customChapter = getCustomChapterConfig(
     learning.series_id ?? undefined,
     selection.subject,
@@ -418,9 +425,13 @@ export async function buildSelectedPaper(
 
   let questions: GeneratedTestQuestion[] = [];
   if (customChapter?.mode === "custom_only" && allAdminCustom.length > 0) {
-    questions = allAdminCustom.map((q, idx) => ({ ...q, sort_order: idx }));
+    const cap = customChapter.questionCount
+      ? Math.min(allAdminCustom.length, customChapter.questionCount)
+      : allAdminCustom.length;
+    questions = allAdminCustom.slice(0, cap).map((q, idx) => ({ ...q, sort_order: idx }));
   } else {
-    const remainingCount = Math.max(0, targetCount - allAdminCustom.length);
+    const priorityCustom = allAdminCustom.slice(0, targetCount);
+    const remainingCount = Math.max(0, targetCount - priorityCustom.length);
     const paperRecipe = {
       exam: learning.exam,
       subject: selection.subject,
@@ -435,10 +446,8 @@ export async function buildSelectedPaper(
     const strictQuestions = isPreamble ? [] : generateOnDemandTestPaper(paperRecipe);
     const generated =
       strictQuestions.length > 0 ? strictQuestions : generateCustomSyllabusPaper(paperRecipe);
-    const combined = [
-      ...allAdminCustom,
-      ...generated.slice(0, Math.max(0, targetCount - allAdminCustom.length)),
-    ];
+    const combined =
+      remainingCount > 0 ? [...priorityCustom, ...generated.slice(0, remainingCount)] : priorityCustom;
     questions = (combined.length > 0 ? combined : generated).map((q, idx) => ({
       ...q,
       sort_order: idx,
@@ -458,7 +467,7 @@ export async function buildSelectedPaper(
     instructions:
       "Practice questions from the existing project bank. Easy → Moderate → Difficult. Actual available question count is shown; no questions are invented to fill a paper.",
     subject: selection.subject,
-    duration_minutes: 60,
+    duration_minutes: Math.max(15, questions.length),
     question_timer_seconds: 0,
     timer_mode: "test",
     questions_count: questions.length,

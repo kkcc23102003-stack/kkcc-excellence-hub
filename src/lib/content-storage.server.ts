@@ -84,9 +84,24 @@ export async function resolveContentUrl(value: string | null | undefined) {
       expiresIn: 3600,
     });
   }
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
-  const url = new URL(value);
-  if (url.protocol !== "https:" && url.protocol !== "http:")
-    throw new Error("Only HTTPS/HTTP hosted educational resources are supported.");
-  return url.href;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "#") return null;
+  if (
+    trimmed.startsWith("data:application/pdf") ||
+    trimmed.startsWith("data:text/html") ||
+    trimmed.startsWith("data:text/plain") ||
+    trimmed.startsWith("data:image/")
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
 }

@@ -76,6 +76,8 @@ export type PaidTestSeries = {
   priceCoins: number;
   /** Optional custom/edited chapterwise syllabus saved by Admin. */
   customPlan?: { subject: string; chapters: string[] }[];
+  /** Optional custom question count per chapter test set by Admin. */
+  questionsPerTest?: number;
 };
 
 export const PAID_TEST_SERIES: PaidTestSeries[] = [
@@ -1129,10 +1131,12 @@ export type CustomChapterQuestion = {
   difficulty?: "Easy" | "Moderate" | "Difficult";
   marks?: number;
   negative_marks?: number;
+  source?: "manual" | "ai";
 };
 
 export type CustomChapterConfig = {
   mode: "custom_only" | "custom_plus_bank";
+  questionCount?: number;
   questions: CustomChapterQuestion[];
 };
 
@@ -1143,6 +1147,10 @@ export type CustomSeriesCatalog = {
   includeBuiltIn?: boolean;
   /** Keyed by makeCustomChapterKey(seriesId, subject, chapter) */
   customQuestionsByChapter?: Record<string, CustomChapterConfig>;
+  /** Optional per-series question count per chapter test (e.g. 20, 30, 50, 60, 100) */
+  questionsPerSeriesId?: Record<string, number>;
+  /** Optional global default question count per chapter test */
+  defaultQuestionsPerChapter?: number;
 };
 
 export function makeCustomChapterKey(
@@ -1165,10 +1173,69 @@ export function getCustomChapterConfig(
   const map = catalog.customQuestionsByChapter;
   if (!map) return undefined;
   const exactKey = makeCustomChapterKey(seriesId, subject, chapter);
-  if (map[exactKey] && map[exactKey]!.questions.length > 0) return map[exactKey];
   const globalKey = makeCustomChapterKey("*", subject, chapter);
-  if (map[globalKey] && map[globalKey]!.questions.length > 0) return map[globalKey];
-  return undefined;
+  const exact = exactKey !== globalKey ? map[exactKey] : undefined;
+  const globalCfg = map[globalKey];
+
+  if (!exact && !globalCfg) return undefined;
+
+  const combinedQuestions: CustomChapterQuestion[] = [];
+  const seenTexts = new Set<string>();
+  for (const q of [...(exact?.questions ?? []), ...(globalCfg?.questions ?? [])]) {
+    const norm = q.question_text.trim().toLowerCase();
+    if (!seenTexts.has(norm)) {
+      seenTexts.add(norm);
+      combinedQuestions.push(q);
+    }
+  }
+
+  const mode = exact?.mode ?? globalCfg?.mode ?? "custom_plus_bank";
+  const questionCount = exact?.questionCount ?? globalCfg?.questionCount;
+
+  if (combinedQuestions.length === 0 && questionCount === undefined) return undefined;
+  return {
+    mode,
+    ...(questionCount !== undefined ? { questionCount } : {}),
+    questions: combinedQuestions,
+  };
+}
+
+export function getChapterQuestionCount(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+  catalog: CustomSeriesCatalog = runtimeCustomCatalog,
+): number {
+  const map = catalog.customQuestionsByChapter;
+  if (map) {
+    const exactKey = makeCustomChapterKey(seriesId, subject, chapter);
+    const exactCount = map[exactKey]?.questionCount;
+    if (typeof exactCount === "number" && exactCount >= 1) {
+      return Math.min(200, Math.round(exactCount));
+    }
+    const globalKey = makeCustomChapterKey("*", subject, chapter);
+    const globalCount = map[globalKey]?.questionCount;
+    if (typeof globalCount === "number" && globalCount >= 1) {
+      return Math.min(200, Math.round(globalCount));
+    }
+  }
+  if (seriesId && catalog.questionsPerSeriesId?.[seriesId]) {
+    const seriesCount = catalog.questionsPerSeriesId[seriesId]!;
+    if (seriesCount >= 1) return Math.min(200, Math.round(seriesCount));
+  }
+  if (seriesId) {
+    const added = (catalog.addedSeries ?? []).find((s) => s.id === seriesId);
+    if (added?.questionsPerTest && added.questionsPerTest >= 1) {
+      return Math.min(200, Math.round(added.questionsPerTest));
+    }
+  }
+  if (
+    typeof catalog.defaultQuestionsPerChapter === "number" &&
+    catalog.defaultQuestionsPerChapter >= 1
+  ) {
+    return Math.min(200, Math.round(catalog.defaultQuestionsPerChapter));
+  }
+  return QUESTIONS_PER_CHAPTER;
 }
 
 let runtimeCustomCatalog: CustomSeriesCatalog = {};
@@ -1292,6 +1359,13 @@ export function parseCustomSeriesCatalog(raw: unknown): CustomSeriesCatalog {
         parsed.customQuestionsByChapter && typeof parsed.customQuestionsByChapter === "object"
           ? parsed.customQuestionsByChapter
           : {},
+      questionsPerSeriesId:
+        parsed.questionsPerSeriesId && typeof parsed.questionsPerSeriesId === "object"
+          ? parsed.questionsPerSeriesId
+          : {},
+      ...(typeof parsed.defaultQuestionsPerChapter === "number"
+        ? { defaultQuestionsPerChapter: parsed.defaultQuestionsPerChapter }
+        : {}),
     };
   } catch {
     return {};
@@ -1303,9 +1377,17 @@ export function applyCustomCatalogToSeries(
   custom: CustomSeriesCatalog = runtimeCustomCatalog,
 ): PaidTestSeries {
   const customPlan = custom.syllabusBySeriesId?.[series.id] ?? series.customPlan;
-  if (!customPlan || customPlan.length === 0) return series;
-  return {
+  const questionsPerTest =
+    custom.questionsPerSeriesId?.[series.id] ??
+    series.questionsPerTest ??
+    custom.defaultQuestionsPerChapter;
+  const next: PaidTestSeries = {
     ...series,
+    ...(questionsPerTest ? { questionsPerTest } : {}),
+  };
+  if (!customPlan || customPlan.length === 0) return next;
+  return {
+    ...next,
     subjects: customPlan.map((item) => item.subject),
     customPlan,
   };
@@ -1395,6 +1477,11 @@ export function seriesTotals(series: PaidTestSeries, customPlanOverride?: Subjec
   const chapterTests = chapters;
   const subjectTests = plan.length;
   const combinedTests = plan.length > 0 ? COMBINED_TESTS_PER_SERIES : 0;
+  const questionsPerChapter =
+    series.questionsPerTest ??
+    runtimeCustomCatalog.questionsPerSeriesId?.[series.id] ??
+    runtimeCustomCatalog.defaultQuestionsPerChapter ??
+    QUESTIONS_PER_CHAPTER;
   const hasCustomPlan = Boolean(
     customPlanOverride?.length ||
     series.customPlan?.length ||
@@ -1407,7 +1494,7 @@ export function seriesTotals(series: PaidTestSeries, customPlanOverride?: Subjec
     0,
   );
   const available = hasCustomPlan
-    ? Math.max(bankAvailable, chapters * QUESTIONS_PER_CHAPTER * 20, MIN_SERIES_POOL)
+    ? Math.max(bankAvailable, chapters * questionsPerChapter * 20, MIN_SERIES_POOL)
     : bankAvailable;
 
   // What the series actually ships. Sized by exam demand, never smaller than
@@ -1425,8 +1512,9 @@ export function seriesTotals(series: PaidTestSeries, customPlanOverride?: Subjec
     subjectTests,
     combinedTests,
     tests: chapterTests + subjectTests + combinedTests,
+    questionsPerChapter,
     questions:
-      chapterTests * QUESTIONS_PER_CHAPTER +
+      chapterTests * questionsPerChapter +
       subjectTests * QUESTIONS_PER_SUBJECT_TEST +
       combinedTests * QUESTIONS_PER_COMBINED_TEST,
     /** Distinct questions this series ships, sized by exam demand. */
@@ -1440,13 +1528,18 @@ export function seriesTotals(series: PaidTestSeries, customPlanOverride?: Subjec
 /** The three layers of a series, described for the cards. */
 export function seriesLayers(series: PaidTestSeries) {
   const totals = seriesTotals(series);
+  const qCount = totals.questionsPerChapter;
+  const perLevel = Math.max(1, Math.round(qCount / 3));
   return [
     {
       kind: "chapter" as TestKind,
       label: "Chapterwise",
       tests: totals.chapterTests,
-      questionsPerTest: QUESTIONS_PER_CHAPTER,
-      detail: "One test per chapter, 20 Easy then 20 Moderate then 20 Difficult.",
+      questionsPerTest: qCount,
+      detail:
+        qCount === 60
+          ? "One test per chapter, 20 Easy then 20 Moderate then 20 Difficult."
+          : `One test per chapter (${qCount} MCQs — priority custom questions + ${perLevel} Easy / ${perLevel} Moderate / ${qCount - perLevel * 2} Difficult).`,
     },
     {
       kind: "subject" as TestKind,

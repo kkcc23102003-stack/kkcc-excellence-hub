@@ -8,7 +8,7 @@ import {
 
 export const CONTENT_BUCKET = "course-content";
 const YEAR = 60 * 60 * 24 * 365;
-const SERVER_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
+const SERVER_FALLBACK_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Hard client-side ceiling aligned with Supabase Free project's practical single-file limit.
@@ -205,6 +205,9 @@ export async function uploadContentFile(
     });
     if (!target.path || !target.public_url)
       throw new Error("Storage did not return an upload target.");
+    if (target.provider === "local") {
+      return uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+    }
     if (target.provider === "supabase") {
       const { error } = await supabase.storage.from(target.bucket).upload(target.path, file, {
         contentType: contentType ?? "application/octet-stream",
@@ -240,8 +243,13 @@ export async function uploadContentFile(
       );
     return { path: target.path, url: target.public_url };
   } catch (error) {
-    if (isNetworkLike(error) && file.size <= SERVER_FALLBACK_MAX_BYTES)
-      return uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+    if (file.size <= SERVER_FALLBACK_MAX_BYTES) {
+      try {
+        return await uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+      } catch {
+        // Fall through to friendlyError below
+      }
+    }
     throw new Error(friendlyError(error));
   }
 }

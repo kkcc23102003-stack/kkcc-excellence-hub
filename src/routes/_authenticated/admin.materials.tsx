@@ -443,13 +443,50 @@ function MaterialForm({
           />
         </div>
         <div className="sm:col-span-2">
-          <Label>Description</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>Study Notes Content / Description (Shown directly in the Note Reader)</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-7 rounded-full text-xs font-bold"
+              onClick={() => {
+                const subj = v.subject.trim() || "General Studies";
+                const chap = v.chapter.trim() || v.title.trim() || "Core Topic";
+                const generated = `1. CHAPTER OVERVIEW — ${chap.toUpperCase()} (${subj.toUpperCase()})
+• Core definition, constitutional/theoretical foundation, and primary scope of ${chap} in ${subj}.
+• High-frequency exam concepts, chronology, and standard terminology asked in competitive papers.
+
+2. KEY EXAM POINTERS & FACTS
+• Point 1: Fundamental principle and primary classification of ${chap}.
+• Point 2: Important dates, articles, formulas, or landmark developments related to ${chap}.
+• Point 3: Standard exceptions, special cases, and comparative distinctions in ${subj}.
+
+3. QUICK REVISION SUMMARY
+• Revise all definitions, match-the-following pairs, and statement-based questions for ${chap} before attempting the chapter test.`;
+                setV({
+                  ...v,
+                  title:
+                    v.title === "Untitled note" || !v.title.trim()
+                      ? `${chap} — Complete Revision Notes`
+                      : v.title,
+                  description: v.description.trim()
+                    ? `${v.description.trim()}\n\n${generated}`
+                    : generated,
+                  pages: v.pages || 5,
+                });
+                toast.success(`Generated structured study notes for ${subj} → ${chap}!`);
+              }}
+            >
+              ✨ Auto-Generate Notes Outline
+            </Button>
+          </div>
           <Textarea
-            className="mt-1.5"
-            rows={3}
+            className="mt-1.5 font-mono text-xs leading-relaxed"
+            rows={8}
             value={v.description}
             onChange={(e) => setV({ ...v, description: e.target.value })}
-            placeholder="What does this resource cover?"
+            placeholder="Write or paste complete chapter study notes here (students can read & print this directly even without a PDF file), or attach a PDF / Google Drive link below."
           />
         </div>
         <div>
