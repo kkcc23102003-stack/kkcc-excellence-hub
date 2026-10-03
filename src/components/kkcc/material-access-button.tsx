@@ -24,6 +24,22 @@ function normaliseAccessType(
   return "course";
 }
 
+function toEmbeddedMobilePreviewUrl(url: string | null | undefined): string | null {
+  if (!url || url === "#" || url.startsWith("data:")) return null;
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveMatch?.[1]) {
+    return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+  }
+  const docsMatch = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
+  if (docsMatch?.[1]) {
+    return `https://docs.google.com/document/d/${docsMatch[1]}/mobilebasic`;
+  }
+  if (/\.pdf(?:$|[?#])/i.test(url) || url.startsWith("/uploads/")) {
+    return url;
+  }
+  return null;
+}
+
 function openPrintableNoteWindow(input: {
   title: string;
   subject?: string | null;
@@ -39,7 +55,7 @@ function openPrintableNoteWindow(input: {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br/>");
-  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${input.title}</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:840px;margin:32px auto;padding:24px;line-height:1.75;color:#0f172a;background:#f8fafc}h1{margin:0 0 10px;color:#0f172a;font-size:26px}.meta{font-size:12px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;box-shadow:0 4px 20px rgba(15,23,42,.05)}.toolbar{display:flex;gap:10px;margin-bottom:16px}.btn{padding:8px 16px;border-radius:999px;background:#0284c7;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:13px}@media print{.toolbar{display:none}body{background:#fff;margin:0;padding:0}.card{border:none;box-shadow:none;padding:0}}</style></head><body><div class="toolbar"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div><div class="card"><div class="meta">KKCC Excellence Hub · ${[input.subject, input.chapter, input.materialType].filter(Boolean).join(" · ")}</div><h1>${input.title}</h1><div>${escapedBody}</div></div></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"/><title>${input.title}</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;width:100%;max-width:800px;margin:0 auto;padding:14px;line-height:1.75;color:#0f172a;background:#f8fafc;overflow-wrap:anywhere;word-break:break-word}h1{margin:0 0 10px;color:#0f172a;font-size:clamp(20px,4.8vw,28px);line-height:1.3}.meta{font-size:12px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:clamp(16px,4vw,28px);box-shadow:0 4px 20px rgba(15,23,42,.05);font-size:clamp(15px,3.8vw,16px)}.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}.btn{padding:10px 18px;border-radius:999px;background:#0284c7;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:14px}@media print{.toolbar{display:none}body{background:#fff;margin:0;padding:0}.card{border:none;box-shadow:none;padding:0}}</style></head><body><div class="toolbar"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div><div class="card"><div class="meta">KKCC Excellence Hub · ${[input.subject, input.chapter, input.materialType].filter(Boolean).join(" · ")}</div><h1>${input.title}</h1><div>${escapedBody}</div></div></body></html>`;
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const blobUrl = URL.createObjectURL(blob);
   window.open(blobUrl, "_blank", "noopener,noreferrer");
@@ -78,6 +94,7 @@ export function MaterialAccessButton({
   const spendCoins = useServerFn(spend23KaatForMaterial);
   const [loading, setLoading] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [fontScale, setFontScale] = useState<number>(15);
   const mode = normaliseAccessType(accessType, price, courseId);
   const free = mode === "free";
   const access = useQuery({
@@ -101,7 +118,8 @@ export function MaterialAccessButton({
 
   const isInlineDataNote =
     !resolvedUrl || resolvedUrl === "#" || resolvedUrl.startsWith("data:text/html");
-  const hasReadableNote = Boolean(title || description || isInlineDataNote);
+  const embeddedPreviewUrl = toEmbeddedMobilePreviewUrl(resolvedUrl);
+  const hasReadableNote = Boolean(title || description || isInlineDataNote || embeddedPreviewUrl);
 
   if (!free && !user)
     return (
@@ -121,7 +139,7 @@ export function MaterialAccessButton({
             <Button
               type="button"
               size="sm"
-              variant={isInlineDataNote ? "default" : "outline"}
+              variant="default"
               className="flex-1 rounded-full font-semibold"
               onClick={() => setReaderOpen(true)}
             >
@@ -133,7 +151,7 @@ export function MaterialAccessButton({
             <Button
               asChild
               size="sm"
-              variant="default"
+              variant="outline"
               className="flex-1 rounded-full font-semibold"
             >
               <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
@@ -165,49 +183,100 @@ export function MaterialAccessButton({
 
         {readerOpen ? (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
             onClick={() => setReaderOpen(false)}
           >
             <div
-              className="relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-3xl border bg-background p-6 shadow-2xl"
+              className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden rounded-none border-0 bg-background shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-3xl sm:border"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3 border-b pb-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="rounded-full text-xs">
+              {/* Sticky Mobile-First Header */}
+              <div className="sticky top-0 z-10 flex items-start justify-between gap-2 border-b bg-background/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary" className="rounded-full text-[11px]">
                       {materialType || "Study Notes"}
                     </Badge>
                     {subject ? (
-                      <Badge variant="outline" className="rounded-full text-xs">
+                      <Badge variant="outline" className="rounded-full text-[11px]">
                         {subject}
                       </Badge>
                     ) : null}
                     {chapter ? (
-                      <Badge variant="outline" className="rounded-full text-xs">
+                      <Badge variant="outline" className="rounded-full text-[11px]">
                         {chapter}
                       </Badge>
                     ) : null}
                   </div>
-                  <h2 className="mt-2 text-xl font-black">{title || "Study Note"}</h2>
+                  <h2 className="mt-1.5 break-words text-base font-black leading-snug sm:text-xl">
+                    {title || "Study Note"}
+                  </h2>
                 </div>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="rounded-full"
-                  onClick={() => setReaderOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-full px-2.5 text-xs font-bold"
+                    onClick={() => setFontScale((s) => Math.max(13, s - 1))}
+                    title="Decrease text size"
+                  >
+                    A-
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-full px-2.5 text-xs font-bold"
+                    onClick={() => setFontScale((s) => Math.min(22, s + 1))}
+                    title="Increase text size"
+                  >
+                    A+
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setReaderOpen(false)}
+                    aria-label="Close note reader"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
-              <div className="mt-4 whitespace-pre-wrap rounded-2xl border bg-muted/20 p-5 text-sm leading-relaxed text-foreground">
-                {description ||
-                  `${title || "Study Note"}\n\nSubject: ${subject || "General"}\nChapter: ${chapter || "Core Concepts"}\n\nUse the Print / Save PDF or Open File button below to keep a copy for revision.`}
+              {/* Scrollable Mobile-Responsive Body */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
+                {description ? (
+                  <div
+                    style={{ fontSize: `${fontScale}px` }}
+                    className="whitespace-pre-wrap break-words rounded-2xl border bg-muted/20 p-4 leading-relaxed text-foreground sm:p-5"
+                  >
+                    {description}
+                  </div>
+                ) : null}
+
+                {embeddedPreviewUrl ? (
+                  <div className="mt-3 overflow-hidden rounded-2xl border bg-muted/10">
+                    <iframe
+                      src={embeddedPreviewUrl}
+                      title={title || "Study Note Document"}
+                      className="h-[62dvh] w-full border-0 sm:h-[480px]"
+                    />
+                  </div>
+                ) : !description ? (
+                  <div
+                    style={{ fontSize: `${fontScale}px` }}
+                    className="whitespace-pre-wrap break-words rounded-2xl border bg-muted/20 p-4 leading-relaxed text-foreground sm:p-5"
+                  >
+                    {`${title || "Study Note"}\n\nSubject: ${subject || "General"}\nChapter: ${chapter || "Core Concepts"}\n\nUse the Print / Save PDF or Open File button below to view or save a copy for revision.`}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+              {/* Sticky Mobile-First Footer */}
+              <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:py-4">
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -245,7 +314,7 @@ export function MaterialAccessButton({
                     <Button asChild size="sm" variant="secondary" className="rounded-full">
                       <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                        Open Attached File
+                        Open Original File
                       </a>
                     </Button>
                   ) : null}
