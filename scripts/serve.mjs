@@ -78,6 +78,68 @@ export function createProductionServer(entry, options = {}) {
         else outgoing.end();
         return;
       }
+      if (url.pathname === "/__fixture__/supabase/zip") {
+        const zipFile = resolve("full fledge kkcc excellence hub.zip");
+        const details = await stat(zipFile).catch(() => null);
+        if (details?.isFile()) {
+          const zipBytes = await readFile(zipFile);
+          outgoing.writeHead(200, {
+            "content-type": "application/zip",
+            "content-disposition": 'attachment; filename="full fledge kkcc excellence hub.zip"',
+            "content-length": String(zipBytes.byteLength),
+            "cache-control": "no-store",
+          });
+          outgoing.end(incoming.method === "HEAD" ? undefined : zipBytes);
+          return;
+        }
+      }
+      if (url.pathname === "/__fixture__/supabase/download/production.sql") {
+        const sqlFile = resolve("KKCC-Excellence-Hub-PRODUCTION-SQL.sql");
+        const details = await stat(sqlFile).catch(() => null);
+        if (details?.isFile()) {
+          const sqlBytes = await readFile(sqlFile);
+          outgoing.writeHead(200, {
+            "content-type": "text/sql; charset=utf-8",
+            "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"',
+            "content-length": String(sqlBytes.byteLength),
+            "cache-control": "no-store",
+          });
+          outgoing.end(incoming.method === "HEAD" ? undefined : sqlBytes);
+          return;
+        }
+      }
+      if (url.pathname === "/__fixture__/supabase/download/cleaner.sql") {
+        const sqlFile = resolve("KKCC-Excellence-Hub-SQL-CLEANER.sql");
+        const details = await stat(sqlFile).catch(() => null);
+        if (details?.isFile()) {
+          const sqlBytes = await readFile(sqlFile);
+          outgoing.writeHead(200, {
+            "content-type": "text/sql; charset=utf-8",
+            "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SQL-CLEANER.sql"',
+            "content-length": String(sqlBytes.byteLength),
+            "cache-control": "no-store",
+          });
+          outgoing.end(incoming.method === "HEAD" ? undefined : sqlBytes);
+          return;
+        }
+      }
+      if (url.pathname === "/__fixture__/supabase/sql") {
+        const cleanerSql = await readFile(
+          resolve("KKCC-Excellence-Hub-SQL-CLEANER.sql"),
+          "utf8",
+        ).catch(() => "");
+        const productionSql = await readFile(
+          resolve("KKCC-Excellence-Hub-PRODUCTION-SQL.sql"),
+          "utf8",
+        ).catch(() => "");
+        const payload = JSON.stringify({ cleanerSql, productionSql });
+        outgoing.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        outgoing.end(payload);
+        return;
+      }
       if (["GET", "HEAD"].includes(incoming.method || "GET")) {
         const file = resolve(root, `.${decodeURIComponent(url.pathname)}`);
         if (file.startsWith(`${root}${sep}`)) {

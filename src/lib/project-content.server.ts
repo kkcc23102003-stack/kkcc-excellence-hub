@@ -112,6 +112,15 @@ export function invalidateProjectContentCache(table?: string) {
   }
 }
 
+export function flushProjectContentCaches() {
+  const clearedSelectEntries = remoteSelectCache.size;
+  const clearedMissingTables = missingRemoteTables.size;
+  remoteSelectCache.clear();
+  missingRemoteTables.clear();
+  cachedFileDoc = null;
+  return { clearedSelectEntries, clearedMissingTables };
+}
+
 export async function readProjectDocument(): Promise<{ document: ContentDocument; etag?: string }> {
   if (backend() === "s3") {
     try {

@@ -121,6 +121,29 @@ END $$;
 REVOKE ALL ON FUNCTION public.kkcc_clean_database_bloat() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.kkcc_clean_database_bloat() TO authenticated, service_role;
 
+DO $$
+BEGIN
+  IF to_regclass('public.learning_attempts') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_learning_attempts_user_status_submitted ON public.learning_attempts (user_id, status, submitted_at DESC)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_learning_attempts_user_started ON public.learning_attempts (user_id, started_at DESC)';
+  END IF;
+  IF to_regclass('public.test_access_grants') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_test_access_grants_user_active ON public.test_access_grants (user_id, revoked_at, created_at DESC)';
+  END IF;
+  IF to_regclass('public.series_access_grants') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_series_access_grants_user_active ON public.series_access_grants (user_id, revoked_at, created_at DESC)';
+  END IF;
+  IF to_regclass('public.course_enrollments') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_course_enrollments_user_status ON public.course_enrollments (user_id, status, created_at DESC)';
+  END IF;
+  IF to_regclass('public.user_roles') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_user_roles_user_role ON public.user_roles (user_id, role)';
+  END IF;
+  IF to_regclass('public.profiles') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_profiles_lower_email ON public.profiles (lower(email))';
+  END IF;
+END $$;
+
 SELECT public.kkcc_clean_database_bloat() AS cleaner_report;
 
 NOTIFY pgrst, 'reload schema';

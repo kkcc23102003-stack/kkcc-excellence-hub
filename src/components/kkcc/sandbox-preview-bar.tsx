@@ -226,6 +226,26 @@ export function SandboxPreviewBar() {
             Download Complete ZIP
           </a>
 
+          <a
+            href="/__fixture__/supabase/download/production.sql"
+            download="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 font-bold text-white shadow-sm transition hover:opacity-90"
+            title="Download KKCC-Excellence-Hub-PRODUCTION-SQL.sql"
+          >
+            <Database className="h-3.5 w-3.5" />
+            Production SQL
+          </a>
+
+          <a
+            href="/__fixture__/supabase/download/cleaner.sql"
+            download="KKCC-Excellence-Hub-SQL-CLEANER.sql"
+            className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 font-bold text-slate-950 shadow-sm transition hover:opacity-90"
+            title="Download KKCC-Excellence-Hub-SQL-CLEANER.sql"
+          >
+            <Download className="h-3.5 w-3.5" />
+            SQL Cleaner
+          </a>
+
           <button
             type="button"
             disabled={cleaning}
@@ -250,7 +270,7 @@ export function SandboxPreviewBar() {
             className="inline-flex items-center gap-1 rounded-full border border-cyan-500/50 bg-cyan-500/15 px-2.5 py-1 font-semibold text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
           >
             <Database className="h-3.5 w-3.5" />
-            SQL & Cleaner
+            Copy SQL
           </button>
 
           <button
@@ -446,6 +466,12 @@ export function SandboxPreviewBar() {
               Admin Home
             </Link>
             <Link
+              to="/admin/exam-bank"
+              className="rounded-full border bg-background px-2.5 py-0.5 font-medium text-primary hover:border-primary"
+            >
+              Test Series & Syllabus Admin
+            </Link>
+            <Link
               to="/admin/syllabus"
               className="rounded-full border bg-background px-2.5 py-0.5 font-medium text-primary hover:border-primary"
             >
@@ -468,6 +494,12 @@ export function SandboxPreviewBar() {
               className="rounded-full border bg-background px-2.5 py-0.5 font-medium text-primary hover:border-primary"
             >
               Security & Health
+            </Link>
+            <Link
+              to="/downloads"
+              className="rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-0.5 font-bold text-emerald-700 hover:border-emerald-500 dark:text-emerald-300"
+            >
+              Downloads & SQL Hub
             </Link>
           </div>
         </div>

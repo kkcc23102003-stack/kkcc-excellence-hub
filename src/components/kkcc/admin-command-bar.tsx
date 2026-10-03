@@ -1,5 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
   BookOpen,
   Sparkles,
@@ -25,9 +27,27 @@ import {
   ShieldCheck,
   Search,
   Compass,
+  Download,
+  Copy,
+  Trash2,
+  Zap,
+  SlidersHorizontal,
+  Loader2,
+  CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  adminClearAllTestSeries,
+  adminGetCustomSeriesCatalog,
+  adminOptimizeAndCleanServer,
+  adminToggleBuiltInSeries,
+} from "@/lib/admin.functions";
+import { getAdminAppControls, saveAdminAppControls } from "@/lib/app-controls.functions";
+import { safeServerCall } from "@/lib/safe-server-call";
 import { cn } from "@/lib/utils";
 
 type AdminCategory =
@@ -74,10 +94,11 @@ export const ADMIN_TOOLS: AdminToolItem[] = [
   },
   {
     to: "/admin/exam-bank",
-    label: "Exam Bank & Syllabus",
-    hint: "Inspect built-in exam templates, subjects & chapter coverage",
+    label: "Exam Bank & Test Series",
+    hint: "Create/remove Test Series, edit Text Syllabus & auto-generate MCQs",
     category: "Courses & Content",
     icon: Database,
+    badge: "Full Control",
   },
   {
     to: "/admin/ai-question-engine",
@@ -198,6 +219,14 @@ export const ADMIN_TOOLS: AdminToolItem[] = [
     category: "Website & System",
     icon: ShieldCheck,
   },
+  {
+    to: "/downloads",
+    label: "ZIP, SQL & Cleaner Hub",
+    hint: "Download complete Project ZIP, Production SQL & SQL Cleaner",
+    category: "Website & System",
+    icon: Download,
+    badge: "Files",
+  },
 ];
 
 const CATEGORIES: AdminCategory[] = [
@@ -210,9 +239,138 @@ const CATEGORIES: AdminCategory[] = [
 
 export function AdminCommandBar({ compact = false }: { compact?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const qc = useQueryClient();
   const [category, setCategory] = useState<AdminCategory>("All");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(!compact);
+  const [showMasterControls, setShowMasterControls] = useState(true);
+
+  const getControlsFn = useServerFn(getAdminAppControls);
+  const saveControlsFn = useServerFn(saveAdminAppControls);
+  const optimizeServerFn = useServerFn(adminOptimizeAndCleanServer);
+  const clearAllSeriesFn = useServerFn(adminClearAllTestSeries);
+  const toggleBuiltInFn = useServerFn(adminToggleBuiltInSeries);
+  const getCustomCatalogFn = useServerFn(adminGetCustomSeriesCatalog);
+
+  const controlsQuery = useQuery({
+    queryKey: ["admin", "app-controls"],
+    queryFn: () => safeServerCall(() => getControlsFn(), null),
+    staleTime: 60_000,
+  });
+
+  const customCatalogQuery = useQuery({
+    queryKey: ["admin", "custom-series-catalog"],
+    queryFn: () => safeServerCall(() => getCustomCatalogFn({} as never), {}),
+    staleTime: 60_000,
+  });
+
+  const toggleFeatureMutation = useMutation({
+    mutationFn: async (patch: Record<string, boolean>) => {
+      const current = controlsQuery.data;
+      if (!current) throw new Error("App controls not loaded yet");
+      return saveControlsFn({
+        data: {
+          maintenanceMode: current.maintenanceMode,
+          maintenanceMessage: current.maintenanceMessage,
+          protectionEnabled: current.protectionEnabled,
+          copyGuardEnabled: current.copyGuardEnabled,
+          contextMenuGuardEnabled: current.contextMenuGuardEnabled,
+          shortcutGuardEnabled: current.shortcutGuardEnabled,
+          watermarkEnabled: current.watermarkEnabled,
+          screenshotBlurEnabled: current.screenshotBlurEnabled,
+          printGuardEnabled: current.printGuardEnabled,
+          kittuQuizEnabled: current.kittuQuizEnabled,
+          testSeriesEnabled: current.testSeriesEnabled,
+          studyMaterialEnabled: current.studyMaterialEnabled,
+          kittuDailyRewardCap: current.kittuRewards.dailyRewardCap,
+          kittuDailyPracticeHours: current.kittuRewards.dailyPracticeHours,
+          kittuDailyGift: current.kittuRewards.dailyGift,
+          kittuPracticeBatches: current.kittuPracticeBatches,
+          ...patch,
+        },
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "app-controls"] });
+      void qc.invalidateQueries({ queryKey: ["public", "app-controls"] });
+      toast.success("Master App Control updated live!");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const optimizeMutation = useMutation({
+    mutationFn: async () => {
+      const [serverRes] = await Promise.all([
+        optimizeServerFn({} as never),
+        fetch("/__fixture__/supabase/clean", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+        }).catch(() => null),
+      ]);
+      if (typeof window !== "undefined") {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && (k.startsWith("kkcc:") || k.startsWith("kkcc_") || k.includes("cache"))) {
+            keysToRemove.push(k);
+          }
+        }
+        for (const k of keysToRemove) window.localStorage.removeItem(k);
+      }
+      return serverRes;
+    },
+    onSuccess: (res) => {
+      void qc.invalidateQueries();
+      toast.success(`Full-Stack Optimized & Cleaned in ${res.durationMs}ms!`, {
+        description: `Flushed ${res.clearedSelectEntries} backend cache entries & ${res.cleanedAbandonedAttempts} stale attempts.`,
+      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const clearSeriesMutation = useMutation({
+    mutationFn: () => clearAllSeriesFn({} as never),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "custom-series-catalog"] });
+      void qc.invalidateQueries({ queryKey: ["public", "custom-series-catalog"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "tests"] });
+      void qc.invalidateQueries({ queryKey: ["public", "tests"] });
+      toast.success("All Test Series & Tests cleared! Ready for your custom setup.");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const toggleBuiltInMutation = useMutation({
+    mutationFn: (includeBuiltIn: boolean) => toggleBuiltInFn({ data: { includeBuiltIn } }),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ["admin", "custom-series-catalog"] });
+      void qc.invalidateQueries({ queryKey: ["public", "custom-series-catalog"] });
+      toast.success(
+        res.includeBuiltIn
+          ? "Built-in Test Series enabled alongside your custom series!"
+          : "Switched to 100% Clean Custom-Only Test Series mode!",
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const copySqlFromServer = async (kind: "cleaner" | "production") => {
+    try {
+      const res = await fetch("/__fixture__/supabase/sql");
+      if (!res.ok) throw new Error("Failed to fetch SQL bundle");
+      const data = (await res.json()) as { cleanerSql?: string; productionSql?: string };
+      const text = kind === "cleaner" ? data.cleanerSql : data.productionSql;
+      if (!text) throw new Error("SQL content empty");
+      await navigator.clipboard.writeText(text);
+      toast.success(
+        kind === "cleaner"
+          ? "Copied KKCC-Excellence-Hub-SQL-CLEANER.sql to clipboard!"
+          : "Copied KKCC-Excellence-Hub-PRODUCTION-SQL.sql to clipboard!",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to copy SQL");
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -227,28 +385,48 @@ export function AdminCommandBar({ compact = false }: { compact?: boolean }) {
     });
   }, [category, search]);
 
+  const controls = controlsQuery.data;
+  const includeBuiltIn = Boolean(customCatalogQuery.data?.includeBuiltIn);
+
   return (
     <div className="surface-panel mb-6 p-4 sm:p-5" data-testid="admin-command-bar">
+      {/* Top Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Compass className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold tracking-tight">KKCC Admin Command Center</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-bold tracking-tight">
+                KKCC Super Admin Full Control Center
+              </h2>
               <Badge variant="secondary" className="rounded-full text-[10px]">
                 {ADMIN_TOOLS.length} Modules
               </Badge>
+              <Badge className="rounded-full bg-emerald-500/15 text-[10px] text-emerald-600 dark:text-emerald-400">
+                <Zap className="mr-1 h-3 w-3" /> Fast Gzip + RAM Cache + DB Indexed
+              </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Jump to any course, syllabus, test, student, payment or website control in one click.
+              Full control over Courses, Test Series, Syllabus, Speed Optimizer, SQL Cleaner &amp;
+              ZIP Downloads.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 sm:w-64">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={showMasterControls ? "default" : "outline"}
+            className="h-8 rounded-full text-xs font-bold"
+            onClick={() => setShowMasterControls((v) => !v)}
+          >
+            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+            {showMasterControls ? "Hide Master Bar" : "Master Controls & Downloads"}
+          </Button>
+          <div className="relative flex-1 sm:w-56">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -257,7 +435,7 @@ export function AdminCommandBar({ compact = false }: { compact?: boolean }) {
                 if (!expanded) setExpanded(true);
               }}
               placeholder="Search admin tools..."
-              className="h-9 rounded-full pl-8 text-xs"
+              className="h-8 rounded-full pl-8 text-xs"
             />
           </div>
           {compact && (
@@ -266,12 +444,186 @@ export function AdminCommandBar({ compact = false }: { compact?: boolean }) {
               onClick={() => setExpanded((prev) => !prev)}
               className="rounded-full border px-3 py-1.5 text-xs font-medium transition hover:border-primary/50 hover:text-primary"
             >
-              {expanded ? "Compact view" : "Show all 22 tools"}
+              {expanded ? "Compact view" : `Show all ${ADMIN_TOOLS.length} tools`}
             </button>
           )}
         </div>
       </div>
 
+      {/* Master App Controls, Speed Optimizer & Downloads Hub */}
+      {showMasterControls && (
+        <div className="mt-4 space-y-3 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background/90 to-cyan-500/10 p-3.5 sm:p-4">
+          {/* Row 1: Downloads, SQL Cleaner & 1-Click Speed Optimizer */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] font-black uppercase tracking-wider text-primary">
+                Downloads &amp; SQL:
+              </span>
+              <a
+                href="/__fixture__/supabase/zip"
+                download="full fledge kkcc excellence hub.zip"
+                className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground shadow-sm transition hover:opacity-90"
+              >
+                <Download className="h-3.5 w-3.5" /> Download Complete ZIP
+              </a>
+              <a
+                href="/__fixture__/supabase/download/production.sql"
+                download="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
+              >
+                <Database className="h-3.5 w-3.5" /> Production SQL
+              </a>
+              <button
+                type="button"
+                onClick={() => void copySqlFromServer("production")}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-background px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+              >
+                <Copy className="h-3 w-3" /> Copy SQL
+              </button>
+              <a
+                href="/__fixture__/supabase/download/cleaner.sql"
+                download="KKCC-Excellence-Hub-SQL-CLEANER.sql"
+                className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-bold text-slate-950 shadow-sm transition hover:opacity-90"
+              >
+                <Download className="h-3.5 w-3.5" /> SQL Cleaner
+              </a>
+              <button
+                type="button"
+                onClick={() => void copySqlFromServer("cleaner")}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-background px-2.5 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+              >
+                <Copy className="h-3 w-3" /> Copy Cleaner
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                disabled={optimizeMutation.isPending}
+                onClick={() => optimizeMutation.mutate()}
+                className="inline-flex items-center gap-1 rounded-full border border-cyan-500/50 bg-cyan-500/15 px-3 py-1 text-xs font-bold text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
+              >
+                {optimizeMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5" />
+                )}
+                1-Click Speed &amp; DB Cleaner
+              </button>
+              <Link
+                to="/downloads"
+                className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-xs font-semibold hover:border-primary hover:text-primary"
+              >
+                All Files Hub
+              </Link>
+            </div>
+          </div>
+
+          {/* Row 2: Live Feature Switches & Test Series Clean-Slate Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                Live Feature Switches:
+              </span>
+              {controls && (
+                <>
+                  {(
+                    [
+                      ["testSeriesEnabled", "Test Series", controls.testSeriesEnabled],
+                      ["studyMaterialEnabled", "Study Material", controls.studyMaterialEnabled],
+                      ["kittuQuizEnabled", "Kit 2 Coins Quiz", controls.kittuQuizEnabled],
+                      ["protectionEnabled", "Content Shield", controls.protectionEnabled],
+                      ["copyGuardEnabled", "Anti-Copy Guard", controls.copyGuardEnabled],
+                      ["maintenanceMode", "Maintenance Mode", controls.maintenanceMode],
+                    ] as const
+                  ).map(([key, label, active]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={toggleFeatureMutation.isPending}
+                      onClick={() => toggleFeatureMutation.mutate({ [key]: !active })}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition",
+                        active
+                          ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                          : "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          active ? "bg-emerald-500" : "bg-rose-500",
+                        )}
+                      />
+                      {label}: {active ? "ON" : "OFF"}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                Test Series Control:
+              </span>
+              <Link
+                to="/admin/exam-bank"
+                className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-[11px] font-bold text-primary hover:bg-primary/25"
+              >
+                + Add Series &amp; Syllabus
+              </Link>
+              <button
+                type="button"
+                disabled={toggleBuiltInMutation.isPending}
+                onClick={() => toggleBuiltInMutation.mutate(!includeBuiltIn)}
+                className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-0.5 text-[11px] font-semibold hover:border-primary"
+                title="Switch between Clean Custom-Only Test Series and Built-In Series"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {includeBuiltIn ? "Hide Built-In Series" : "Restore Built-In Series"}
+              </button>
+              <button
+                type="button"
+                disabled={clearSeriesMutation.isPending}
+                onClick={() => clearSeriesMutation.mutate()}
+                className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-bold text-rose-600 hover:bg-rose-500/20 dark:text-rose-400"
+                title="Clear all Test Series & Tests to start from a 100% empty slate"
+              >
+                <Trash2 className="h-3 w-3" /> Empty All Series &amp; Tests
+              </button>
+            </div>
+          </div>
+
+          {optimizeMutation.data && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-background/90 px-3 py-1.5 text-[11px]">
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Server Latency:{" "}
+                {optimizeMutation.data.durationMs}ms
+              </span>
+              <span>
+                Courses: <b>{optimizeMutation.data.counts.courses}</b>
+              </span>
+              <span>
+                Lectures: <b>{optimizeMutation.data.counts.lectures}</b>
+              </span>
+              <span>
+                Materials: <b>{optimizeMutation.data.counts.materials}</b>
+              </span>
+              <span>
+                Custom Series: <b>{optimizeMutation.data.counts.customSeries}</b>
+              </span>
+              <span>
+                Tests: <b>{optimizeMutation.data.counts.tests}</b>
+              </span>
+              <span>
+                Cache Flushed: <b>{optimizeMutation.data.clearedSelectEntries}</b>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Category Filter Tabs */}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {CATEGORIES.map((cat) => (
           <button
@@ -293,6 +645,7 @@ export function AdminCommandBar({ compact = false }: { compact?: boolean }) {
         ))}
       </div>
 
+      {/* Modules Grid */}
       {expanded ? (
         <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((tool) => {

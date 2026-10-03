@@ -17,11 +17,11 @@
  */
 
 import {
-  countMatching,
-  getExamBankTopicsForExam,
-  getExamBankExams,
-  ACTIVE_TEMPLATES,
-} from "@/lib/exam-bank";
+  CATALOG_EXAMS_LIST,
+  CATALOG_SUBJECTS_BY_EXAM,
+  getCatalogQuestionCount,
+  getCatalogTopicsForExam,
+} from "@/lib/test-series-catalog-meta";
 import { DIFFICULTY_LADDER, type LadderLevel } from "@/lib/quiz-levels";
 import { advancedTestUrl } from "@/lib/question-routing";
 
@@ -1088,28 +1088,22 @@ const SERIES_DEMAND: Record<string, SeriesDemand> = {
  * They are free practice tracks, not fabricated official exams or paid products.
  */
 const CATALOG_EXAMS = new Set(PAID_TEST_SERIES.map((series) => series.examTrack));
-export const ADDITIONAL_PRACTICE_SERIES: PaidTestSeries[] = getExamBankExams()
-  .filter((exam) => !CATALOG_EXAMS.has(exam))
-  .map((exam) => ({
-    id: `practice-${exam
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/-$/, "")}`,
-    name: `${exam} Practice`,
-    examTrack: exam,
-    group: "High-Yield" as const,
-    subjects: [
-      ...new Set(
-        ACTIVE_TEMPLATES.filter((template) => template.exams.includes(exam)).map(
-          (template) => template.subject,
-        ),
-      ),
-    ].sort(),
-    summary:
-      "Practice from the existing project bank. Coverage and syllabus limitations are recorded in the bank audit.",
-    priceInr: 0,
-    priceCoins: 0,
-  }));
+export const ADDITIONAL_PRACTICE_SERIES: PaidTestSeries[] = CATALOG_EXAMS_LIST.filter(
+  (exam) => !CATALOG_EXAMS.has(exam),
+).map((exam) => ({
+  id: `practice-${exam
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-$/, "")}`,
+  name: `${exam} Practice`,
+  examTrack: exam,
+  group: "High-Yield" as const,
+  subjects: CATALOG_SUBJECTS_BY_EXAM[exam] ?? [],
+  summary:
+    "Practice from the existing project bank. Coverage and syllabus limitations are recorded in the bank audit.",
+  priceInr: 0,
+  priceCoins: 0,
+}));
 export const LEARNING_SERIES: PaidTestSeries[] = [
   ...PAID_TEST_SERIES,
   ...ADDITIONAL_PRACTICE_SERIES,
@@ -1317,7 +1311,7 @@ export function seriesPlan(
   return series.subjects
     .map((subject) => ({
       subject,
-      chapters: getExamBankTopicsForExam(subject, series.examTrack),
+      chapters: getCatalogTopicsForExam(subject, series.examTrack),
     }))
     .filter((plan) => plan.chapters.length > 0);
 }
@@ -1361,7 +1355,7 @@ export function seriesTotals(series: PaidTestSeries, customPlanOverride?: Subjec
 
   // How much the bank could theoretically serve this exam.
   const bankAvailable = plan.reduce(
-    (sum, item) => sum + countMatching({ subject: item.subject, exam: series.examTrack }),
+    (sum, item) => sum + getCatalogQuestionCount(item.subject, series.examTrack),
     0,
   );
   const available = hasCustomPlan

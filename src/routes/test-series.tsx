@@ -36,7 +36,6 @@ import {
 } from "@/lib/content.functions";
 import { listMySeriesAccess } from "@/lib/test-access.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
-import { theoryChapters, theoryTotals } from "@/lib/theory-bank";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { displayNameFromUser } from "@/lib/auth";
 import { submitAdmissionEnquiry } from "@/lib/enquiries.functions";
@@ -47,8 +46,6 @@ import {
   PAID_TEST_SERIES,
   QUESTIONS_PER_CHAPTER,
   SERIES_GROUPS,
-  THEORY_TEST_SERIES,
-  type TheorySeries,
   catalogTotals,
   getEffectiveLearningSeries,
   getEffectivePaidTestSeries,
@@ -292,20 +289,7 @@ function TestSeries() {
     return new Set(activePaidSeries.filter(hit).map((series) => series.id));
   }, [needle, activePaidSeries]);
 
-  const theoryMatches = useMemo(() => {
-    if (!needle) return null;
-    const words = needle.split(/\s+/);
-    return new Set(
-      THEORY_TEST_SERIES.filter((series) => {
-        const hay = [series.name, series.examTrack, series.board, `class ${series.classLevel}`]
-          .join(" ")
-          .toLowerCase();
-        return words.every((w) => hay.includes(w));
-      }).map((series) => series.id),
-    );
-  }, [needle]);
-
-  const matchCount = (matches?.size ?? 0) + (theoryMatches?.size ?? 0);
+  const matchCount = matches?.size ?? 0;
 
   if (!controls.testSeriesEnabled) {
     return (
@@ -953,167 +937,4 @@ function formatTestTimer(test: {
   }
   if (test.timer_mode === "question") return `${test.question_timer_seconds ?? 0}s/question`;
   return `${test.duration_minutes} minutes`;
-}
-
-/**
- * Theory series.
- *
- * Board papers are not only MCQs. Most of the marks sit in short answer, long
- * answer, reason-based and diagram questions, so these series carry exactly
- * those, chapter by chapter, each with its mark weight and the points an
- * examiner looks for.
- *
- * They behave like every other series: an admin can flip one free, and an
- * admin can open one for a student who paid offline.
- */
-function TheorySeriesSection({ visible }: { visible: Set<string> | null }) {
-  const shown = THEORY_TEST_SERIES.filter((series) => !visible || visible.has(series.id));
-  if (!shown.length) return null;
-  return (
-    <div className="mt-10">
-      <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-muted-foreground">
-        <FileText className="h-4 w-4 text-primary" /> Board Theory — Important Questions
-      </h3>
-      <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-        A board paper is mostly written answers, not MCQs. These series carry the descriptive
-        questions that keep coming back — short answer, long answer, reason-based, diagram and
-        numerical — chapter by chapter, each with its mark weight and a marking-scheme answer
-        outline you can check yourself against.
-      </p>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        {shown.map((series) => (
-          <TheorySeriesCard key={series.id} series={series} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TheorySeriesCard({ series }: { series: TheorySeries }) {
-  const totals = theoryTotals(series.board, series.classLevel);
-  const chapters = theoryChapters(series.board, series.classLevel);
-  const subjects = [...new Set(chapters.map((c) => c.subject))];
-
-  return (
-    <article className="surface-panel hover-lift flex flex-col p-5">
-      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-primary/10 text-primary">
-        <FileText className="h-5 w-5" />
-      </span>
-      <h4 className="mt-3 text-sm font-bold leading-snug">{series.name}</h4>
-      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-primary">
-        Oriented for: {series.examTrack}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">{series.summary}</p>
-
-      <details className="group mt-4 rounded-2xl border bg-background/60 p-3">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-bold">
-          <span>
-            {totals.chapters} chapters across {totals.subjects} subjects
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" />
-        </summary>
-        <div className="mt-3 space-y-3">
-          {subjects.map((subject) => (
-            <div key={subject}>
-              <p className="text-[11px] font-black uppercase tracking-[0.1em] text-muted-foreground">
-                {subject}
-              </p>
-              <ol className="mt-1.5 space-y-1">
-                {chapters
-                  .filter((c) => c.subject === subject)
-                  .map((chapter) => (
-                    <li
-                      key={chapter.id}
-                      className="flex items-baseline justify-between gap-3 rounded-lg px-2 py-1 text-xs odd:bg-muted/40"
-                    >
-                      <span className="min-w-0">{chapter.chapter}</span>
-                      <span className="shrink-0 font-bold text-primary">
-                        {chapter.questions.length}Q
-                      </span>
-                    </li>
-                  ))}
-              </ol>
-            </div>
-          ))}
-        </div>
-      </details>
-
-      <div className="mt-auto pt-4">
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Target className="h-3.5 w-3.5" /> {totals.questions} theory questions · {totals.marks}{" "}
-          marks of practice
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-black">
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-primary">
-            <IndianRupee className="h-3.5 w-3.5" />
-            {series.priceInr}
-          </span>
-          <span className="text-xs font-bold text-muted-foreground">or</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1">
-            {series.priceCoins} 23KAAT
-          </span>
-        </div>
-        <TheoryEnrolButton series={series} questions={totals.questions} />
-      </div>
-    </article>
-  );
-}
-
-function TheoryEnrolButton({ series, questions }: { series: TheorySeries; questions: number }) {
-  const { user } = useAuthUser();
-  const navigate = useNavigate();
-  const sendEnquiry = useServerFn(submitAdmissionEnquiry);
-
-  const enrol = useMutation({
-    mutationFn: () => {
-      if (!user?.email) throw new Error("LOGIN_REQUIRED");
-      return sendEnquiry({
-        data: {
-          name: displayNameFromUser(user) || user.email,
-          email: user.email,
-          phone: "",
-          class_level: `${series.board} Class ${series.classLevel}`,
-          interest: `${series.name} — theory questions`,
-          source: "theory_test_series",
-          message:
-            `I want to enrol in the ${series.name}. It carries ${questions} chapterwise theory ` +
-            `questions with answer outlines. Price: ₹${series.priceInr} or ${series.priceCoins} ` +
-            `23KAAT coins (1 23KAAT = ₹${RUPEES_PER_23KAAT}). Please share the payment steps, ` +
-            `or open it on my account if I have already paid at the centre.`,
-        },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Enrolment request sent", {
-        description: `The KKCC team will confirm payment and open ${series.name} on your account.`,
-      });
-    },
-    onError: (error: Error) => {
-      if (error.message === "LOGIN_REQUIRED") {
-        toast.info("Login required", {
-          description: "Please login or sign up first so we can open the series on your account.",
-        });
-        void navigate({ to: "/login", search: { redirectTo: "/test-series" } });
-        return;
-      }
-      toast.error(friendlyError(error));
-    },
-  });
-
-  return (
-    <Button
-      size="sm"
-      className="mt-3 w-full rounded-full"
-      disabled={enrol.isPending}
-      onClick={() => enrol.mutate()}
-    >
-      {enrol.isPending ? (
-        <>
-          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Sending request
-        </>
-      ) : (
-        "Enrol in this series"
-      )}
-    </Button>
-  );
 }

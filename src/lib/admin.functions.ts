@@ -13,7 +13,11 @@ import {
   type PaidTestSeries,
   type SeriesGroup,
 } from "@/lib/test-series-catalog";
-import { projectContent } from "@/lib/project-content.server";
+import {
+  flushProjectContentCaches,
+  projectContent,
+  readProjectDocument,
+} from "@/lib/project-content.server";
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -1255,4 +1259,58 @@ export const adminClearAllTestSeries = createServerFn({ method: "POST" })
       await projectContent.from("tests").delete().eq("id", row.id);
     }
     return { ok: true };
+  });
+
+export const adminToggleBuiltInSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ includeBuiltIn: z.boolean() }))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    await writeCustomSeriesCatalog({
+      ...current,
+      includeBuiltIn: data.includeBuiltIn,
+    });
+    return { ok: true, includeBuiltIn: data.includeBuiltIn };
+  });
+
+export const adminOptimizeAndCleanServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const startMs = Date.now();
+    await assertAdmin(context);
+    const cacheFlush = flushProjectContentCaches();
+    let cleanedAbandonedAttempts = 0;
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const stale = await context.supabase
+        .from("learning_attempts")
+        .delete()
+        .eq("status", "started")
+        .lt("started_at", cutoff)
+        .select("id");
+      cleanedAbandonedAttempts = stale.data?.length ?? 0;
+    } catch {
+      // Safe fallback when learning_attempts is managed via RPC
+    }
+    const { document } = await readProjectDocument();
+    const customCatalog = await readCustomSeriesCatalog();
+    const durationMs = Math.max(1, Date.now() - startMs);
+    return {
+      ok: true,
+      durationMs,
+      clearedSelectEntries: cacheFlush.clearedSelectEntries,
+      clearedMissingTables: cacheFlush.clearedMissingTables,
+      cleanedAbandonedAttempts,
+      counts: {
+        courses: (document.tables["courses"] ?? []).length,
+        lectures: (document.tables["lectures"] ?? []).length,
+        materials: (document.tables["materials"] ?? []).length,
+        tests: (document.tables["tests"] ?? []).length,
+        questions: (document.tables["test_questions"] ?? []).length,
+        customSeries: (customCatalog.addedSeries ?? []).length,
+        includeBuiltIn: Boolean(customCatalog.includeBuiltIn),
+      },
+      optimizedAt: new Date().toISOString(),
+    };
   });
