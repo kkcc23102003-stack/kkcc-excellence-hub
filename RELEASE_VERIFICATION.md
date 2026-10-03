@@ -1,6 +1,7 @@
 # KKCC Excellence Hub — release verification
 
 ## Verified in this environment
+
 - Repository quality check: PASS (405 source files inspected)
 - PWA readiness check: PASS
 - TypeScript/TSX transpilation: PASS (279 files, 0 transpile diagnostics)
@@ -11,6 +12,7 @@
 - Public legacy SQL download artifacts are removed.
 
 ## Not claimed as live verification
+
 - Full npm install/build/lint/unit/E2E browser run was not completed here because dependency installation could not finish within the available network/runtime window.
 - Live Supabase production cutover was not performed.
 - Live Razorpay payments were not enabled or tested.

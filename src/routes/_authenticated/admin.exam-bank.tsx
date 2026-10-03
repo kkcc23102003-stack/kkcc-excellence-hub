@@ -10,8 +10,12 @@ import {
   CheckCircle2,
   Database,
   Layers,
+  Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +24,15 @@ import { ACTIVE_TEMPLATES, EXAM_BANK_TOTAL, OFFICIAL_SYLLABUS_TAGS_REMOVED } fro
 import { OFFICIAL_SYLLABUS_RULES } from "@/lib/exam-bank/official-syllabus";
 import { auditQuestionBank } from "@/lib/exam-bank/quality-audit";
 import {
+  adminCreateCustomTestSeries,
+  adminGetCustomSeriesCatalog,
   adminListSeriesOverrides,
+  adminRemoveTestSeries,
   adminResetSeriesOverride,
+  adminResetSeriesSyllabus,
+  adminRestoreTestSeries,
   adminSaveSeriesOverride,
+  adminSaveSeriesSyllabus,
 } from "@/lib/admin.functions";
 import {
   adminGrantSeriesAccess,
@@ -32,10 +42,54 @@ import {
 import { safeServerCall } from "@/lib/safe-server-call";
 import {
   PAID_TEST_SERIES,
+  SERIES_GROUPS,
   THEORY_TEST_SERIES,
+  formatSeriesSyllabusText,
+  getEffectivePaidTestSeries,
+  parseSeriesSyllabusText,
+  resolveSeriesPrice,
   seriesPlan,
   seriesTotals,
+  setRuntimeCustomSeriesCatalog,
+  type PaidTestSeries,
 } from "@/lib/test-series-catalog";
+
+const SYLLABUS_PRESETS: Array<{ label: string; exam: string; text: string }> = [
+  {
+    label: "Punjab ETT Cadre (Paper A & B)",
+    exam: "Punjab ETT Cadre",
+    text: [
+      "Punjabi Paper A :: ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ, ਸ਼ਬਦ ਬੋਧ ਅਤੇ ਵਿਆਕਰਣ, ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ, ਪੰਜਾਬੀ ਸਾਹਿਤ ਅਤੇ ਸੱਭਿਆਚਾਰ",
+      "Child Development and Pedagogy :: Growth & Development, Learning Theories (Piaget, Vygotsky, Kohlberg), Inclusive Education, Assessment & Evaluation",
+      "General Knowledge :: Punjab History & Culture, Geography of Punjab, Indian Polity & Constitution, Current Affairs",
+      "Mathematics :: Number System, Percentage & Ratio, Mensuration & Geometry, Data Handling & Arithmetic",
+      "General Science :: Living World & Human Body, Force, Energy & Motion, Matter & Chemical Reactions, Environmental Studies (EVS)",
+      "English Language :: Tenses & Grammar Rules, Vocabulary & Idioms, Reading Comprehension, Pedagogy of English",
+    ].join("\n"),
+  },
+  {
+    label: "PSSSB / Punjab Patwari / Police",
+    exam: "PSSSB",
+    text: [
+      "Punjab GK :: History of Punjab & Sikh Gurus, Geography & Rivers of Punjab, Economy & Agriculture of Punjab, Art, Culture & Heritage",
+      "Punjabi Grammar :: ਵਿਆਕਰਣ ਨਿਯਮ, ਸ਼ਬਦ ਜੋੜ ਅਤੇ ਸਮਾਨਾਰਥਕ ਸ਼ਬਦ, ਮੁਹਾਵਰੇ ਤੇ ਅਖਾਣ, ਅਣਡਿੱਠਾ ਪੈਰਾ",
+      "Quantitative Aptitude :: Number System & Simplification, Percentage, Profit & Loss, Ratio, Time & Work, Speed & Distance, Mensuration & Data Interpretation",
+      "Reasoning :: Coding-Decoding & Series, Blood Relations & Direction Sense, Syllogism & Statement Conclusion, Seating Arrangement & Puzzles",
+      "Polity :: Constitutional Framework & Fundamental Rights, Parliament & State Legislature, Judiciary & Panchayati Raj",
+      "Computer Awareness :: Computer Fundamentals & Hardware, MS Office (Word, Excel, PowerPoint), Internet, Networking & Cyber Security",
+    ].join("\n"),
+  },
+  {
+    label: "Master Cadre / PSTET / CTET",
+    exam: "Punjab Master Cadre",
+    text: [
+      "Child Development and Pedagogy :: Child Development Principles, Socialization & Constructivism, Children with Special Needs, Teaching-Learning Process & NCF/NEP",
+      "Subject Specialization :: Core Graduated Concepts & Definitions, Classical & Modern Theories, Analytical Problem Solving, Applied Classroom Methodology",
+      "Punjabi Language :: ਭਾਸ਼ਾ ਅਤੇ ਵਿਆਕਰਣ, ਸਾਹਿਤ ਦੇ ਰੂਪ ਅਤੇ ਇਤਿਹਾਸ, ਸ਼ਬਦ ਸ਼ਕਤੀਆਂ ਅਤੇ ਅਲੰਕਾਰ",
+      "English Grammar :: Parts of Speech & Tenses, Voice & Narration, Clauses, Synthesis & Error Spotting",
+    ].join("\n"),
+  },
+];
 
 export const Route = createFileRoute("/_authenticated/admin/exam-bank")({
   component: AdminExamBankPage,
@@ -47,6 +101,7 @@ function AdminExamBankPage() {
   const [tab, setTab] = useState<"series" | "subjects" | "syllabus" | "quality">("series");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [showAddSeries, setShowAddSeries] = useState(false);
   const [grantFor, setGrantFor] = useState("");
   const [gEmail, setGEmail] = useState("");
   const [gMethod, setGMethod] = useState("cash");
@@ -59,15 +114,50 @@ function AdminExamBankPage() {
     priceInr: "",
     priceCoins: "",
     enabled: true,
+    syllabusText: "",
+  });
+  const [newSeriesDraft, setNewSeriesDraft] = useState({
+    name: "",
+    examTrack: "Punjab ETT Cadre",
+    group: "Punjab State",
+    summary:
+      "Chapterwise 60-question practice tests (20 Easy → 20 Moderate → 20 Difficult) auto-generated from the official syllabus.",
+    priceInr: "0",
+    priceCoins: "0",
+    syllabusText: SYLLABUS_PRESETS[0]!.text,
   });
 
   const qc = useQueryClient();
   const listOverrides = useServerFn(adminListSeriesOverrides);
   const saveOverride = useServerFn(adminSaveSeriesOverride);
   const resetOverride = useServerFn(adminResetSeriesOverride);
+  const getCustomCatalogFn = useServerFn(adminGetCustomSeriesCatalog);
+  const saveSeriesSyllabusFn = useServerFn(adminSaveSeriesSyllabus);
+  const resetSeriesSyllabusFn = useServerFn(adminResetSeriesSyllabus);
+  const removeSeriesFn = useServerFn(adminRemoveTestSeries);
+  const restoreSeriesFn = useServerFn(adminRestoreTestSeries);
+  const createCustomSeriesFn = useServerFn(adminCreateCustomTestSeries);
   const listGrants = useServerFn(adminListSeriesGrants);
   const grantSeries = useServerFn(adminGrantSeriesAccess);
   const revokeSeries = useServerFn(adminRevokeSeriesAccess);
+
+  const customCatalogQuery = useQuery({
+    queryKey: ["admin", "custom-series-catalog"],
+    queryFn: () => safeServerCall(() => getCustomCatalogFn({} as never), {}),
+  });
+  const customCatalog = useMemo(() => {
+    const data = customCatalogQuery.data ?? {};
+    setRuntimeCustomSeriesCatalog(data);
+    return data;
+  }, [customCatalogQuery.data]);
+
+  const invalidateAllSeries = () => {
+    void invalidateLearningQueries(qc);
+    void qc.invalidateQueries({ queryKey: ["admin", "series-overrides"] });
+    void qc.invalidateQueries({ queryKey: ["admin", "custom-series-catalog"] });
+    void qc.invalidateQueries({ queryKey: ["public", "series-overrides"] });
+    void qc.invalidateQueries({ queryKey: ["public", "custom-series-catalog"] });
+  };
 
   const grantsQuery = useQuery({
     queryKey: ["admin", "series-grants"],
@@ -117,33 +207,86 @@ function AdminExamBankPage() {
   const save = useMutation({
     mutationFn: (input: Parameters<typeof adminSaveSeriesOverride>[0]) => saveOverride(input),
     onSuccess: () => {
-      void invalidateLearningQueries(qc);
+      invalidateAllSeries();
       toast.success("Series updated");
       setEditing(null);
-      void qc.invalidateQueries({ queryKey: ["admin", "series-overrides"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const saveSyllabus = useMutation({
+    mutationFn: (input: Parameters<typeof adminSaveSeriesSyllabus>[0]) =>
+      saveSeriesSyllabusFn(input),
+    onSuccess: (res) => {
+      invalidateAllSeries();
+      toast.success(
+        `Syllabus & series saved! ${res.subjectsCount} subjects · ${res.chaptersCount} chapters · ${inr(res.totalAutoQuestions)} auto-generated MCQs ready.`,
+      );
+      setEditing(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const reset = useMutation({
-    mutationFn: (series_id: string) => resetOverride({ data: { series_id } } as never),
+    mutationFn: async (series_id: string) => {
+      await resetOverride({ data: { series_id } } as never);
+      await resetSeriesSyllabusFn({ data: { series_id } } as never);
+    },
     onSuccess: () => {
-      void invalidateLearningQueries(qc);
-      toast.success("Reverted to the built-in values");
+      invalidateAllSeries();
+      toast.success("Reverted to the built-in values & syllabus");
       setEditing(null);
-      void qc.invalidateQueries({ queryKey: ["admin", "series-overrides"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const removeSeries = useMutation({
+    mutationFn: (series_id: string) => removeSeriesFn({ data: { series_id } } as never),
+    onSuccess: () => {
+      invalidateAllSeries();
+      toast.success("Test series removed from catalogue");
+      setEditing(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const restoreSeries = useMutation({
+    mutationFn: (series_id: string) => restoreSeriesFn({ data: { series_id } } as never),
+    onSuccess: () => {
+      invalidateAllSeries();
+      toast.success("Test series restored to catalogue");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const createSeries = useMutation({
+    mutationFn: (input: Parameters<typeof adminCreateCustomTestSeries>[0]) =>
+      createCustomSeriesFn(input),
+    onSuccess: (res) => {
+      invalidateAllSeries();
+      toast.success(
+        `Added "${res.series.name}" with ${res.subjectsCount} subjects, ${res.chaptersCount} chapters & ${inr(res.totalAutoQuestions)} auto-generated questions!`,
+      );
+      setShowAddSeries(false);
+      setNewSeriesDraft((prev) => ({ ...prev, name: "" }));
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  function openEditor(id: string, name: string, summary: string, inr: number, coins: number) {
-    const o = overrides.get(id);
-    setEditing(id);
+  function openEditor(target: PaidTestSeries) {
+    const o = overrides.get(target.id);
+    const resolved = resolveSeriesPrice(target, o);
+    const currentPlan = seriesPlan(target, customCatalog.syllabusBySeriesId?.[target.id]);
+    const fallbackPlan =
+      currentPlan.length > 0
+        ? currentPlan
+        : target.subjects.map((subj) => ({
+            subject: subj,
+            chapters: [`${subj} — Core Concepts & Exam Practice`],
+          }));
+    setEditing(target.id);
     setDraft({
-      name: o?.name ?? name,
-      summary: o?.summary ?? summary,
-      priceInr: String(o?.price_inr ?? inr),
-      priceCoins: String(o?.price_coins ?? coins),
+      name: o?.name ?? target.name,
+      summary: o?.summary ?? target.summary,
+      priceInr: String(resolved.priceInr),
+      priceCoins: String(resolved.priceCoins),
       enabled: o?.enabled ?? true,
+      syllabusText: formatSeriesSyllabusText(fallbackPlan),
     });
   }
 
@@ -161,12 +304,26 @@ function AdminExamBankPage() {
     return { subjects, chapters, examTags };
   }, []);
 
+  const activePaidSeries = useMemo(
+    () => getEffectivePaidTestSeries(customCatalog),
+    [customCatalog],
+  );
+  const removedBuiltInSeries = useMemo(() => {
+    const removedSet = new Set(customCatalog.removedSeriesIds ?? []);
+    return PAID_TEST_SERIES.filter((s) => removedSet.has(s.id));
+  }, [customCatalog.removedSeriesIds]);
+
   const series = useMemo(
     () =>
-      PAID_TEST_SERIES.map((s) => {
-        const totals = seriesTotals(s);
-        const plan = seriesPlan(s);
-        const missing = s.subjects.filter((x) => !bank.subjects.has(x));
+      activePaidSeries.map((s) => {
+        const customPlan = customCatalog.syllabusBySeriesId?.[s.id] ?? s.customPlan;
+        const hasCustomSyllabus = Boolean(customPlan && customPlan.length > 0);
+        const isAddedByAdmin = Boolean(
+          (customCatalog.addedSeries ?? []).some((item) => item.id === s.id),
+        );
+        const totals = seriesTotals(s, customPlan);
+        const plan = seriesPlan(s, customPlan);
+        const missing = hasCustomSyllabus ? [] : s.subjects.filter((x) => !bank.subjects.has(x));
         const empty = plan
           .filter((p) => !p.chapters || p.chapters.length === 0)
           .map((p) => p.subject);
@@ -175,11 +332,29 @@ function AdminExamBankPage() {
         if (empty.length) problems.push(`no chapters resolve: ${empty.join(", ")}`);
         if (totals.chapters === 0) problems.push("zero chapters");
         if (totals.tests === 0) problems.push("zero tests");
-        if (totals.pool < 5000) problems.push(`pool ${inr(totals.pool)} below 5,000`);
+        if (!hasCustomSyllabus && totals.pool < 5000)
+          problems.push(`pool ${inr(totals.pool)} below 5,000`);
         if (totals.pool > 250000) problems.push(`pool ${inr(totals.pool)} above 250,000`);
-        return { s, totals, problems };
+        return { s, totals, problems, hasCustomSyllabus, isAddedByAdmin };
       }),
-    [bank.subjects],
+    [activePaidSeries, customCatalog, bank.subjects],
+  );
+
+  const parsedDraftPlan = useMemo(
+    () => parseSeriesSyllabusText(draft.syllabusText),
+    [draft.syllabusText],
+  );
+  const parsedDraftChapters = useMemo(
+    () => parsedDraftPlan.reduce((sum, p) => sum + p.chapters.length, 0),
+    [parsedDraftPlan],
+  );
+  const parsedNewPlan = useMemo(
+    () => parseSeriesSyllabusText(newSeriesDraft.syllabusText),
+    [newSeriesDraft.syllabusText],
+  );
+  const parsedNewChapters = useMemo(
+    () => parsedNewPlan.reduce((sum, p) => sum + p.chapters.length, 0),
+    [parsedNewPlan],
   );
 
   const totals = useMemo(() => {
@@ -218,7 +393,7 @@ function AdminExamBankPage() {
           <Stat
             icon={BookOpenCheck}
             label="Paid / theory series"
-            value={`${PAID_TEST_SERIES.length} / ${THEORY_TEST_SERIES.length}`}
+            value={`${activePaidSeries.length} / ${THEORY_TEST_SERIES.length}`}
           />
           <Stat
             icon={problemCount === 0 ? CheckCircle2 : AlertTriangle}
@@ -269,170 +444,547 @@ function AdminExamBankPage() {
         </div>
 
         {tab === "series" ? (
-          <div className="surface-panel mt-4 overflow-x-auto p-0">
-            <table className="w-full min-w-[56rem] text-sm">
-              <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="p-3">Series</th>
-                  <th className="p-3">Exam</th>
-                  <th className="p-3 text-right">Subjects</th>
-                  <th className="p-3 text-right">Chapters</th>
-                  <th className="p-3 text-right">Tests</th>
-                  <th className="p-3 text-right">Pool</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Control</th>
-                </tr>
-              </thead>
-              <tbody>
-                {series
-                  .filter((r) => hit(r.s.name) || hit(r.s.examTrack) || hit(r.s.id))
-                  .map(({ s, totals: t, problems }) => (
-                    <Fragment key={s.id}>
-                      <tr className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="p-3 font-semibold">{s.name}</td>
-                        <td className="p-3">
-                          <span className="flex items-center gap-1.5">
-                            {s.examTrack}
-                            {recordedRules.has(s.examTrack) ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                            ) : null}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right tabular-nums">{t.subjects}</td>
-                        <td className="p-3 text-right tabular-nums">{t.chapters}</td>
-                        <td className="p-3 text-right tabular-nums">{t.tests}</td>
-                        <td className="p-3 text-right tabular-nums">{inr(t.pool)}</td>
-                        <td className="p-3">
-                          {problems.length === 0 ? (
-                            <Badge variant="secondary" className="rounded-full">
-                              {overrides.get(s.id)?.enabled === false ? "Hidden" : "OK"}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs font-semibold text-destructive">
-                              {problems.join(" · ")}
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right">
+          <div className="mt-4 space-y-4">
+            <div className="surface-panel border-primary/30 bg-gradient-to-r from-primary/[0.06] via-cyan-500/[0.05] to-violet-500/[0.06] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-black">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Full Admin Series &amp; Syllabus Control (Add / Remove / Fix Syllabus /
+                    Auto-Generate Questions)
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Remove any unwanted test series, add a brand-new series, or fix wrong syllabuses
+                    in text format (`Subject :: Chapter 1, Chapter 2`). Every chapter automatically
+                    generates 60 exam-grade MCQs (20 Easy → 20 Moderate → 20 Difficult).
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setShowAddSeries((v) => !v)}
+                  className="rounded-full font-bold"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  {showAddSeries ? "Close New Series Builder" : "Add New Test Series"}
+                </Button>
+              </div>
+
+              {showAddSeries ? (
+                <div className="mt-4 rounded-2xl border bg-background/90 p-5">
+                  <p className="text-sm font-black">Create New Test Series with Text Syllabus</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Enter the series details and paste its syllabus in text format below. Questions
+                    will auto-generate for every chapter.
+                  </p>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Series Name
+                      <input
+                        value={newSeriesDraft.name}
+                        onChange={(e) =>
+                          setNewSeriesDraft({ ...newSeriesDraft, name: e.target.value })
+                        }
+                        placeholder="e.g. Punjab ETT Cadre Special Series"
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Target Exam Name
+                      <input
+                        value={newSeriesDraft.examTrack}
+                        onChange={(e) =>
+                          setNewSeriesDraft({ ...newSeriesDraft, examTrack: e.target.value })
+                        }
+                        placeholder="e.g. Punjab ETT Cadre"
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Category Group
+                      <select
+                        value={newSeriesDraft.group}
+                        onChange={(e) =>
+                          setNewSeriesDraft({ ...newSeriesDraft, group: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                      >
+                        {SERIES_GROUPS.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Price in Rupees (0 = Free)
+                      <input
+                        inputMode="numeric"
+                        value={newSeriesDraft.priceInr}
+                        onChange={(e) =>
+                          setNewSeriesDraft({ ...newSeriesDraft, priceInr: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Price in Coins (0 = Free)
+                      <input
+                        inputMode="numeric"
+                        value={newSeriesDraft.priceCoins}
+                        onChange={(e) =>
+                          setNewSeriesDraft({ ...newSeriesDraft, priceCoins: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                      />
+                    </label>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full font-bold"
+                        onClick={() =>
+                          setNewSeriesDraft({
+                            ...newSeriesDraft,
+                            priceInr: "0",
+                            priceCoins: "0",
+                          })
+                        }
+                      >
+                        Set Free (₹0 / 0 Coins)
+                      </Button>
+                    </div>
+                  </div>
+
+                  <label className="mt-3 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Summary shown to students
+                    <input
+                      value={newSeriesDraft.summary}
+                      onChange={(e) =>
+                        setNewSeriesDraft({ ...newSeriesDraft, summary: e.target.value })
+                      }
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                    />
+                  </label>
+
+                  <div className="mt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        Syllabus in Text Format (`Subject :: Chapter 1, Chapter 2, Chapter 3`)
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SYLLABUS_PRESETS.map((preset) => (
                           <Button
+                            key={preset.label}
+                            type="button"
                             size="sm"
                             variant="outline"
+                            className="h-7 text-xs"
                             onClick={() =>
-                              openEditor(s.id, s.name, s.summary, s.priceInr, s.priceCoins)
+                              setNewSeriesDraft({
+                                ...newSeriesDraft,
+                                examTrack: preset.exam,
+                                syllabusText: preset.text,
+                              })
                             }
                           >
-                            Edit
+                            Load {preset.label}
                           </Button>
-                        </td>
-                      </tr>
-                      {editing === s.id ? (
-                        <tr>
-                          <td colSpan={8} className="bg-muted/30 p-0">
-                            <div className="surface-panel mt-4 p-5">
-                              <p className="text-sm font-black">Editing {editing}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Save stores an override. Revert deletes it and the series goes back
-                                to exactly what the app ships with.
-                              </p>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={newSeriesDraft.syllabusText}
+                      onChange={(e) =>
+                        setNewSeriesDraft({ ...newSeriesDraft, syllabusText: e.target.value })
+                      }
+                      placeholder="General Knowledge :: History of Punjab, Indian Polity, Geography&#10;Mathematics :: Number System, Percentage & Ratio, Mensuration"
+                      className="mt-1.5 w-full rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-primary"
+                    />
+                    <p className="mt-1.5 text-xs font-semibold text-primary">
+                      Parsed Live: {parsedNewPlan.length} Subjects · {parsedNewChapters} Chapters ·{" "}
+                      {inr(parsedNewChapters * 60)} Auto-Generated Questions (60 MCQs/chapter)
+                    </p>
+                  </div>
 
-                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                                  Series name
-                                  <input
-                                    value={draft.name}
-                                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
-                                  />
-                                </label>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      disabled={createSeries.isPending || !newSeriesDraft.name.trim()}
+                      className="font-bold"
+                      onClick={() =>
+                        createSeries.mutate({
+                          data: {
+                            name: newSeriesDraft.name.trim(),
+                            examTrack: newSeriesDraft.examTrack.trim() || "Punjab ETT Cadre",
+                            group: newSeriesDraft.group,
+                            summary:
+                              newSeriesDraft.summary.trim() ||
+                              "Chapterwise practice tests generated from the official syllabus.",
+                            priceInr: Math.max(0, Math.round(Number(newSeriesDraft.priceInr) || 0)),
+                            priceCoins: Math.max(
+                              0,
+                              Math.round(Number(newSeriesDraft.priceCoins) || 0),
+                            ),
+                            syllabus_text: newSeriesDraft.syllabusText,
+                          },
+                        })
+                      }
+                    >
+                      Create Series &amp; Auto-Generate Questions
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => setShowAddSeries(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                                    Price in rupees
-                                    <input
-                                      inputMode="numeric"
-                                      value={draft.priceInr}
+            <div className="surface-panel overflow-x-auto p-0">
+              <table className="w-full min-w-[56rem] text-sm">
+                <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="p-3">Series</th>
+                    <th className="p-3">Exam</th>
+                    <th className="p-3 text-right">Subjects</th>
+                    <th className="p-3 text-right">Chapters</th>
+                    <th className="p-3 text-right">Tests</th>
+                    <th className="p-3 text-right">Pool</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Control</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {series
+                    .filter((r) => hit(r.s.name) || hit(r.s.examTrack) || hit(r.s.id))
+                    .map(({ s, totals: t, problems, hasCustomSyllabus, isAddedByAdmin }) => {
+                      const o = overrides.get(s.id);
+                      const displayName = o?.name ?? s.name;
+                      return (
+                        <Fragment key={s.id}>
+                          <tr className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="p-3 font-semibold">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span>{displayName}</span>
+                                {isAddedByAdmin ? (
+                                  <Badge variant="default" className="rounded-full text-[10px]">
+                                    Added
+                                  </Badge>
+                                ) : null}
+                                {hasCustomSyllabus ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="rounded-full border-primary/50 text-[10px] text-primary"
+                                  >
+                                    Custom Syllabus
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span className="flex items-center gap-1.5">
+                                {s.examTrack}
+                                {recordedRules.has(s.examTrack) || hasCustomSyllabus ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                                ) : null}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right tabular-nums">{t.subjects}</td>
+                            <td className="p-3 text-right tabular-nums">{t.chapters}</td>
+                            <td className="p-3 text-right tabular-nums">{t.tests}</td>
+                            <td className="p-3 text-right tabular-nums">{inr(t.pool)}</td>
+                            <td className="p-3">
+                              {problems.length === 0 ? (
+                                <Badge variant="secondary" className="rounded-full">
+                                  {o?.enabled === false ? "Hidden" : "OK"}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs font-semibold text-destructive">
+                                  {problems.join(" · ")}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button size="sm" variant="outline" onClick={() => openEditor(s)}>
+                                  Fix Syllabus / Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  disabled={removeSeries.isPending}
+                                  onClick={() => removeSeries.mutate(s.id)}
+                                  title="Remove this test series"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {editing === s.id ? (
+                            <tr>
+                              <td colSpan={8} className="bg-muted/30 p-0">
+                                <div className="surface-panel mt-4 p-5">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-black">
+                                        Editing &amp; Fixing Syllabus: {displayName} ({editing})
+                                      </p>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        Edit series details or fix its Subject &amp; Chapter
+                                        syllabus in text format below. Questions are auto-generated
+                                        (60 MCQs per chapter) from your syllabus.
+                                      </p>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      disabled={removeSeries.isPending}
+                                      onClick={() => removeSeries.mutate(s.id)}
+                                    >
+                                      <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Remove This Series
+                                    </Button>
+                                  </div>
+
+                                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                      Series name
+                                      <input
+                                        value={draft.name}
+                                        onChange={(e) =>
+                                          setDraft({ ...draft, name: e.target.value })
+                                        }
+                                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                                      />
+                                    </label>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                        Price in rupees
+                                        <input
+                                          inputMode="numeric"
+                                          value={draft.priceInr}
+                                          onChange={(e) =>
+                                            setDraft({ ...draft, priceInr: e.target.value })
+                                          }
+                                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                                        />
+                                      </label>
+                                      <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                        Price in coins
+                                        <input
+                                          inputMode="numeric"
+                                          value={draft.priceCoins}
+                                          onChange={(e) =>
+                                            setDraft({ ...draft, priceCoins: e.target.value })
+                                          }
+                                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                                        />
+                                      </label>
+                                    </div>
+
+                                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground sm:col-span-2">
+                                      Summary shown to students
+                                      <textarea
+                                        rows={2}
+                                        value={draft.summary}
+                                        onChange={(e) =>
+                                          setDraft({ ...draft, summary: e.target.value })
+                                        }
+                                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className="mt-4 rounded-xl border border-primary/30 bg-primary/[0.04] p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-xs font-black uppercase tracking-wide text-primary">
+                                          Text Syllabus Editor (Subject :: Chapter 1, Chapter 2,
+                                          Chapter 3)
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          One subject per line, followed by `::` and comma-separated
+                                          chapters. Auto-generates 60 questions (20 Easy → 20
+                                          Moderate → 20 Difficult) per chapter.
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {SYLLABUS_PRESETS.map((preset) => (
+                                          <Button
+                                            key={preset.label}
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs"
+                                            onClick={() =>
+                                              setDraft({ ...draft, syllabusText: preset.text })
+                                            }
+                                          >
+                                            {preset.label}
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <textarea
+                                      rows={7}
+                                      value={draft.syllabusText}
                                       onChange={(e) =>
-                                        setDraft({ ...draft, priceInr: e.target.value })
+                                        setDraft({ ...draft, syllabusText: e.target.value })
                                       }
-                                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                                      placeholder="Punjabi Language :: ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ, ਸ਼ਬਦ ਬੋਧ, ਪੰਜਾਬੀ ਸਾਹਿਤ&#10;General Knowledge :: Punjab History & Culture, Indian Polity, Geography"
+                                      className="mt-2 w-full rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-primary"
                                     />
-                                  </label>
-                                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                                    Price in coins
+
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                      <span className="font-bold text-primary">
+                                        Live Syllabus Preview: {parsedDraftPlan.length} Subjects ·{" "}
+                                        {parsedDraftChapters} Chapters ·{" "}
+                                        {inr(parsedDraftChapters * 60)} Auto-Generated MCQs
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 text-xs"
+                                        onClick={() =>
+                                          setDraft({
+                                            ...draft,
+                                            syllabusText: `${draft.syllabusText.trim()}\nNew Subject :: Chapter 1, Chapter 2, Chapter 3`,
+                                          })
+                                        }
+                                      >
+                                        + Add Subject Row
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <label className="mt-3 flex items-center gap-2 text-sm font-semibold">
                                     <input
-                                      inputMode="numeric"
-                                      value={draft.priceCoins}
+                                      type="checkbox"
+                                      checked={draft.enabled}
                                       onChange={(e) =>
-                                        setDraft({ ...draft, priceCoins: e.target.value })
+                                        setDraft({ ...draft, enabled: e.target.checked })
                                       }
-                                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal tracking-normal outline-none focus:border-primary"
+                                      className="h-4 w-4"
                                     />
+                                    Visible to students
                                   </label>
+
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    <Button
+                                      disabled={saveSyllabus.isPending || save.isPending}
+                                      className="font-bold"
+                                      onClick={() =>
+                                        saveSyllabus.mutate({
+                                          data: {
+                                            series_id: editing,
+                                            syllabus_text: draft.syllabusText,
+                                            enabled: draft.enabled,
+                                            name: draft.name.trim() || null,
+                                            summary: draft.summary.trim() || null,
+                                            price_inr:
+                                              draft.priceInr.trim() === ""
+                                                ? null
+                                                : Math.max(
+                                                    0,
+                                                    Math.round(Number(draft.priceInr) || 0),
+                                                  ),
+                                            price_coins:
+                                              draft.priceCoins.trim() === ""
+                                                ? null
+                                                : Math.max(
+                                                    0,
+                                                    Math.round(Number(draft.priceCoins) || 0),
+                                                  ),
+                                          },
+                                        })
+                                      }
+                                    >
+                                      Save Series &amp; Syllabus (Auto-Generate Questions)
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      disabled={saveSyllabus.isPending || save.isPending}
+                                      onClick={() => {
+                                        setDraft({ ...draft, priceInr: "0", priceCoins: "0" });
+                                        saveSyllabus.mutate({
+                                          data: {
+                                            series_id: editing,
+                                            syllabus_text: draft.syllabusText,
+                                            enabled: draft.enabled,
+                                            name: draft.name.trim() || null,
+                                            summary: draft.summary.trim() || null,
+                                            price_inr: 0,
+                                            price_coins: 0,
+                                          },
+                                        });
+                                      }}
+                                    >
+                                      Make Free (₹0)
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      disabled={reset.isPending}
+                                      onClick={() => reset.mutate(editing)}
+                                    >
+                                      Revert to built-in
+                                    </Button>
+                                    <Button variant="ghost" onClick={() => setEditing(null)}>
+                                      Cancel
+                                    </Button>
+                                  </div>
                                 </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
 
-                                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground sm:col-span-2">
-                                  Summary shown to students
-                                  <textarea
-                                    rows={3}
-                                    value={draft.summary}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, summary: e.target.value })
-                                    }
-                                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
-                                  />
-                                </label>
-                              </div>
-
-                              <label className="mt-3 flex items-center gap-2 text-sm font-semibold">
-                                <input
-                                  type="checkbox"
-                                  checked={draft.enabled}
-                                  onChange={(e) =>
-                                    setDraft({ ...draft, enabled: e.target.checked })
-                                  }
-                                  className="h-4 w-4"
-                                />
-                                Visible to students
-                              </label>
-
-                              <div className="mt-4 flex flex-wrap gap-2">
-                                <Button
-                                  disabled={save.isPending}
-                                  className="font-bold"
-                                  onClick={() =>
-                                    save.mutate({
-                                      data: {
-                                        series_id: editing,
-                                        enabled: draft.enabled,
-                                        name: draft.name.trim() || null,
-                                        summary: draft.summary.trim() || null,
-                                        price_inr: Number(draft.priceInr) || null,
-                                        price_coins: Number(draft.priceCoins) || null,
-                                      },
-                                    })
-                                  }
-                                >
-                                  Save
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  disabled={reset.isPending}
-                                  onClick={() => reset.mutate(editing)}
-                                >
-                                  Revert to built-in
-                                </Button>
-                                <Button variant="ghost" onClick={() => setEditing(null)}>
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
+            {removedBuiltInSeries.length > 0 ? (
+              <div className="surface-panel p-5">
+                <p className="text-sm font-black">
+                  Removed Test Series ({removedBuiltInSeries.length})
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These built-in series were removed by Admin and are hidden from students. You can
+                  restore any of them with one click.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {removedBuiltInSeries.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs font-semibold"
+                    >
+                      <span>
+                        {item.name} ({item.examTrack})
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 rounded-full px-2.5 text-xs"
+                        disabled={restoreSeries.isPending}
+                        onClick={() => restoreSeries.mutate(item.id)}
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" /> Restore
+                      </Button>
+                    </div>
                   ))}
-              </tbody>
-            </table>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -620,7 +1172,7 @@ function AdminExamBankPage() {
                 className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-primary"
               >
                 <option value="">Choose a series</option>
-                {PAID_TEST_SERIES.map((s) => (
+                {activePaidSeries.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>

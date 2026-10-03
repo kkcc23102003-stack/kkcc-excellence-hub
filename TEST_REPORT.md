@@ -105,11 +105,11 @@ Catalogue: 41 series · **1,463 chapters** · **1,821 tests**.
 
 ## Fresh artifacts
 
-| Artifact                               | SHA-256                                                                        |
-| -------------------------------------- | ------------------------------------------------------------------------------ |
-| `kkcc-excellence-hub.zip` (286 files)  | `fbda2f912384263388c9349e3c82c829642d920a3fdb4123e713bd1594f9b29a`             |
-| the retired legacy SQL export | `62a765e533f897b378c64f307adee9b4c745d04141adfd7796ec665af8c175b2` (unchanged) |
-| the retired legacy SQL cleaner  | `c77ffccc76cee467e6e7c00306c4fd1e6f7c0416acd1e04235ae83c5c4c322b9` (unchanged) |
+| Artifact                              | SHA-256                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------ |
+| `kkcc-excellence-hub.zip` (286 files) | `fbda2f912384263388c9349e3c82c829642d920a3fdb4123e713bd1594f9b29a`             |
+| the retired legacy SQL export         | `62a765e533f897b378c64f307adee9b4c745d04141adfd7796ec665af8c175b2` (unchanged) |
+| the retired legacy SQL cleaner        | `c77ffccc76cee467e6e7c00306c4fd1e6f7c0416acd1e04235ae83c5c4c322b9` (unchanged) |
 
 No new migration this round, so both SQL files are unchanged.
 
@@ -277,11 +277,11 @@ Bank growth this round: 5,285,624 → **5,711,370** valid questions (+425,746).
 
 ## Fresh artifacts
 
-| Artifact                               | SHA-256                                                            |
-| -------------------------------------- | ------------------------------------------------------------------ |
-| `kkcc-excellence-hub.zip` (281 files)  | `ed2c39f8d79733abdcae7b82d50172982ff4e48f9aa1181e85e7248c2c4d3b28` |
-| the retired legacy SQL export | `62a765e533f897b378c64f307adee9b4c745d04141adfd7796ec665af8c175b2` |
-| the retired legacy SQL cleaner  | `c77ffccc76cee467e6e7c00306c4fd1e6f7c0416acd1e04235ae83c5c4c322b9` |
+| Artifact                              | SHA-256                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `kkcc-excellence-hub.zip` (281 files) | `ed2c39f8d79733abdcae7b82d50172982ff4e48f9aa1181e85e7248c2c4d3b28` |
+| the retired legacy SQL export         | `62a765e533f897b378c64f307adee9b4c745d04141adfd7796ec665af8c175b2` |
+| the retired legacy SQL cleaner        | `c77ffccc76cee467e6e7c00306c4fd1e6f7c0416acd1e04235ae83c5c4c322b9` |
 
 The combined SQL now ends with the new grants migration; the cleaner drops
 `test_access_grants` and `has_test_access` in the right order.

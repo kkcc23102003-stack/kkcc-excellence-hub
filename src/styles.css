@@ -663,6 +663,45 @@ html.high-refresh:not(.lite-motion) .reveal {
   }
 }
 
+/* Study material / notes page: never force a desktop-width canvas on phones or tablets.
+   External Drive/PDF URLs remain external resources; only the KKCC listing page is made responsive here. */
+.kkcc-study-material-page {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.kkcc-study-material-page > * {
+  min-width: 0;
+}
+
+.kkcc-study-material-page img,
+.kkcc-study-material-page iframe,
+.kkcc-study-material-page video {
+  max-width: 100%;
+}
+
+.kkcc-study-material-page article,
+.kkcc-study-material-page h1,
+.kkcc-study-material-page h2,
+.kkcc-study-material-page p,
+.kkcc-study-material-page button,
+.kkcc-study-material-page a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .kkcc-study-material-page .surface-panel {
+    border-radius: 1.25rem;
+  }
+
+  .kkcc-study-material-page > .mx-auto {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
 
 /* Test Series uses the same KKCC design tokens as the rest of the app.
    Keep the page stable on phones, tablets, foldables and desktop widths. */

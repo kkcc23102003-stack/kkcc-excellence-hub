@@ -1,5 +1,18 @@
 import { getExamBankExams, getExamBankTopicsForExam } from "@/lib/exam-bank";
-import { allExamSubjects, unwrap } from "@/lib/learning.server";
+import {
+  allExamSubjects,
+  CUSTOM_SERIES_CATALOG_KEY,
+  readCustomSeriesCatalog,
+  unwrap,
+} from "@/lib/learning.server";
+import {
+  parseSeriesSyllabusText,
+  SERIES_GROUPS,
+  setRuntimeCustomSeriesCatalog,
+  type CustomSeriesCatalog,
+  type PaidTestSeries,
+  type SeriesGroup,
+} from "@/lib/test-series-catalog";
 import { projectContent } from "@/lib/project-content.server";
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -415,6 +428,9 @@ const testSchema = z.object({
   generation_topic: z.string().trim().max(160).default("Mixed"),
   generation_difficulty: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).default("Difficult"),
   generation_count: z.number().int().min(0).max(1000).default(0),
+  syllabus_subject: z.string().trim().max(120).default(""),
+  syllabus_chapter: z.string().trim().max(200).default(""),
+  syllabus_topic: z.string().trim().max(240).default(""),
 });
 
 export const saveTest = createServerFn({ method: "POST" })
@@ -976,5 +992,248 @@ export const pullQuestionsFromBank = createServerFn({ method: "POST" })
       added: data.count,
       generatedOnDemand: true,
       savedQuestionRows: 0,
+    };
+  });
+
+async function writeCustomSeriesCatalog(catalog: CustomSeriesCatalog) {
+  setRuntimeCustomSeriesCatalog(catalog);
+  const { error } = await projectContent.from("site_settings").upsert(
+    {
+      key: CUSTOM_SERIES_CATALOG_KEY,
+      value: JSON.stringify(catalog),
+    } as never,
+    { onConflict: "key" },
+  );
+  if (error) throw new Error(error.message);
+  return catalog;
+}
+
+export const adminGetCustomSeriesCatalog = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    return readCustomSeriesCatalog();
+  });
+
+export const adminSaveSeriesSyllabus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().min(1).max(120),
+        syllabus_text: z.string().trim().min(3).max(20000),
+        enabled: z.boolean().optional(),
+        name: z.string().trim().min(2).max(160).nullable().optional(),
+        summary: z.string().trim().min(3).max(2000).nullable().optional(),
+        price_inr: z.number().int().min(0).max(100000).nullable().optional(),
+        price_coins: z.number().int().min(0).max(10000000).nullable().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const plan = parseSeriesSyllabusText(data.syllabus_text);
+    if (plan.length === 0) {
+      throw new Error(
+        "Enter at least one Subject and Chapter (e.g. General Knowledge :: History of Punjab, Polity).",
+      );
+    }
+    const current = await readCustomSeriesCatalog();
+    const syllabusBySeriesId = {
+      ...(current.syllabusBySeriesId ?? {}),
+      [data.series_id]: plan,
+    };
+    const addedSeries = (current.addedSeries ?? []).map((item) =>
+      item.id === data.series_id
+        ? {
+            ...item,
+            ...(data.name ? { name: data.name } : {}),
+            ...(data.summary ? { summary: data.summary } : {}),
+            ...(typeof data.price_inr === "number" ? { priceInr: data.price_inr } : {}),
+            ...(typeof data.price_coins === "number" ? { priceCoins: data.price_coins } : {}),
+            subjects: plan.map((p) => p.subject),
+            customPlan: plan,
+          }
+        : item,
+    );
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId,
+      addedSeries,
+    });
+
+    if (
+      data.enabled !== undefined ||
+      data.name !== undefined ||
+      data.summary !== undefined ||
+      data.price_inr !== undefined ||
+      data.price_coins !== undefined
+    ) {
+      await projectContent.from("test_series_overrides").upsert(
+        {
+          series_id: data.series_id,
+          enabled: data.enabled ?? true,
+          name: data.name ?? null,
+          summary: data.summary ?? null,
+          price_inr: data.price_inr ?? null,
+          price_coins: data.price_coins ?? null,
+          sort_order: null,
+          updated_by: context.userId,
+        } as never,
+        { onConflict: "series_id" },
+      );
+    }
+
+    const totalChapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
+    return {
+      ok: true,
+      subjectsCount: plan.length,
+      chaptersCount: totalChapters,
+      questionsPerChapter: 60,
+      totalAutoQuestions: totalChapters * 60,
+    };
+  });
+
+export const adminResetSeriesSyllabus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const nextMap = { ...(current.syllabusBySeriesId ?? {}) };
+    delete nextMap[data.series_id];
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId: nextMap,
+    });
+    return { ok: true };
+  });
+
+export const adminRemoveTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const isCustomAdded = (current.addedSeries ?? []).some((s) => s.id === data.series_id);
+    const nextAdded = (current.addedSeries ?? []).filter((s) => s.id !== data.series_id);
+    const nextRemoved = isCustomAdded
+      ? (current.removedSeriesIds ?? []).filter((id) => id !== data.series_id)
+      : [...new Set([...(current.removedSeriesIds ?? []), data.series_id])];
+    const nextSyllabus = { ...(current.syllabusBySeriesId ?? {}) };
+    if (isCustomAdded) delete nextSyllabus[data.series_id];
+
+    await writeCustomSeriesCatalog({
+      syllabusBySeriesId: nextSyllabus,
+      removedSeriesIds: nextRemoved,
+      addedSeries: nextAdded,
+    });
+
+    await projectContent.from("test_series_overrides").upsert(
+      {
+        series_id: data.series_id,
+        enabled: false,
+        name: null,
+        summary: null,
+        price_inr: null,
+        price_coins: null,
+        sort_order: null,
+        updated_by: context.userId,
+      } as never,
+      { onConflict: "series_id" },
+    );
+
+    return { ok: true, removed: data.series_id };
+  });
+
+export const adminRestoreTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const nextRemoved = (current.removedSeriesIds ?? []).filter((id) => id !== data.series_id);
+    await writeCustomSeriesCatalog({
+      ...current,
+      removedSeriesIds: nextRemoved,
+    });
+    await projectContent.from("test_series_overrides").delete().eq("series_id", data.series_id);
+    return { ok: true, restored: data.series_id };
+  });
+
+export const adminCreateCustomTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: z.string().trim().max(120).optional(),
+        name: z.string().trim().min(3).max(160),
+        examTrack: z.string().trim().min(2).max(120),
+        group: z.string().trim().min(2).max(80).default("Punjab State"),
+        summary: z.string().trim().min(5).max(2000),
+        priceInr: z.number().int().min(0).max(100000).default(0),
+        priceCoins: z.number().int().min(0).max(10000000).default(0),
+        syllabus_text: z.string().trim().min(3).max(20000),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const plan = parseSeriesSyllabusText(data.syllabus_text);
+    if (plan.length === 0) {
+      throw new Error(
+        "Enter at least one Subject and Chapter (e.g. General Knowledge :: History of Punjab, Polity).",
+      );
+    }
+    const cleanId =
+      (data.id?.trim() || data.name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80) || `custom-series-${Date.now()}`;
+
+    const group: SeriesGroup = (SERIES_GROUPS as readonly string[]).includes(data.group)
+      ? (data.group as SeriesGroup)
+      : "Punjab State";
+
+    const newSeries: PaidTestSeries = {
+      id: cleanId,
+      name: data.name.trim(),
+      examTrack: data.examTrack.trim(),
+      group,
+      subjects: plan.map((p) => p.subject),
+      summary: data.summary.trim(),
+      priceInr: data.priceInr,
+      priceCoins: data.priceCoins,
+      customPlan: plan,
+    };
+
+    const current = await readCustomSeriesCatalog();
+    const filteredAdded = (current.addedSeries ?? []).filter((s) => s.id !== cleanId);
+    const filteredRemoved = (current.removedSeriesIds ?? []).filter((id) => id !== cleanId);
+    const syllabusBySeriesId = {
+      ...(current.syllabusBySeriesId ?? {}),
+      [cleanId]: plan,
+    };
+
+    await writeCustomSeriesCatalog({
+      syllabusBySeriesId,
+      removedSeriesIds: filteredRemoved,
+      addedSeries: [newSeries, ...filteredAdded],
+    });
+
+    const totalChapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
+    return {
+      ok: true,
+      series: newSeries,
+      subjectsCount: plan.length,
+      chaptersCount: totalChapters,
+      totalAutoQuestions: totalChapters * 60,
     };
   });

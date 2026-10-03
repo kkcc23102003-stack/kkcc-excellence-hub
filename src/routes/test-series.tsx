@@ -29,7 +29,11 @@ import { CustomPageSections } from "@/components/kkcc/custom-page-sections";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { TestSeriesOverrideRow } from "@/integrations/supabase/db";
-import { listPublicTests, listSeriesOverrides } from "@/lib/content.functions";
+import {
+  getCustomSeriesCatalog,
+  listPublicTests,
+  listSeriesOverrides,
+} from "@/lib/content.functions";
 import { listMySeriesAccess } from "@/lib/test-access.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
 import { theoryChapters, theoryTotals } from "@/lib/theory-bank";
@@ -46,11 +50,15 @@ import {
   THEORY_TEST_SERIES,
   type TheorySeries,
   catalogTotals,
+  getEffectiveLearningSeries,
+  getEffectivePaidTestSeries,
+  resolveSeriesPrice,
   seriesByGroup,
   seriesAdvancedTests,
   seriesLayers,
   seriesPlan,
   seriesTotals,
+  setRuntimeCustomSeriesCatalog,
   type PaidTestSeries,
 } from "@/lib/test-series-catalog";
 
@@ -162,7 +170,6 @@ function TestSeriesRoute() {
 
 function TestSeries() {
   const content = useWebsiteContent();
-  const paidTotals = catalogTotals();
   const controls = useAppControls();
   const tests = Route.useLoaderData();
   const [query, setQuery] = useState("");
@@ -174,6 +181,29 @@ function TestSeries() {
     queryFn: () => safeServerCall(() => listSeriesOverrides({} as never), []),
     staleTime: 60_000,
   });
+  const customCatalogQuery = useQuery({
+    queryKey: ["public", "custom-series-catalog"],
+    queryFn: () => safeServerCall(() => getCustomSeriesCatalog({} as never), {}),
+    staleTime: 15_000,
+  });
+  const customCatalog = useMemo(() => {
+    const data = customCatalogQuery.data ?? {};
+    setRuntimeCustomSeriesCatalog(data);
+    return data;
+  }, [customCatalogQuery.data]);
+  const activePaidSeries = useMemo(
+    () => getEffectivePaidTestSeries(customCatalog),
+    [customCatalog],
+  );
+  const activeLearningSeries = useMemo(
+    () => getEffectiveLearningSeries(customCatalog),
+    [customCatalog],
+  );
+  const paidTotals = useMemo(() => catalogTotals(customCatalog), [customCatalog]);
+  const removedIds = useMemo(
+    () => new Set(customCatalog.removedSeriesIds ?? []),
+    [customCatalog.removedSeriesIds],
+  );
   // Which series this student has actually paid for. Signed out, or with no
   // grant, the card stays locked.
   const learningAccess = useLearningAccess();
@@ -191,17 +221,19 @@ function TestSeries() {
 
   const enrolledSeries = useMemo(() => {
     const grants = myAccessQuery.data ?? [];
-    return LEARNING_SERIES.map((series) => {
-      const access = grants.find(
-        (item) =>
-          item.series_id.trim().toLowerCase() === series.id.trim().toLowerCase() ||
-          item.series_id.trim().toLowerCase() === series.name.trim().toLowerCase(),
+    return activeLearningSeries
+      .map((series) => {
+        const access = grants.find(
+          (item) =>
+            item.series_id.trim().toLowerCase() === series.id.trim().toLowerCase() ||
+            item.series_id.trim().toLowerCase() === series.name.trim().toLowerCase(),
+        );
+        return access ? { series, access } : null;
+      })
+      .filter((item): item is { series: PaidTestSeries; access: (typeof grants)[number] } =>
+        Boolean(item),
       );
-      return access ? { series, access } : null;
-    }).filter((item): item is { series: PaidTestSeries; access: (typeof grants)[number] } =>
-      Boolean(item),
-    );
-  }, [myAccessQuery.data]);
+  }, [myAccessQuery.data, activeLearningSeries]);
 
   const overrideRows = useMemo(
     () => (overridesQuery.data ?? []) as TestSeriesOverrideRow[],
@@ -213,22 +245,34 @@ function TestSeries() {
     return m;
   }, [overrideRows]);
   const applyOverride = useCallback(
-    <T extends { id: string; name: string; summary: string; priceInr: number; priceCoins: number }>(
+    <
+      T extends {
+        id: string;
+        examTrack?: string;
+        name: string;
+        summary: string;
+        priceInr: number;
+        priceCoins: number;
+      },
+    >(
       s: T,
     ): T => {
       const o = overrides.get(s.id);
-      if (!o) return s;
+      const price = resolveSeriesPrice(s, o);
+      if (!o) return { ...s, ...price };
       return {
         ...s,
         name: o.name ?? s.name,
         summary: o.summary ?? s.summary,
-        priceInr: o.price_inr ?? s.priceInr,
-        priceCoins: o.price_coins ?? s.priceCoins,
+        ...price,
       };
     },
     [overrides],
   );
-  const isHidden = useCallback((id: string) => overrides.get(id)?.enabled === false, [overrides]);
+  const isHidden = useCallback(
+    (id: string) => removedIds.has(id) || overrides.get(id)?.enabled === false,
+    [overrides, removedIds],
+  );
 
   /*
    * One search box covers the whole catalogue: series name, the exam it is
@@ -245,8 +289,8 @@ function TestSeries() {
         .toLowerCase();
       return words.every((w) => hay.includes(w));
     };
-    return new Set(PAID_TEST_SERIES.filter(hit).map((series) => series.id));
-  }, [needle]);
+    return new Set(activePaidSeries.filter(hit).map((series) => series.id));
+  }, [needle, activePaidSeries]);
 
   const theoryMatches = useMemo(() => {
     if (!needle) return null;
@@ -279,287 +323,288 @@ function TestSeries() {
   return (
     <SiteLayout>
       <div className="kkcc-test-series-page min-w-0 overflow-x-clip">
-      {learningAccess.isError && (
-        <section role="alert" className="mx-auto max-w-7xl px-4 py-6">
-          Enrollment check failed: {learningAccess.error.message}
-          <Button onClick={() => void learningAccess.refetch()}>Retry</Button>
-        </section>
-      )}
-      {(enrolledSeries.length > 0 || enrolledTests.length > 0) && (
-        <section
-          data-testid="enrolled-series"
-          className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6"
-        >
-          <h2 className="text-2xl font-black">My enrolled Test Series &amp; Tests</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            All your active enrollments appear first.
-          </p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {enrolledSeries.map(({ series, access }) => (
-              <SeriesCard
-                key={series.id}
-                series={applyOverride(series)}
-                unlocked
-                expiresAt={access.expires_at}
-              />
-            ))}
-            {enrolledTests.map((test) => (
-              <TestCard key={test.id} test={test} enrolled allowed />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <PageHeader
-        eyebrow={content.page_headers.test_series.eyebrow}
-        title={content.page_headers.test_series.title}
-        description={content.page_headers.test_series.description}
-      />
-
-      <CustomPageSections page="test_series" position="top" />
-
-      <section className="mx-auto w-full max-w-7xl px-4 pt-12 sm:px-6">
-        <div className="surface-panel p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <Badge className="rounded-full border-primary/30 bg-primary/10 text-primary">
-                <BookOpenCheck className="mr-1.5 h-3.5 w-3.5" /> Free chapterwise practice
-              </Badge>
-              <h2 className="mt-4 text-xl font-black sm:text-2xl">
-                NCERT-style, subjectwise and chapterwise quiz practice
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                Start free local practice by course-style subject and chapter. Questions keep
-                working even after the daily Kit 2 Coins reward cap, and this local quiz activity
-                does not use the study database.
-              </p>
-            </div>
-            <Badge variant="secondary" className="rounded-full">
-              Unlimited questions
-            </Badge>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {FREE_CHAPTER_PRACTICE.map((item) => (
-              <article key={item.title} className="rounded-3xl border bg-background/65 p-5">
-                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-primary/10 text-primary">
-                  <BookOpenCheck className="h-5 w-5" />
-                </span>
-                <h3 className="mt-4 font-bold">{item.title}</h3>
-                <p className="mt-2 min-h-12 text-xs leading-relaxed text-muted-foreground">
-                  {item.description}
-                </p>
-                <a
-                  className="mt-4 inline-flex h-10 items-center rounded-full border border-primary/35 bg-primary/10 px-4 text-sm font-bold text-primary transition hover:bg-primary/15"
-                  href={buildChapterPracticeUrl(item)}
-                >
-                  Practice free
-                </a>
-              </article>
-            ))}
-          </div>
-
-          <p className="mt-5 flex items-start gap-2 rounded-2xl border border-dashed p-4 text-xs leading-relaxed text-muted-foreground">
-            <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            For NEET, JEE, CA, UPSC, Banking, Railways, Punjab ETT, PSTET, PPSC and other exams,
-            open Kit 2 Coins Quiz and use its exam/chapter search. Reward coins are capped locally,
-            but learning and next questions never stop.
-          </p>
-        </div>
-      </section>
-
-      <section className="border-t bg-muted/20">
-        <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold">Paid test series</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                Every series is built for one exam and says so on its card. The work is arranged
-                chapterwise: each chapter gets one {QUESTIONS_PER_CHAPTER} question test, and those{" "}
-                {QUESTIONS_PER_CHAPTER} run in a fixed order — 20 Easy, then 20 Moderate, then 20
-                Difficult. You clear the concept before you meet its hardest version.
-              </p>
-            </div>
-            <Badge variant="secondary" className="rounded-full">
-              {paidTotals.series} series · {paidTotals.chapters.toLocaleString()} chapter tests
-            </Badge>
-          </div>
-
-          <div className="mt-6">
-            <label htmlFor="series-search" className="sr-only">
-              Search test series
-            </label>
-            <div className="relative max-w-xl">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                id="series-search"
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search a series, exam or subject — try Master Cadre, ICSE, CA, Punjabi"
-                className="h-12 w-full rounded-full border bg-background pl-11 pr-4 text-sm outline-none ring-primary/40 transition focus:ring-2"
-              />
-            </div>
-            {needle ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {matchCount === 0
-                  ? "No series matched. Try a shorter word, for example Punjabi or Class 10."
-                  : `${matchCount} series matched "${query.trim()}".`}
-              </p>
-            ) : null}
-          </div>
-
-          {SERIES_GROUPS.map((group) => {
-            const list = seriesByGroup(group)
-              .filter((series) => !matches || matches.has(series.id))
-              .filter(
-                (series) =>
-                  !isHidden(series.id) &&
-                  !enrolledSeries.some((item) => item.series.id === series.id),
-              )
-              .map(applyOverride);
-            if (!list.length) return null;
-            return (
-              <div key={group} className="mt-8">
-                <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-muted-foreground">
-                  <Layers className="h-4 w-4 text-primary" /> {group}
-                </h3>
-                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                  {list.map((series) => (
-                    <SeriesCard
-                      key={series.id}
-                      series={series}
-                      unlocked={
-                        unlocked.has(series.id) || (series.priceInr <= 0 && series.priceCoins <= 0)
-                      }
-                      expiresAt={accessBySeries.get(series.id)?.expires_at ?? null}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-
-          <details className="surface-panel mt-8 p-5">
-            <summary className="cursor-pointer font-bold">
-              Additional existing question-bank practice tracks
-            </summary>
-            <p className="mt-2 text-xs text-muted-foreground">
-              These are existing bank labels/families, not new official exams.
+        {learningAccess.isError && (
+          <section role="alert" className="mx-auto max-w-7xl px-4 py-6">
+            Enrollment check failed: {learningAccess.error.message}
+            <Button onClick={() => void learningAccess.refetch()}>Retry</Button>
+          </section>
+        )}
+        {(enrolledSeries.length > 0 || enrolledTests.length > 0) && (
+          <section
+            data-testid="enrolled-series"
+            className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6"
+          >
+            <h2 className="text-2xl font-black">My enrolled Test Series &amp; Tests</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              All your active enrollments appear first.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {ADDITIONAL_PRACTICE_SERIES.filter(
-                (series) => !enrolledSeries.some((item) => item.series.id === series.id),
-              ).map((series) => (
-                <div key={series.id} className="rounded-xl border p-4">
-                  <p className="font-semibold">{series.examTrack}</p>
-                  <Button asChild className="mt-3 rounded-full">
-                    <Link to="/test-series/learn/$seriesId" params={{ seriesId: series.id }}>
-                      Start Learning
-                    </Link>
-                  </Button>
-                </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {enrolledSeries.map(({ series, access }) => (
+                <SeriesCard
+                  key={series.id}
+                  series={applyOverride(series)}
+                  unlocked
+                  expiresAt={access.expires_at}
+                />
+              ))}
+              {enrolledTests.map((test) => (
+                <TestCard key={test.id} test={test} enrolled allowed />
               ))}
             </div>
-          </details>
-          <TheorySeriesSection visible={theoryMatches} />
-        </div>
-      </section>
+          </section>
+        )}
 
-      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.5fr_1fr]">
-        <section>
-          <h2 className="text-xl font-bold">{content.test_series.available_tests_title}</h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {tests
-              .filter((test) => !enrolledTestIds.has(test.id))
-              .map((t) => (
-                <div key={t.id} className="surface-panel hover-lift p-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-                      <ClipboardList className="h-5 w-5" />
-                    </span>
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <Badge variant="secondary" className="rounded-full text-[11px]">
-                        {t.subject}
-                      </Badge>
-                      {t.level && t.level !== "Mixed" && (
-                        <Badge variant="outline" className="rounded-full text-[11px]">
-                          {t.level}
-                        </Badge>
-                      )}
-                    </div>
+        <PageHeader
+          eyebrow={content.page_headers.test_series.eyebrow}
+          title={content.page_headers.test_series.title}
+          description={content.page_headers.test_series.description}
+        />
+
+        <CustomPageSections page="test_series" position="top" />
+
+        <section className="mx-auto w-full max-w-7xl px-4 pt-12 sm:px-6">
+          <div className="surface-panel p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <Badge className="rounded-full border-primary/30 bg-primary/10 text-primary">
+                  <BookOpenCheck className="mr-1.5 h-3.5 w-3.5" /> Free chapterwise practice
+                </Badge>
+                <h2 className="mt-4 text-xl font-black sm:text-2xl">
+                  NCERT-style, subjectwise and chapterwise quiz practice
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  Start free local practice by course-style subject and chapter. Questions keep
+                  working even after the daily Kit 2 Coins reward cap, and this local quiz activity
+                  does not use the study database.
+                </p>
+              </div>
+              <Badge variant="secondary" className="rounded-full">
+                Unlimited questions
+              </Badge>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {FREE_CHAPTER_PRACTICE.map((item) => (
+                <article key={item.title} className="rounded-3xl border bg-background/65 p-5">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-primary/10 text-primary">
+                    <BookOpenCheck className="h-5 w-5" />
+                  </span>
+                  <h3 className="mt-4 font-bold">{item.title}</h3>
+                  <p className="mt-2 min-h-12 text-xs leading-relaxed text-muted-foreground">
+                    {item.description}
+                  </p>
+                  <a
+                    className="mt-4 inline-flex h-10 items-center rounded-full border border-primary/35 bg-primary/10 px-4 text-sm font-bold text-primary transition hover:bg-primary/15"
+                    href={buildChapterPracticeUrl(item)}
+                  >
+                    Practice free
+                  </a>
+                </article>
+              ))}
+            </div>
+
+            <p className="mt-5 flex items-start gap-2 rounded-2xl border border-dashed p-4 text-xs leading-relaxed text-muted-foreground">
+              <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              For NEET, JEE, CA, UPSC, Banking, Railways, Punjab ETT, PSTET, PPSC and other exams,
+              open Kit 2 Coins Quiz and use its exam/chapter search. Reward coins are capped
+              locally, but learning and next questions never stop.
+            </p>
+          </div>
+        </section>
+
+        <section className="border-t bg-muted/20">
+          <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold">Paid test series</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  Every series is built for one exam and says so on its card. The work is arranged
+                  chapterwise: each chapter gets one {QUESTIONS_PER_CHAPTER} question test, and
+                  those {QUESTIONS_PER_CHAPTER} run in a fixed order — 20 Easy, then 20 Moderate,
+                  then 20 Difficult. You clear the concept before you meet its hardest version.
+                </p>
+              </div>
+              <Badge variant="secondary" className="rounded-full">
+                {paidTotals.series} series · {paidTotals.chapters.toLocaleString()} chapter tests
+              </Badge>
+            </div>
+
+            <div className="mt-6">
+              <label htmlFor="series-search" className="sr-only">
+                Search test series
+              </label>
+              <div className="relative max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="series-search"
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search a series, exam or subject — try Master Cadre, ICSE, CA, Punjabi"
+                  className="h-12 w-full rounded-full border bg-background pl-11 pr-4 text-sm outline-none ring-primary/40 transition focus:ring-2"
+                />
+              </div>
+              {needle ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {matchCount === 0
+                    ? "No series matched. Try a shorter word, for example Punjabi or Class 10."
+                    : `${matchCount} series matched "${query.trim()}".`}
+                </p>
+              ) : null}
+            </div>
+
+            {SERIES_GROUPS.map((group) => {
+              const list = seriesByGroup(group, customCatalog)
+                .filter((series) => !matches || matches.has(series.id))
+                .filter(
+                  (series) =>
+                    !isHidden(series.id) &&
+                    !enrolledSeries.some((item) => item.series.id === series.id),
+                )
+                .map(applyOverride);
+              if (!list.length) return null;
+              return (
+                <div key={group} className="mt-8">
+                  <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-muted-foreground">
+                    <Layers className="h-4 w-4 text-primary" /> {group}
+                  </h3>
+                  <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                    {list.map((series) => (
+                      <SeriesCard
+                        key={series.id}
+                        series={series}
+                        unlocked={
+                          unlocked.has(series.id) ||
+                          (series.priceInr <= 0 && series.priceCoins <= 0)
+                        }
+                        expiresAt={accessBySeries.get(series.id)?.expires_at ?? null}
+                      />
+                    ))}
                   </div>
-                  <p className="mt-4 font-semibold">{t.title}</p>
-                  {t.exam_track && (
-                    <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-primary">
-                      Oriented for: {t.exam_track}
-                    </p>
-                  )}
-                  <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                    <li className="flex items-center gap-1.5">
-                      <Timer className="h-3.5 w-3.5" /> {formatTestTimer(t)} · {t.questions_count}{" "}
-                      questions
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Target className="h-3.5 w-3.5" /> {t.total_marks} marks
-                    </li>
-                  </ul>
-                  {t.is_paid && (
-                    <p className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold">
-                      {t.price_inr > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary">
-                          <IndianRupee className="h-3 w-3" />
-                          {t.price_inr}
-                        </span>
-                      )}
-                      {t.price_coins > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-600 dark:text-amber-400">
-                          <Coins className="h-3 w-3" />
-                          {t.price_coins} coins
-                        </span>
-                      )}
-                    </p>
-                  )}
-                  {t.is_paid && !learningAccess.data?.allowed_test_ids.includes(t.id) ? (
-                    <UnlockTestButton test={t} />
-                  ) : (
-                    <Button asChild size="sm" className="mt-5 w-full rounded-full">
-                      <Link to="/tests/learn/$testId" params={{ testId: t.id }}>
+                </div>
+              );
+            })}
+
+            <details className="surface-panel mt-8 p-5">
+              <summary className="cursor-pointer font-bold">
+                Additional existing question-bank practice tracks
+              </summary>
+              <p className="mt-2 text-xs text-muted-foreground">
+                These are existing bank labels/families, not new official exams.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {ADDITIONAL_PRACTICE_SERIES.filter(
+                  (series) => !enrolledSeries.some((item) => item.series.id === series.id),
+                ).map((series) => (
+                  <div key={series.id} className="rounded-xl border p-4">
+                    <p className="font-semibold">{series.examTrack}</p>
+                    <Button asChild className="mt-3 rounded-full">
+                      <Link to="/test-series/learn/$seriesId" params={{ seriesId: series.id }}>
                         Start Learning
                       </Link>
                     </Button>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
+            </details>
+            <TheorySeriesSection visible={theoryMatches} />
           </div>
-          {!tests.length && (
-            <p className="mt-5 rounded-2xl border border-dashed p-12 text-center text-sm text-muted-foreground">
-              {content.test_series.empty_tests_text}
-            </p>
-          )}
         </section>
 
-        <aside className="surface-panel h-fit p-6">
-          <h2 className="flex items-center gap-2 text-lg font-bold">
-            <AlertTriangle className="h-4 w-4 text-primary" />{" "}
-            {content.test_series.instructions_title}
-          </h2>
-          <ol className="mt-4 space-y-3 text-sm text-muted-foreground">
-            {content.test_series.rules.map((r, i) => (
-              <li key={r} className="flex gap-3">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                  {i + 1}
-                </span>
-                {r}
-              </li>
-            ))}
-          </ol>
-          <p className="mt-5 rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-            {content.test_series.note}
-          </p>
-        </aside>
-      </div>
-      <CustomPageSections page="test_series" position="bottom" />
+        <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.5fr_1fr]">
+          <section>
+            <h2 className="text-xl font-bold">{content.test_series.available_tests_title}</h2>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {tests
+                .filter((test) => !enrolledTestIds.has(test.id))
+                .map((t) => (
+                  <div key={t.id} className="surface-panel hover-lift p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                        <ClipboardList className="h-5 w-5" />
+                      </span>
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <Badge variant="secondary" className="rounded-full text-[11px]">
+                          {t.subject}
+                        </Badge>
+                        {t.level && t.level !== "Mixed" && (
+                          <Badge variant="outline" className="rounded-full text-[11px]">
+                            {t.level}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <p className="mt-4 font-semibold">{t.title}</p>
+                    {t.exam_track && (
+                      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-primary">
+                        Oriented for: {t.exam_track}
+                      </p>
+                    )}
+                    <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                      <li className="flex items-center gap-1.5">
+                        <Timer className="h-3.5 w-3.5" /> {formatTestTimer(t)} · {t.questions_count}{" "}
+                        questions
+                      </li>
+                      <li className="flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5" /> {t.total_marks} marks
+                      </li>
+                    </ul>
+                    {t.is_paid && (
+                      <p className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold">
+                        {t.price_inr > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary">
+                            <IndianRupee className="h-3 w-3" />
+                            {t.price_inr}
+                          </span>
+                        )}
+                        {t.price_coins > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-600 dark:text-amber-400">
+                            <Coins className="h-3 w-3" />
+                            {t.price_coins} coins
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {t.is_paid && !learningAccess.data?.allowed_test_ids.includes(t.id) ? (
+                      <UnlockTestButton test={t} />
+                    ) : (
+                      <Button asChild size="sm" className="mt-5 w-full rounded-full">
+                        <Link to="/tests/learn/$testId" params={{ testId: t.id }}>
+                          Start Learning
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                ))}
+            </div>
+            {!tests.length && (
+              <p className="mt-5 rounded-2xl border border-dashed p-12 text-center text-sm text-muted-foreground">
+                {content.test_series.empty_tests_text}
+              </p>
+            )}
+          </section>
+
+          <aside className="surface-panel h-fit p-6">
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <AlertTriangle className="h-4 w-4 text-primary" />{" "}
+              {content.test_series.instructions_title}
+            </h2>
+            <ol className="mt-4 space-y-3 text-sm text-muted-foreground">
+              {content.test_series.rules.map((r, i) => (
+                <li key={r} className="flex gap-3">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    {i + 1}
+                  </span>
+                  {r}
+                </li>
+              ))}
+            </ol>
+            <p className="mt-5 rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
+              {content.test_series.note}
+            </p>
+          </aside>
+        </div>
+        <CustomPageSections page="test_series" position="bottom" />
       </div>
     </SiteLayout>
   );
@@ -605,7 +650,11 @@ function SeriesCard({
           </div>
         ) : (
           <Badge className="rounded-full text-[11px]">
-            {isFree ? <BookOpenCheck className="mr-1 h-3 w-3" /> : <Lock className="mr-1 h-3 w-3" />}
+            {isFree ? (
+              <BookOpenCheck className="mr-1 h-3 w-3" />
+            ) : (
+              <Lock className="mr-1 h-3 w-3" />
+            )}
             {isFree ? "Free" : "Paid"}
           </Badge>
         )}

@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: Record<PublicSettingKey, string> = {
   razorpay_key_id: "",
   offline_payment_instructions:
     "Use the KKCC inquiry flow for UPI, cash or bank-transfer access. Course access is activated after the KKCC team confirms the payment.",
-  storage_provider: "external_url",
+  storage_provider: "supabase",
   storage_bucket: "course-content",
   storage_region: "",
   storage_endpoint: "",

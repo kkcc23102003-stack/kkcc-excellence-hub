@@ -8,7 +8,16 @@ import type {
   SeriesAccessGrantRow,
 } from "@/integrations/supabase/db";
 import { projectContent } from "@/lib/project-content.server";
-import { LEARNING_SERIES, seriesPlan } from "@/lib/test-series-catalog";
+import {
+  FREE_SERIES_IDS,
+  LEARNING_SERIES,
+  getEffectiveLearningSeries,
+  parseCustomSeriesCatalog,
+  resolveSeriesPrice,
+  seriesPlan,
+  setRuntimeCustomSeriesCatalog,
+  type CustomSeriesCatalog,
+} from "@/lib/test-series-catalog";
 import {
   canonicalSeriesId,
   seriesAliases,
@@ -17,7 +26,28 @@ import {
   assertSelection,
 } from "@/lib/learning-access";
 import { ACTIVE_TEMPLATES, getExamBankTopicsForExam } from "@/lib/exam-bank";
-import { generateOnDemandTestPaper } from "@/lib/generated-test";
+import { generateCustomSyllabusPaper, generateOnDemandTestPaper } from "@/lib/generated-test";
+
+export const CUSTOM_SERIES_CATALOG_KEY = "test_series_custom_catalog";
+
+export async function readCustomSeriesCatalog(): Promise<CustomSeriesCatalog> {
+  try {
+    const row = await projectContent
+      .from("site_settings")
+      .select("*")
+      .eq("key", CUSTOM_SERIES_CATALOG_KEY)
+      .maybeSingle();
+    if (row.error || !row.data?.value) {
+      setRuntimeCustomSeriesCatalog({});
+      return {};
+    }
+    const parsed = parseCustomSeriesCatalog(row.data.value);
+    setRuntimeCustomSeriesCatalog(parsed);
+    return parsed;
+  } catch {
+    return {};
+  }
+}
 
 export type StudentContext = { supabase: SupabaseClient<DB>; userId: string };
 export function unwrap<T>(result: { data: T; error: { message: string } | null }) {
@@ -85,6 +115,7 @@ export async function readStudentAccess(context: StudentContext): Promise<Studen
         .order("created_at", { ascending: false }),
       context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" }),
       projectContent.from("test_series_overrides").select("*"),
+      readCustomSeriesCatalog(),
     ]);
   const aliases = seriesAliases(unwrap(aliasesResult));
   const enrollments = (unwrap(enrollmentsResult) ?? []).filter((enrollment) =>
@@ -116,13 +147,20 @@ export function testPermission(test: TestRow, access: StudentAccess) {
   if (test.course_id && access.course_ids.includes(test.course_id))
     return { allowed: true, reason: "course_granted" as const };
   const series = canonicalSeriesId(test.series_name, access.series_aliases);
-  if (series && access.series_ids.includes(series))
+  if (series && (access.series_ids.includes(series) || FREE_SERIES_IDS.has(series)))
     return { allowed: true, reason: "series_granted" as const };
+  if (test.exam_track === "Punjab ETT Cadre") return { allowed: true, reason: "free" as const };
   return { allowed: !test.is_paid, reason: test.is_paid ? ("locked" as const) : ("free" as const) };
 }
 export async function effectiveSeries(id: string) {
+  const custom = await readCustomSeriesCatalog();
+  const activePool = getEffectiveLearningSeries(custom);
   const canonical = canonicalSeriesId(id);
-  const series = LEARNING_SERIES.find((item) => item.id === canonical);
+  const series =
+    activePool.find((item) => item.id === canonical) ??
+    LEARNING_SERIES.find(
+      (item) => item.id === canonical && !(custom.removedSeriesIds ?? []).includes(item.id),
+    );
   if (!series) throw new Error("Test series not found.");
   const override = unwrap(
     await projectContent
@@ -131,12 +169,12 @@ export async function effectiveSeries(id: string) {
       .eq("series_id", series.id)
       .maybeSingle(),
   );
+  const price = resolveSeriesPrice(series, override);
   return {
     ...series,
     name: override?.name ?? series.name,
     summary: override?.summary ?? series.summary,
-    priceInr: override?.price_inr ?? series.priceInr,
-    priceCoins: override?.price_coins ?? series.priceCoins,
+    ...price,
     enabled: override?.enabled ?? true,
   };
 }
@@ -275,16 +313,19 @@ export async function buildSelectedPaper(
     };
   }
   const recipe = learning.test;
-  const questions = generateOnDemandTestPaper({
+  const paperRecipe = {
     exam: learning.exam,
     subject: selection.subject,
     topic: selection.chapter,
-    difficulty: recipe?.generation_difficulty || "Mixed",
+    difficulty: recipe?.generation_difficulty || ("Mixed" as const),
     count: recipe?.generation_count || 60,
     marks: recipe?.generation_marks ?? 1,
     negative_marks: recipe?.generation_negative_marks ?? 0,
     seed,
-  });
+  };
+  const strictQuestions = generateOnDemandTestPaper(paperRecipe);
+  const questions =
+    strictQuestions.length > 0 ? strictQuestions : generateCustomSyllabusPaper(paperRecipe);
   if (!questions.length)
     throw new Error(
       `Question coverage is missing for ${learning.exam} / ${selection.subject} / ${selection.chapter}. No unrelated questions have been substituted.`,
@@ -317,6 +358,9 @@ export async function buildSelectedPaper(
     generation_topic: selection.chapter,
     generation_difficulty: "Mixed",
     generation_count: questions.length,
+    syllabus_subject: selection.subject,
+    syllabus_chapter: selection.chapter,
+    syllabus_topic: "",
     created_at: now,
     updated_at: now,
   };
@@ -332,9 +376,9 @@ export async function buildSelectedPaper(
 export function allExamSubjects(exam: string) {
   return [
     ...new Set(
-      ACTIVE_TEMPLATES.filter((template) => template.count > 0 && template.exams.includes(exam)).map(
-        (template) => template.subject,
-      ),
+      ACTIVE_TEMPLATES.filter(
+        (template) => template.count > 0 && template.exams.includes(exam),
+      ).map((template) => template.subject),
     ),
   ].sort();
 }

@@ -59,6 +59,7 @@ import { Route as AuthenticatedAdminSecurityRouteImport } from './routes/_authen
 import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated/admin.settings'
 import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin.storage'
 import { Route as AuthenticatedAdminStudentsRouteImport } from './routes/_authenticated/admin.students'
+import { Route as AuthenticatedAdminSyllabusRouteImport } from './routes/_authenticated/admin.syllabus'
 import { Route as AuthenticatedAdminTestsRouteImport } from './routes/_authenticated/admin.tests'
 import { Route as AuthenticatedAdminTextManagerRouteImport } from './routes/_authenticated/admin.text-manager'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
@@ -332,6 +333,12 @@ const AuthenticatedAdminStudentsRoute =
     path: '/admin/students',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminSyllabusRoute =
+  AuthenticatedAdminSyllabusRouteImport.update({
+    id: '/admin/syllabus',
+    path: '/admin/syllabus',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminTestsRoute = AuthenticatedAdminTestsRouteImport.update({
   id: '/admin/tests',
   path: '/admin/tests',
@@ -420,6 +427,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/students': typeof AuthenticatedAdminStudentsRoute
+  '/admin/syllabus': typeof AuthenticatedAdminSyllabusRoute
   '/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/admin/text-manager': typeof AuthenticatedAdminTextManagerRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -477,6 +485,7 @@ export interface FileRoutesByTo {
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/students': typeof AuthenticatedAdminStudentsRoute
+  '/admin/syllabus': typeof AuthenticatedAdminSyllabusRoute
   '/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/admin/text-manager': typeof AuthenticatedAdminTextManagerRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -537,6 +546,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/_authenticated/admin/students': typeof AuthenticatedAdminStudentsRoute
+  '/_authenticated/admin/syllabus': typeof AuthenticatedAdminSyllabusRoute
   '/_authenticated/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/_authenticated/admin/text-manager': typeof AuthenticatedAdminTextManagerRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -597,6 +607,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/storage'
     | '/admin/students'
+    | '/admin/syllabus'
     | '/admin/tests'
     | '/admin/text-manager'
     | '/admin/users'
@@ -654,6 +665,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/storage'
     | '/admin/students'
+    | '/admin/syllabus'
     | '/admin/tests'
     | '/admin/text-manager'
     | '/admin/users'
@@ -713,6 +725,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/settings'
     | '/_authenticated/admin/storage'
     | '/_authenticated/admin/students'
+    | '/_authenticated/admin/syllabus'
     | '/_authenticated/admin/tests'
     | '/_authenticated/admin/text-manager'
     | '/_authenticated/admin/users'
@@ -1103,6 +1116,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminStudentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/syllabus': {
+      id: '/_authenticated/admin/syllabus'
+      path: '/admin/syllabus'
+      fullPath: '/admin/syllabus'
+      preLoaderRoute: typeof AuthenticatedAdminSyllabusRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/tests': {
       id: '/_authenticated/admin/tests'
       path: '/admin/tests'
@@ -1172,6 +1192,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
   AuthenticatedAdminStudentsRoute: typeof AuthenticatedAdminStudentsRoute
+  AuthenticatedAdminSyllabusRoute: typeof AuthenticatedAdminSyllabusRoute
   AuthenticatedAdminTestsRoute: typeof AuthenticatedAdminTestsRoute
   AuthenticatedAdminTextManagerRoute: typeof AuthenticatedAdminTextManagerRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
@@ -1198,6 +1219,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
   AuthenticatedAdminStorageRoute: AuthenticatedAdminStorageRoute,
   AuthenticatedAdminStudentsRoute: AuthenticatedAdminStudentsRoute,
+  AuthenticatedAdminSyllabusRoute: AuthenticatedAdminSyllabusRoute,
   AuthenticatedAdminTestsRoute: AuthenticatedAdminTestsRoute,
   AuthenticatedAdminTextManagerRoute: AuthenticatedAdminTextManagerRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,

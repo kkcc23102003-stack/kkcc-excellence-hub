@@ -52,7 +52,9 @@ export const Route = createFileRoute("/_authenticated/admin/courses/$id")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Cannot open this course</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
       </div>
     </SiteLayout>
   ),

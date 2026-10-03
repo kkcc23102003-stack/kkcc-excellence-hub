@@ -10,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import seed from "../../data/project-content.json";
 import type { DB } from "@/integrations/supabase/db";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export const PROJECT_TABLES = [
   "courses",
@@ -301,6 +302,9 @@ const defaults: Record<string, AnyRow> = {
     generation_topic: "Mixed",
     generation_difficulty: "Mixed",
     generation_count: 0,
+    syllabus_subject: "",
+    syllabus_chapter: "",
+    syllabus_topic: "",
     generation_marks: 1,
     generation_negative_marks: 0,
   },
@@ -351,6 +355,7 @@ function refreshCounts(doc: ContentDocument) {
 
 class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Result<Output>> {
   private filters: ((row: AnyRow) => boolean)[] = [];
+  private remoteFilters: { op: string; key: string; value: unknown }[] = [];
   private orders: { key: string; ascending: boolean }[] = [];
   private cap = Infinity;
   private offset = 0;
@@ -360,33 +365,42 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
   private ignoreDuplicates = false;
   private cardinality = "many";
   private head = false;
+  private selectColumns = "*";
   private execution?: Promise<Result<Output>>;
   constructor(private table: ProjectTable) {}
-  select(_columns = "*", options?: { count?: string; head?: boolean }) {
+  select(columns = "*", options?: { count?: string; head?: boolean }) {
+    this.selectColumns = columns;
     this.head = options?.head ?? false;
     return this;
   }
   eq(key: string, value: unknown) {
     this.filters.push((row) => row[key] === value);
+    this.remoteFilters.push({ op: "eq", key, value });
     return this;
   }
   gte(key: string, value: string | number) {
     this.filters.push((row) => (row[key] as string | number) >= value);
+    this.remoteFilters.push({ op: "gte", key, value });
     return this;
   }
   lte(key: string, value: string | number) {
     this.filters.push((row) => (row[key] as string | number) <= value);
+    this.remoteFilters.push({ op: "lte", key, value });
     return this;
   }
   neq(key: string, value: unknown) {
     this.filters.push((row) => row[key] !== value);
+    this.remoteFilters.push({ op: "neq", key, value });
     return this;
   }
   is(key: string, value: unknown) {
-    return this.eq(key, value);
+    this.filters.push((row) => row[key] === value);
+    this.remoteFilters.push({ op: "is", key, value });
+    return this;
   }
   in(key: string, values: readonly unknown[]) {
     this.filters.push((row) => values.includes(row[key]));
+    this.remoteFilters.push({ op: "in", key, value: values });
     return this;
   }
   ilike(key: string, value: string) {
@@ -396,6 +410,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       .replace(/_/g, ".");
     const re = new RegExp(`^${escaped}$`, "i");
     this.filters.push((row) => re.test(String(row[key] ?? "")));
+    this.remoteFilters.push({ op: "ilike", key, value });
     return this;
   }
   order(key: string, options?: { ascending?: boolean }) {
@@ -517,7 +532,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     refreshCounts(doc);
     return changed;
   }
-  private async execute(): Promise<Result<Output>> {
+  private async executeLocal(): Promise<Result<Output>> {
     try {
       let rows =
         this.operation === "select"
@@ -550,6 +565,114 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           message: error instanceof Error ? error.message : String(error),
           code: "PROJECT_CONTENT_ERROR",
         },
+        count: null,
+      };
+    }
+  }
+  private async execute(): Promise<Result<Output>> {
+    if (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file") {
+      return this.executeLocal();
+    }
+    try {
+      type RemoteQuery = PromiseLike<{
+        data: unknown;
+        error: { message: string; code?: string } | null;
+        count?: number | null;
+      }> & {
+        select: (cols?: string, opts?: { count?: string; head?: boolean }) => RemoteQuery;
+        insert: (rows: unknown) => RemoteQuery;
+        update: (row: unknown) => RemoteQuery;
+        delete: () => RemoteQuery;
+        upsert: (
+          rows: unknown,
+          opts?: { onConflict?: string | undefined; ignoreDuplicates?: boolean },
+        ) => RemoteQuery;
+        eq: (k: string, v: unknown) => RemoteQuery;
+        neq: (k: string, v: unknown) => RemoteQuery;
+        gte: (k: string, v: unknown) => RemoteQuery;
+        lte: (k: string, v: unknown) => RemoteQuery;
+        is: (k: string, v: unknown) => RemoteQuery;
+        in: (k: string, v: readonly unknown[]) => RemoteQuery;
+        ilike: (k: string, v: string) => RemoteQuery;
+        order: (k: string, opts?: { ascending?: boolean }) => RemoteQuery;
+        range: (from: number, to: number) => RemoteQuery;
+        single: () => RemoteQuery;
+        maybeSingle: () => RemoteQuery;
+      };
+      const client = supabaseAdmin as unknown as { from: (t: string) => RemoteQuery };
+      let query: RemoteQuery;
+      const table = this.table as string;
+
+      if (this.operation === "select") {
+        query = client.from(table).select(this.selectColumns, {
+          count: "exact",
+          head: this.head,
+        });
+      } else if (this.operation === "insert") {
+        query = client.from(table).insert(this.payload).select(this.selectColumns);
+      } else if (this.operation === "update") {
+        query = client.from(table).update(this.payload[0] ?? {});
+      } else if (this.operation === "delete") {
+        query = client.from(table).delete();
+      } else {
+        query = client
+          .from(table)
+          .upsert(this.payload, {
+            onConflict: this.conflict || undefined,
+            ignoreDuplicates: this.ignoreDuplicates,
+          })
+          .select(this.selectColumns);
+      }
+
+      for (const f of this.remoteFilters) {
+        if (f.op === "eq") query = query.eq(f.key, f.value);
+        else if (f.op === "neq") query = query.neq(f.key, f.value);
+        else if (f.op === "gte") query = query.gte(f.key, f.value);
+        else if (f.op === "lte") query = query.lte(f.key, f.value);
+        else if (f.op === "is") query = query.is(f.key, f.value);
+        else if (f.op === "in")
+          query = query.in(f.key, Array.isArray(f.value) ? (f.value as unknown[]) : []);
+        else if (f.op === "ilike") query = query.ilike(f.key, String(f.value));
+      }
+      for (const { key, ascending } of this.orders) query = query.order(key, { ascending });
+      if (this.offset !== 0 || this.cap !== Infinity) {
+        const to = this.cap === Infinity ? 999999999 : this.offset + this.cap - 1;
+        query = query.range(this.offset, to);
+      }
+      if (this.operation === "update") query = query.select(this.selectColumns);
+      if (this.cardinality === "single") query = query.single();
+      else if (this.cardinality === "maybe") query = query.maybeSingle();
+
+      const result = await query;
+      if (result.error) {
+        if (
+          /unavailable in fixture|does not exist|schema cache|not configured|Missing Supabase/i.test(
+            result.error.message || "",
+          )
+        ) {
+          return this.executeLocal();
+        }
+        return {
+          data: null as Output,
+          error: { message: result.error.message, code: result.error.code || "SUPABASE_ERROR" },
+          count: result.count ?? null,
+        };
+      }
+      const data = result.data as Output;
+      return {
+        data,
+        error: null,
+        count:
+          result.count ?? (Array.isArray(result.data) ? result.data.length : result.data ? 1 : 0),
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/not configured|Missing Supabase|unavailable in fixture|does not exist/i.test(msg)) {
+        return this.executeLocal();
+      }
+      return {
+        data: null as Output,
+        error: { message: msg, code: "SUPABASE_PROJECT_CONTENT_ERROR" },
         count: null,
       };
     }

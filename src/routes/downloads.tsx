@@ -42,8 +42,9 @@ function DownloadsPage() {
               KKCC Excellence Hub Files
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-              Public SQL exports are retired. Student authentication, profiles and access records use
-              Supabase only where required; educational content stays in the application data layer.
+              Public SQL exports are retired. Student authentication, profiles and access records
+              use Supabase only where required; educational content stays in the application data
+              layer.
             </p>
 
             <div className="mt-8 grid gap-5">
@@ -62,7 +63,6 @@ function DownloadsPage() {
                           </p>
                         </div>
                       </div>
-
                     </div>
                     <span className="inline-flex shrink-0 items-center justify-center rounded-full border px-5 py-2.5 text-sm font-bold text-muted-foreground">
                       {button}
@@ -76,8 +76,8 @@ function DownloadsPage() {
               <p className="font-semibold text-foreground">Current data boundary</p>
               <p className="mt-2">
                 Questions, question-bank templates, tests and educational learning content are not
-                distributed as Supabase SQL. Student accounts, authentication and access grants remain
-                supported through the application’s protected Supabase layer.
+                distributed as Supabase SQL. Student accounts, authentication and access grants
+                remain supported through the application’s protected Supabase layer.
               </p>
             </div>
           </div>

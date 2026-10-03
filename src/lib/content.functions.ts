@@ -8,6 +8,7 @@ import { getSupabasePublicConfig } from "@/integrations/supabase/env";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { projectContent } from "@/lib/project-content.server";
+import { readCustomSeriesCatalog } from "@/lib/learning.server";
 import { protectVideoUrl } from "@/lib/video";
 import { isCurrentEnrollment } from "@/lib/learning-access";
 
@@ -225,4 +226,8 @@ export const getPublicPlatformStats = createServerFn({ method: "GET" }).handler(
 });
 export const listSeriesOverrides = createServerFn({ method: "GET" }).handler(async () =>
   unwrap(await projectContent.from("test_series_overrides").select("*")),
+);
+
+export const getCustomSeriesCatalog = createServerFn({ method: "GET" }).handler(async () =>
+  readCustomSeriesCatalog(),
 );

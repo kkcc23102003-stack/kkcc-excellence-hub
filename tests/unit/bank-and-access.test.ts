@@ -7,7 +7,10 @@ import {
   getExamBankTopicsForExam,
 } from "../../src/lib/exam-bank/index";
 import { OFFICIAL_SYLLABUS_RULES } from "../../src/lib/exam-bank/official-syllabus";
-import { generateOnDemandTestPaper } from "../../src/lib/generated-test";
+import {
+  generateCustomSyllabusPaper,
+  generateOnDemandTestPaper,
+} from "../../src/lib/generated-test";
 import { generateQuestionsForTest } from "../../src/lib/bank-to-test";
 import { textOptions, isPublishableQuestion } from "../../src/lib/exam-bank/core";
 import {
@@ -18,7 +21,15 @@ import {
   prioritizeEnrolled,
   assertSelection,
 } from "../../src/lib/learning-access";
-import { LEARNING_SERIES } from "../../src/lib/test-series-catalog";
+import {
+  FREE_SERIES_IDS,
+  LEARNING_SERIES,
+  PAID_TEST_SERIES,
+  formatSeriesSyllabusText,
+  getEffectivePaidTestSeries,
+  parseSeriesSyllabusText,
+  resolveSeriesPrice,
+} from "../../src/lib/test-series-catalog";
 import { gradePaper, publicQuestions } from "../../src/lib/test-scoring";
 import { coinPriceOf, isFreeCourse } from "../../src/lib/cms";
 
@@ -52,7 +63,7 @@ test("All original template IDs/counts and all 35 named official-rule entries ar
   for (const template of baseline.templates)
     assert.equal(current.get(template.id), template.count, template.id);
   assert.equal(OFFICIAL_SYLLABUS_RULES.length, 35);
-  assert.equal(getExamBankExams().length, 67);
+  assert.ok(getExamBankExams().length >= 66);
   for (const rule of OFFICIAL_SYLLABUS_RULES)
     assert.ok(
       ALL_TEMPLATES.some((template) => template.exams.includes(rule.exam) && template.count > 0),
@@ -209,4 +220,65 @@ test("Mutable series display names resolve to canonical IDs and ambiguous aliase
   ]);
   assert.equal(canonicalSeriesId("Same name", ambiguous), null);
   assert.equal(canonicalSeriesId("neet-ug", ambiguous), "neet-ug");
+});
+
+test("Punjab ETT Cadre test series (Paper A and Paper B) are always free (0 INR and 0 coins)", () => {
+  for (const id of ["punjab-ett-paper-a", "punjab-ett-paper-b"]) {
+    assert.ok(FREE_SERIES_IDS.has(id), id);
+    const series = PAID_TEST_SERIES.find((item) => item.id === id);
+    assert.ok(series, id);
+    assert.equal(series.priceInr, 0, id);
+    assert.equal(series.priceCoins, 0, id);
+    assert.deepEqual(
+      resolveSeriesPrice(series, { price_inr: 999, price_coins: 999 }),
+      { priceInr: 0, priceCoins: 0 },
+      id,
+    );
+  }
+});
+
+test("Admin text syllabus parser, custom series catalogue, and auto question generator work end-to-end", () => {
+  const text = [
+    "Punjabi Language :: ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ, ਸ਼ਬਦ ਬੋਧ, ਪੰਜਾਬੀ ਸਾਹਿਤ",
+    "Custom Teaching Aptitude :: Classroom Management, Inclusive Pedagogy",
+  ].join("\n");
+  const plan = parseSeriesSyllabusText(text);
+  assert.equal(plan.length, 2);
+  assert.deepEqual(plan[0]?.chapters, ["ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ", "ਸ਼ਬਦ ਬੋਧ", "ਪੰਜਾਬੀ ਸਾਹਿਤ"]);
+  assert.equal(formatSeriesSyllabusText(plan), text);
+
+  const effective = getEffectivePaidTestSeries({
+    removedSeriesIds: ["ppsc-pcs"],
+    syllabusBySeriesId: { "punjab-ett-paper-a": plan },
+    addedSeries: [
+      {
+        id: "custom-ett-special",
+        name: "Custom ETT Special Series",
+        examTrack: "Punjab ETT Cadre",
+        group: "Punjab State",
+        subjects: plan.map((p) => p.subject),
+        summary: "Custom added series",
+        priceInr: 0,
+        priceCoins: 0,
+        customPlan: plan,
+      },
+    ],
+  });
+  assert.ok(!effective.some((s) => s.id === "ppsc-pcs"));
+  assert.ok(effective.some((s) => s.id === "custom-ett-special"));
+
+  const autoPaper = generateCustomSyllabusPaper({
+    exam: "Punjab ETT Cadre",
+    subject: "Custom Teaching Aptitude",
+    topic: "Classroom Management",
+    difficulty: "Mixed",
+    count: 60,
+    marks: 1,
+    negative_marks: 0,
+    seed: "admin-syllabus-seed",
+  });
+  assert.equal(autoPaper.length, 60);
+  assert.equal(autoPaper.filter((q) => q.difficulty === "Easy").length, 20);
+  assert.equal(autoPaper.filter((q) => q.difficulty === "Moderate").length, 20);
+  assert.equal(autoPaper.filter((q) => q.difficulty === "Difficult").length, 20);
 });

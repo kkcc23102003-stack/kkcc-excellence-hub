@@ -283,8 +283,8 @@ function AIQuestionEnginePage() {
         <div className="flex items-start gap-2 text-xs text-muted-foreground">
           <ShieldCheck className="h-4 w-4 shrink-0" />
           No AI system can guarantee that a future exam will repeat 90% of its questions. This
-          engine optimizes for syllabus alignment, common exam patterns, high-yield concepts and verified
-          sources instead.
+          engine optimizes for syllabus alignment, common exam patterns, high-yield concepts and
+          verified sources instead.
         </div>
       </section>
     </SiteLayout>

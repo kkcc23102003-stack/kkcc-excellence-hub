@@ -494,12 +494,24 @@
         "enabled": true,
         "name": "Punjab ETT Cadre Paper A — Punjabi (Qualifying)",
         "summary": "The 100 question Punjabi qualifying paper, exactly the six ERB sections: ਭਾਸ਼ਾ ਤੇ ਉਪਭਾਸ਼ਾ, ਲਿਪੀ ਤੇ ਗੁਰਮੁਖੀ, ਧੁਨੀ ਵਿਗਿਆਨ, ਸ਼ਬਦ ਬੋਧ ਤੇ ਸ਼ਬਦ ਬਣਤਰ, ਸ਼ਬਦਾਵਲੀ ਤੇ ਵਾਕ ਦੀ ਵੰਡ, ਅਤੇ ਵਿਆਕਰਨ ਜਿਸ ਵਿੱਚ ਪ੍ਰੇਰਨਾਰਥਕ ਕਿਰਿਆ ਤੇ ਸ਼ਬਦ ਜੋੜ ਸ਼ਾਮਲ ਹਨ। Clear this to reach Paper B.",
-        "price_inr": 999,
-        "price_coins": 999,
+        "price_inr": 0,
+        "price_coins": 0,
         "sort_order": null,
         "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
         "created_at": "2026-09-30T15:21:54.507167+00:00",
-        "updated_at": "2026-09-30T15:21:54.507167+00:00"
+        "updated_at": "2026-10-03T12:00:00.000000+00:00"
+      },
+      {
+        "series_id": "punjab-ett-paper-b",
+        "enabled": true,
+        "name": "Punjab ETT Cadre Paper B — Merit Paper",
+        "summary": "The 100 question merit paper of 200 marks across six sections: Punjabi, English, Hindi, Mathematics, General Science and Social Science.",
+        "price_inr": 0,
+        "price_coins": 0,
+        "sort_order": null,
+        "updated_by": "207e49b4-ce5f-4004-a3bb-e74cbefe7bf9",
+        "created_at": "2026-10-03T12:00:00.000000+00:00",
+        "updated_at": "2026-10-03T12:00:00.000000+00:00"
       }
     ]
   }

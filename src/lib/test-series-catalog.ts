@@ -74,6 +74,8 @@ export type PaidTestSeries = {
   summary: string;
   priceInr: number;
   priceCoins: number;
+  /** Optional custom/edited chapterwise syllabus saved by Admin. */
+  customPlan?: { subject: string; chapters: string[] }[];
 };
 
 export const PAID_TEST_SERIES: PaidTestSeries[] = [
@@ -1124,11 +1126,186 @@ export type SubjectPlan = {
   chapters: string[];
 };
 
+export type CustomSeriesCatalog = {
+  syllabusBySeriesId?: Record<string, SubjectPlan[]>;
+  removedSeriesIds?: string[];
+  addedSeries?: PaidTestSeries[];
+};
+
+let runtimeCustomCatalog: CustomSeriesCatalog = {};
+
+export function setRuntimeCustomSeriesCatalog(catalog: CustomSeriesCatalog | null | undefined) {
+  runtimeCustomCatalog = catalog ?? {};
+}
+
+export function getRuntimeCustomSeriesCatalog(): CustomSeriesCatalog {
+  return runtimeCustomCatalog;
+}
+
+export function parseSeriesSyllabusText(text: string): SubjectPlan[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bySubject = new Map<string, string[]>();
+  let currentSubject = "";
+
+  const addChapters = (subject: string, rawChapters: string[]) => {
+    const cleanSubject = subject.replace(/^[#*\-\d.)\s]+/, "").trim();
+    if (!cleanSubject) return;
+    if (!bySubject.has(cleanSubject)) bySubject.set(cleanSubject, []);
+    const bucket = bySubject.get(cleanSubject)!;
+    for (const raw of rawChapters) {
+      const ch = raw.replace(/^[-*•\d.)\s]+/, "").trim();
+      if (ch && !bucket.includes(ch)) bucket.push(ch);
+    }
+  };
+
+  for (const line of lines) {
+    if (line.includes("::") || line.includes("->") || line.includes("=>")) {
+      const parts = line.split(/::|->|=>/);
+      const subj = (parts[0] ?? "").replace(/^subject\s*:\s*/i, "").trim();
+      const rest = parts.slice(1).join(" ");
+      const chapters = rest.split(/[,;|]/);
+      currentSubject = subj;
+      addChapters(subj, chapters);
+      continue;
+    }
+
+    if (/^(?:#+\s*)?subject\s*:/i.test(line)) {
+      const after = line.replace(/^(?:#+\s*)?subject\s*:\s*/i, "").trim();
+      if (after.includes(":") || after.includes(",")) {
+        const [subj, ...rest] = after.split(":");
+        if (rest.length > 0) {
+          currentSubject = subj!.trim();
+          addChapters(currentSubject, rest.join(":").split(/[,;|]/));
+        } else {
+          currentSubject = after;
+          if (!bySubject.has(currentSubject)) bySubject.set(currentSubject, []);
+        }
+      } else {
+        currentSubject = after;
+        if (!bySubject.has(currentSubject)) bySubject.set(currentSubject, []);
+      }
+      continue;
+    }
+
+    if (/^[-*•]\s+/.test(line) && currentSubject) {
+      addChapters(currentSubject, [line]);
+      continue;
+    }
+
+    const colonIdx = line.indexOf(":");
+    if (colonIdx > 0 && colonIdx < line.length - 1) {
+      const subj = line.slice(0, colonIdx).trim();
+      const rest = line.slice(colonIdx + 1).trim();
+      currentSubject = subj;
+      addChapters(subj, rest.split(/[,;|]/));
+      continue;
+    }
+
+    if (currentSubject) {
+      addChapters(currentSubject, line.split(/[,;|]/));
+    } else {
+      currentSubject = line.replace(/^#+\s*/, "").trim();
+      if (currentSubject && !bySubject.has(currentSubject)) {
+        bySubject.set(currentSubject, []);
+      }
+    }
+  }
+
+  return [...bySubject.entries()]
+    .map(([subject, chapters]) => ({
+      subject,
+      chapters: chapters.length > 0 ? chapters : [`${subject} — Core Concepts & Practice`],
+    }))
+    .filter((item) => item.subject && item.chapters.length > 0);
+}
+
+export function formatSeriesSyllabusText(plan: SubjectPlan[]): string {
+  return plan
+    .filter((item) => item.subject && item.chapters.length > 0)
+    .map((item) => `${item.subject} :: ${item.chapters.join(", ")}`)
+    .join("\n");
+}
+
+export function parseCustomSeriesCatalog(raw: unknown): CustomSeriesCatalog {
+  if (!raw) return {};
+  try {
+    const parsed = (typeof raw === "string" ? JSON.parse(raw) : raw) as CustomSeriesCatalog;
+    if (!parsed || typeof parsed !== "object") return {};
+    return {
+      syllabusBySeriesId:
+        parsed.syllabusBySeriesId && typeof parsed.syllabusBySeriesId === "object"
+          ? parsed.syllabusBySeriesId
+          : {},
+      removedSeriesIds: Array.isArray(parsed.removedSeriesIds)
+        ? parsed.removedSeriesIds.filter((id): id is string => typeof id === "string")
+        : [],
+      addedSeries: Array.isArray(parsed.addedSeries)
+        ? parsed.addedSeries.filter((item): item is PaidTestSeries =>
+            Boolean(item && typeof item === "object" && typeof item.id === "string"),
+          )
+        : [],
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function applyCustomCatalogToSeries(
+  series: PaidTestSeries,
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries {
+  const customPlan = custom.syllabusBySeriesId?.[series.id] ?? series.customPlan;
+  if (!customPlan || customPlan.length === 0) return series;
+  return {
+    ...series,
+    subjects: customPlan.map((item) => item.subject),
+    customPlan,
+  };
+}
+
+export function getEffectivePaidTestSeries(
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries[] {
+  const removed = new Set(custom.removedSeriesIds ?? []);
+  const builtIn = PAID_TEST_SERIES.filter((series) => !removed.has(series.id)).map((series) =>
+    applyCustomCatalogToSeries(series, custom),
+  );
+  const existingIds = new Set(builtIn.map((series) => series.id));
+  const added = (custom.addedSeries ?? [])
+    .filter((series) => !removed.has(series.id) && !existingIds.has(series.id))
+    .map((series) => applyCustomCatalogToSeries(series, custom));
+  return [...added, ...builtIn];
+}
+
+export function getEffectiveLearningSeries(
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries[] {
+  const removed = new Set(custom.removedSeriesIds ?? []);
+  const paid = getEffectivePaidTestSeries(custom);
+  const existingIds = new Set(paid.map((series) => series.id));
+  const practice = ADDITIONAL_PRACTICE_SERIES.filter(
+    (series) => !removed.has(series.id) && !existingIds.has(series.id),
+  ).map((series) => applyCustomCatalogToSeries(series, custom));
+  return [...paid, ...practice];
+}
+
 /**
- * The chapterwise plan for a series, read live from the exam bank. Subjects
- * with no chapters for this exam are dropped rather than shown empty.
+ * The chapterwise plan for a series, read live from the exam bank or Admin custom syllabus.
+ * Subjects with no chapters for this exam are dropped rather than shown empty.
  */
-export function seriesPlan(series: PaidTestSeries): SubjectPlan[] {
+export function seriesPlan(
+  series: PaidTestSeries,
+  customPlanOverride?: SubjectPlan[],
+): SubjectPlan[] {
+  const override =
+    customPlanOverride ?? series.customPlan ?? runtimeCustomCatalog.syllabusBySeriesId?.[series.id];
+  if (override && override.length > 0) {
+    return override.filter((plan) => plan.subject && plan.chapters.length > 0);
+  }
   return series.subjects
     .map((subject) => ({
       subject,
@@ -1162,18 +1339,26 @@ export type TestKind = "chapter" | "subject" | "combined";
  * actually serve this series. It is far larger than the papers themselves, so
  * a student who repeats a test does not meet the same paper twice.
  */
-export function seriesTotals(series: PaidTestSeries) {
-  const plan = seriesPlan(series);
+export function seriesTotals(series: PaidTestSeries, customPlanOverride?: SubjectPlan[]) {
+  const plan = seriesPlan(series, customPlanOverride);
   const chapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
   const chapterTests = chapters;
   const subjectTests = plan.length;
   const combinedTests = plan.length > 0 ? COMBINED_TESTS_PER_SERIES : 0;
+  const hasCustomPlan = Boolean(
+    customPlanOverride?.length ||
+    series.customPlan?.length ||
+    runtimeCustomCatalog.syllabusBySeriesId?.[series.id]?.length,
+  );
 
   // How much the bank could theoretically serve this exam.
-  const available = plan.reduce(
+  const bankAvailable = plan.reduce(
     (sum, item) => sum + countMatching({ subject: item.subject, exam: series.examTrack }),
     0,
   );
+  const available = hasCustomPlan
+    ? Math.max(bankAvailable, chapters * QUESTIONS_PER_CHAPTER * 20, MIN_SERIES_POOL)
+    : bankAvailable;
 
   // What the series actually ships. Sized by exam demand, never smaller than
   // MIN_SERIES_POOL and never larger than MAX_SERIES_POOL, and never claiming
@@ -1248,8 +1433,8 @@ export function seriesAdvancedTests(series: PaidTestSeries) {
 }
 
 /** Catalogue-wide totals for the page header. */
-export function catalogTotals() {
-  return PAID_TEST_SERIES.reduce(
+export function catalogTotals(custom: CustomSeriesCatalog = runtimeCustomCatalog) {
+  return getEffectivePaidTestSeries(custom).reduce(
     (acc, series) => {
       const totals = seriesTotals(series);
       return {
@@ -1276,8 +1461,31 @@ export const SERIES_GROUPS: SeriesGroup[] = [
   "High-Yield",
 ];
 
-export function seriesByGroup(group: SeriesGroup) {
-  return PAID_TEST_SERIES.filter((series) => series.group === group);
+export function seriesByGroup(
+  group: SeriesGroup,
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+) {
+  return getEffectivePaidTestSeries(custom).filter((series) => series.group === group);
+}
+
+/** Series that are guaranteed free (₹0 / 0 coins) for all students. */
+export const FREE_SERIES_IDS = new Set([
+  "punjab-ett-paper-a",
+  "punjab-ett-paper-b",
+  "punjab-ett-cadre",
+]);
+
+export function resolveSeriesPrice(
+  series: { id: string; examTrack?: string; priceInr: number; priceCoins: number },
+  override?: { price_inr?: number | null; price_coins?: number | null } | null,
+): { priceInr: number; priceCoins: number } {
+  if (FREE_SERIES_IDS.has(series.id) || series.examTrack === "Punjab ETT Cadre") {
+    return { priceInr: 0, priceCoins: 0 };
+  }
+  return {
+    priceInr: override?.price_inr ?? series.priceInr,
+    priceCoins: override?.price_coins ?? series.priceCoins,
+  };
 }
 
 /** The three levels inside every chapter test, in attempt order. */

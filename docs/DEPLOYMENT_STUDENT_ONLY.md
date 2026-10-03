@@ -17,9 +17,7 @@ Choose one:
 
 ### Self-hosted persistent volume
 
-
 ### Vercel/serverless or distributed deployment
-
 
 Vercel without a persistent backend defaults to **readonly** and rejects editing/starting persisted tests. A serverless temporary filesystem is not a production content store.
 

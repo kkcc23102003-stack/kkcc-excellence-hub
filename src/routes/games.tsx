@@ -1840,9 +1840,10 @@ function EndlessQuizQuest({
             </Badge>
             <h2 className="text-xl font-bold">Kit 2 Coins Quiz</h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              This quiz never finishes: choose exam, subject, chapter and NCERT/exam-pattern/high-yield mode.
-              NEET, CA, CBSE, ICSE, Punjab, Banking, Railways and UPSC tracks now stay strict to the
-              selected subject, with instant explanations and a 60-second timer.
+              This quiz never finishes: choose exam, subject, chapter and
+              NCERT/exam-pattern/high-yield mode. NEET, CA, CBSE, ICSE, Punjab, Banking, Railways
+              and UPSC tracks now stay strict to the selected subject, with instant explanations and
+              a 60-second timer.
             </p>
           </div>
           <KittuCoin size="md" />

@@ -19,6 +19,7 @@ import { PAID_TEST_SERIES } from "@/lib/test-series-catalog";
 import { getMy23KaatWallet } from "@/lib/coins.functions";
 import { useUiText } from "@/components/kkcc/ui-text-provider";
 import { KaatCoin, KaatCoinStack } from "@/components/kkcc/kaat-coin";
+import { StudentStudyPlanner } from "@/components/kkcc/student-study-planner";
 
 export const Route = createFileRoute("/dashboard/")({
   head: () => ({
@@ -158,6 +159,8 @@ function DashboardHome() {
           </div>
         ))}
       </div>
+
+      <StudentStudyPlanner initialTargetExam={data.profile?.target_exam} />
 
       <section className="surface-panel relative overflow-hidden border-primary/25 p-6 shadow-[0_0_38px_color-mix(in_oklab,var(--primary)_12%,transparent)]">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#1bdfff,#63e675,#ffd071,#a977ff)]" />

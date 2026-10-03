@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
+import { listSyllabus, syllabusNodesToRows } from "@/lib/syllabus.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -77,7 +78,9 @@ export const Route = createFileRoute("/_authenticated/admin/tests")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button asChild className="rounded-full">
             <Link to="/dashboard">Back to dashboard</Link>
@@ -121,6 +124,9 @@ type TestPayload = {
   generation_topic: string;
   generation_difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
   generation_count: number;
+  syllabus_subject: string;
+  syllabus_chapter: string;
+  syllabus_topic: string;
 };
 
 /** Narrow a DB row to the exact shape saveTest validates. */
@@ -151,6 +157,9 @@ function toTestPayload(
     generation_topic?: string | null;
     generation_difficulty?: "Easy" | "Moderate" | "Difficult" | "Mixed" | null;
     generation_count?: number | null;
+    syllabus_subject?: string | null;
+    syllabus_chapter?: string | null;
+    syllabus_topic?: string | null;
   },
   patch: Partial<TestPayload> = {},
 ): TestPayload {
@@ -192,6 +201,9 @@ function toTestPayload(
         ? test.generation_difficulty
         : "Mixed",
     generation_count: test.generation_count ?? test.questions_count ?? 0,
+    syllabus_subject: test.syllabus_subject ?? test.subject ?? "",
+    syllabus_chapter: test.syllabus_chapter ?? "",
+    syllabus_topic: test.syllabus_topic ?? "",
     ...patch,
   };
 }
@@ -222,6 +234,7 @@ function emptyDraft(subject: string): QuestionDraft {
 function TestQuestionWriter() {
   const queryClient = useQueryClient();
   const fetchTests = useServerFn(listAdminTests);
+  const fetchSyllabus = useServerFn(listSyllabus);
   const fetchQuestions = useServerFn(listTestQuestions);
   const putTest = useServerFn(saveTest);
   const dropTest = useServerFn(deleteTest);
@@ -241,6 +254,35 @@ function TestQuestionWriter() {
 
   const tests = useMemo(() => testsQuery.data ?? [], [testsQuery.data]);
   const activeTest = tests.find((t) => t.id === activeTestId) ?? null;
+
+  const syllabusQuery = useQuery({
+    queryKey: ["admin", "syllabus"],
+    queryFn: () => fetchSyllabus(),
+    retry: false,
+  });
+
+  const syllabusRows = useMemo(
+    () => syllabusNodesToRows(syllabusQuery.data ?? []),
+    [syllabusQuery.data],
+  );
+  const syllabusSubjects = useMemo(
+    () => [...new Set(syllabusRows.map((r) => r.subject))],
+    [syllabusRows],
+  );
+  const syllabusChapters = useMemo(() => {
+    const subj = activeTest?.syllabus_subject || activeTest?.subject || "";
+    const matching = subj
+      ? syllabusRows.filter((r) => r.subject.toLowerCase() === subj.toLowerCase())
+      : syllabusRows;
+    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.chapter))];
+  }, [syllabusRows, activeTest?.syllabus_subject, activeTest?.subject]);
+  const syllabusTopics = useMemo(() => {
+    const ch = activeTest?.syllabus_chapter || "";
+    const matching = ch
+      ? syllabusRows.filter((r) => r.chapter.toLowerCase() === ch.toLowerCase())
+      : syllabusRows;
+    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.topic))];
+  }, [syllabusRows, activeTest?.syllabus_chapter]);
 
   // Pulling straight from the question bank. The lists come from the bank
   // itself, so a chapter can never be offered that has nothing behind it.
@@ -326,6 +368,9 @@ function TestQuestionWriter() {
           generation_topic: "Mixed",
           generation_difficulty: "Difficult" as const,
           generation_count: 0,
+          syllabus_subject: "",
+          syllabus_chapter: "",
+          syllabus_topic: "",
         },
       }),
     onSuccess: (row) => {
@@ -579,6 +624,73 @@ function TestQuestionWriter() {
                           }
                         }}
                       />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label>Syllabus subject</Label>
+                        <Link
+                          to="/admin/syllabus"
+                          className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                          Syllabus Builder →
+                        </Link>
+                      </div>
+                      <Input
+                        list="kkcc-syllabus-subjects"
+                        className="mt-1.5"
+                        key={`subj-${activeTest.id}-${activeTest.syllabus_subject ?? ""}`}
+                        defaultValue={activeTest.syllabus_subject ?? activeTest.subject ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_subject = event.target.value.trim();
+                          if (syllabus_subject !== (activeTest.syllabus_subject ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_subject }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-subjects">
+                        {syllabusSubjects.map((s) => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label>Syllabus chapter</Label>
+                      <Input
+                        list="kkcc-syllabus-chapters"
+                        className="mt-1.5"
+                        placeholder="e.g. Life Processes"
+                        key={`chap-${activeTest.id}-${activeTest.syllabus_chapter ?? ""}`}
+                        defaultValue={activeTest.syllabus_chapter ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_chapter = event.target.value.trim();
+                          if (syllabus_chapter !== (activeTest.syllabus_chapter ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_chapter }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-chapters">
+                        {syllabusChapters.map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label>Syllabus topic</Label>
+                      <Input
+                        list="kkcc-syllabus-topics"
+                        className="mt-1.5"
+                        placeholder="e.g. Nutrition"
+                        key={`top-${activeTest.id}-${activeTest.syllabus_topic ?? ""}`}
+                        defaultValue={activeTest.syllabus_topic ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_topic = event.target.value.trim();
+                          if (syllabus_topic !== (activeTest.syllabus_topic ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_topic }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-topics">
+                        {syllabusTopics.map((t) => (
+                          <option key={t} value={t} />
+                        ))}
+                      </datalist>
                     </div>
                     <div>
                       <Label>Duration (minutes)</Label>

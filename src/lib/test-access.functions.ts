@@ -14,7 +14,7 @@ import {
 } from "@/lib/learning.server";
 import { publicQuestions } from "@/lib/test-scoring";
 import { canonicalSeriesId, isCurrentGrant } from "@/lib/learning-access";
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import { getEffectiveLearningSeries, resolveSeriesPrice } from "@/lib/test-series-catalog";
 
 const recipient = {
   user_id: z.string().uuid().optional(),
@@ -55,13 +55,13 @@ export const getMyLearningAccess = createServerFn({ method: "GET" })
     );
     const overrides = unwrap(await projectContent.from("test_series_overrides").select("*"));
     const overrideById = new Map(overrides.map((override) => [override.series_id, override]));
-    const series = LEARNING_SERIES.map((item) => {
+    const series = getEffectiveLearningSeries().map((item) => {
       const override = overrideById.get(item.id);
+      const price = resolveSeriesPrice(item, override);
       return {
         ...item,
         enabled: override?.enabled ?? true,
-        priceInr: override?.price_inr ?? item.priceInr,
-        priceCoins: override?.price_coins ?? item.priceCoins,
+        ...price,
       };
     });
     return {

@@ -5,7 +5,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CheckCircle2, ChevronLeft, ChevronRight, Flag, Timer, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  Timer,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -22,6 +30,42 @@ type TestAttemptQuestion = Omit<ScorableQuestion, "correct_index" | "explanation
   correct_index?: number;
   explanation?: string;
 };
+
+const NEON_OPTION_STYLES = [
+  {
+    idle: "border-cyan-400/40 bg-cyan-500/[0.06] hover:border-cyan-300 hover:bg-cyan-500/15 hover:shadow-[0_0_18px_rgba(34,211,238,0.22)]",
+    active:
+      "border-cyan-300 bg-gradient-to-r from-cyan-500/25 via-cyan-500/15 to-teal-500/20 shadow-[0_0_24px_rgba(34,211,238,0.38)] ring-1 ring-cyan-300/70",
+    badgeIdle: "border-cyan-400/60 bg-cyan-500/20 text-cyan-700 dark:text-cyan-200",
+    badgeActive:
+      "border-cyan-200 bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.8)]",
+  },
+  {
+    idle: "border-violet-400/40 bg-violet-500/[0.06] hover:border-violet-300 hover:bg-violet-500/15 hover:shadow-[0_0_18px_rgba(167,139,250,0.22)]",
+    active:
+      "border-violet-300 bg-gradient-to-r from-violet-500/25 via-purple-500/15 to-fuchsia-500/20 shadow-[0_0_24px_rgba(167,139,250,0.38)] ring-1 ring-violet-300/70",
+    badgeIdle: "border-violet-400/60 bg-violet-500/20 text-violet-700 dark:text-violet-200",
+    badgeActive:
+      "border-violet-200 bg-violet-400 text-slate-950 shadow-[0_0_12px_rgba(167,139,250,0.8)]",
+  },
+  {
+    idle: "border-pink-400/40 bg-pink-500/[0.06] hover:border-pink-300 hover:bg-pink-500/15 hover:shadow-[0_0_18px_rgba(244,114,182,0.22)]",
+    active:
+      "border-pink-300 bg-gradient-to-r from-pink-500/25 via-fuchsia-500/15 to-rose-500/20 shadow-[0_0_24px_rgba(244,114,182,0.38)] ring-1 ring-pink-300/70",
+    badgeIdle: "border-pink-400/60 bg-pink-500/20 text-pink-700 dark:text-pink-200",
+    badgeActive:
+      "border-pink-200 bg-pink-400 text-slate-950 shadow-[0_0_12px_rgba(244,114,182,0.8)]",
+  },
+  {
+    idle: "border-emerald-400/40 bg-emerald-500/[0.06] hover:border-emerald-300 hover:bg-emerald-500/15 hover:shadow-[0_0_18px_rgba(52,211,153,0.22)]",
+    active:
+      "border-emerald-300 bg-gradient-to-r from-emerald-500/25 via-teal-500/15 to-cyan-500/20 shadow-[0_0_24px_rgba(52,211,153,0.38)] ring-1 ring-emerald-300/70",
+    badgeIdle: "border-emerald-400/60 bg-emerald-500/20 text-emerald-700 dark:text-emerald-200",
+    badgeActive:
+      "border-emerald-200 bg-emerald-400 text-slate-950 shadow-[0_0_12px_rgba(52,211,153,0.8)]",
+  },
+];
+
 export const Route = createFileRoute("/test/$id")({
   ssr: false,
   validateSearch: z.object({ attempt: z.string().uuid().optional() }),
@@ -55,7 +99,7 @@ export const Route = createFileRoute("/test/$id")({
   errorComponent: ({ error }) => (
     <div role="alert" className="mx-auto max-w-xl px-4 py-16">
       <h1 className="text-2xl font-bold">Test could not open</h1>
-      <p className="mt-3 text-sm">{error.message}</p>
+      <p className="mt-3 text-sm">{error instanceof Error ? error.message : String(error)}</p>
       <Button asChild className="mt-6">
         <Link to="/test-series">Back to Test Series</Link>
       </Button>
@@ -143,7 +187,9 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       setSubmitted(true);
     },
     onError: (error) =>
-      toast.error(`Result was not saved: ${error.message}. Please retry Submit Test.`),
+      toast.error(
+        `Result was not saved: ${error instanceof Error ? error.message : String(error)}. Please retry Submit Test.`,
+      ),
   });
   const mutateSubmit = submit.mutate;
   const autoSubmit = useRef(false);
@@ -265,20 +311,34 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
   if (submitted) {
     return (
       <div data-testid="test-result" className="mx-auto max-w-2xl px-4 py-16">
-        <CheckCircle2 className="h-10 w-10 text-primary" />
+        <CheckCircle2 className="h-10 w-10 text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)]" />
         <h1 className="mt-4 text-2xl font-bold">Result</h1>
-        <p className="mt-2 text-sm text-primary">Test submitted · Saved to your account</p>
+        <p className="mt-2 text-sm font-semibold text-cyan-500 dark:text-cyan-300">
+          Test submitted · Saved to your account
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
           {[
-            { label: "Score", value: `${score}` },
-            { label: "Correct", value: `${correct}/${questions.length}` },
-            { label: "Attempted", value: `${attempted}/${questions.length}` },
+            {
+              label: "Score",
+              value: `${score}`,
+              tone: "border-cyan-400/50 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.18)]",
+            },
+            {
+              label: "Correct",
+              value: `${correct}/${questions.length}`,
+              tone: "border-emerald-400/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.18)]",
+            },
+            {
+              label: "Attempted",
+              value: `${attempted}/${questions.length}`,
+              tone: "border-violet-400/50 bg-violet-500/10 text-violet-600 dark:text-violet-300 shadow-[0_0_20px_rgba(167,139,250,0.18)]",
+            },
           ].map((s) => (
-            <div key={s.label} className="surface-panel p-5">
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
+            <div key={s.label} className={cn("rounded-2xl border p-5", s.tone)}>
+              <p className="text-2xl font-black">{s.value}</p>
+              <p className="text-xs font-semibold opacity-80">{s.label}</p>
             </div>
           ))}
         </div>
@@ -287,15 +347,26 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
         <div className="mt-4 space-y-4">
           {questions.map((question, i) => {
             const chosen = answers[question.id];
+            const isCorrect = chosen !== undefined && chosen === question.answer;
             return (
-              <div key={question.id} className="surface-panel p-5">
+              <div
+                key={question.id}
+                className={cn(
+                  "rounded-2xl border p-5",
+                  chosen === undefined
+                    ? "border-violet-400/30 bg-violet-500/[0.04]"
+                    : isCorrect
+                      ? "border-emerald-400/50 bg-emerald-500/[0.07]"
+                      : "border-pink-400/50 bg-pink-500/[0.07]",
+                )}
+              >
                 <p className="text-sm font-medium">
                   {i + 1}. {question.text}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Your answer: {chosen === undefined ? "Not attempted" : question.options[chosen]}
                 </p>
-                <p className="text-xs text-primary">
+                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
                   Correct answer:{" "}
                   {question.answer === undefined
                     ? "Unavailable"
@@ -312,10 +383,13 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
         </div>
 
         <div className="mt-8 flex gap-3">
-          <Button asChild className="rounded-full">
+          <Button
+            asChild
+            className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-500 font-bold text-slate-950"
+          >
             <Link to="/dashboard/tests">Go to results</Link>
           </Button>
-          <Button asChild variant="outline" className="rounded-full">
+          <Button asChild variant="outline" className="rounded-full border-cyan-400/50">
             <Link to="/test-series">More tests</Link>
           </Button>
         </div>
@@ -325,23 +399,35 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
   return (
     <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-cyan-400/30 bg-background/95 shadow-[0_0_24px_rgba(34,211,238,0.12)] backdrop-blur">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:px-6">
-          <p className="truncate text-sm font-semibold">{test.title}</p>
-          <span className="flex shrink-0 items-center gap-2 rounded-full bg-primary/10 px-3.5 py-1.5 text-sm font-semibold text-primary tabular-nums">
-            <Timer className="h-4 w-4" /> {clock}
+          <p className="truncate bg-gradient-to-r from-cyan-400 via-violet-400 to-fuchsia-400 bg-clip-text text-sm font-black text-transparent">
+            {test.title}
+          </p>
+          <span className="flex shrink-0 items-center gap-2 rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-500/20 via-emerald-500/15 to-violet-500/20 px-3.5 py-1.5 text-sm font-bold text-cyan-600 shadow-[0_0_16px_rgba(34,211,238,0.28)] tabular-nums dark:text-cyan-300">
+            <Timer className="h-4 w-4 text-cyan-400" /> {clock}
           </span>
         </div>
-        <Progress value={((index + 1) / questions.length) * 100} className="h-1 rounded-none" />
+        <Progress
+          value={((index + 1) / questions.length) * 100}
+          className="h-1.5 rounded-none bg-violet-500/20 [&>div]:bg-gradient-to-r [&>div]:from-cyan-400 [&>div]:via-fuchsia-500 [&>div]:to-emerald-400"
+        />
       </header>
 
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <main className="min-w-0">
-          <p data-testid="attempt-context" className="mb-4 text-xs text-muted-foreground">
+          <p
+            data-testid="attempt-context"
+            className="mb-4 inline-flex flex-wrap items-center gap-1.5 rounded-full border border-violet-400/40 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/10 to-cyan-500/15 px-3.5 py-1 text-xs font-semibold text-violet-700 shadow-[0_0_14px_rgba(167,139,250,0.16)] dark:text-violet-200"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
             {attempt.exam} · {attempt.subject} · {attempt.chapter}
           </p>
           {saveError && (
-            <p role="alert" className="mb-4 rounded-xl border p-3 text-sm">
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border border-amber-400/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200"
+            >
               Answers not yet saved: {saveError}. Submit Test will retry saving your current
               answers.
             </p>
@@ -355,51 +441,63 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </p>
           )}
           {submit.isPending && (
-            <p role="status" className="mb-3 flex items-center gap-2">
+            <p role="status" className="mb-3 flex items-center gap-2 text-cyan-400">
               <Loader2 className="h-4 w-4 animate-spin" /> Saving result…
             </p>
           )}
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Question {index + 1} of {questions.length} · {q.subject}
-          </p>
-          <h1
-            data-testid="test-question"
-            className="mt-3 whitespace-pre-line break-words text-lg font-semibold sm:text-xl"
-          >
-            {q.text}
-          </h1>
 
-          <div className="mt-6 space-y-3">
-            {q.options.map((opt, i) => (
-              <button
-                key={opt}
-                type="button"
-                data-testid="answer-option"
-                aria-pressed={answers[q.id] === i}
-                disabled={questionLocked || submit.isPending || (!isUnlimited && seconds <= 0)}
-                onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
-                className={cn(
-                  "flex w-full min-w-0 items-center gap-3 break-words rounded-2xl border bg-card p-4 text-left text-sm transition-colors",
-                  answers[q.id] === i ? "border-primary bg-primary/[0.06]" : "hover:bg-muted",
-                )}
-              >
-                <span
+          <div className="rounded-2xl border border-cyan-400/35 bg-gradient-to-br from-cyan-500/[0.07] via-violet-500/[0.06] to-fuchsia-500/[0.05] p-5 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-cyan-400/50 bg-cyan-500/20 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-cyan-700 dark:text-cyan-200">
+                Question {index + 1} of {questions.length}
+              </span>
+              <span className="rounded-full border border-fuchsia-400/50 bg-fuchsia-500/20 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-fuchsia-700 dark:text-fuchsia-200">
+                {q.subject}
+              </span>
+            </div>
+            <h1
+              data-testid="test-question"
+              className="mt-3.5 whitespace-pre-line break-words text-lg font-bold leading-relaxed sm:text-xl"
+            >
+              {q.text}
+            </h1>
+          </div>
+
+          <div className="mt-6 space-y-3.5">
+            {q.options.map((opt, i) => {
+              const selected = answers[q.id] === i;
+              const palette = NEON_OPTION_STYLES[i % NEON_OPTION_STYLES.length]!;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  data-testid="answer-option"
+                  aria-pressed={selected}
+                  disabled={questionLocked || submit.isPending || (!isUnlimited && seconds <= 0)}
+                  onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
                   className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-semibold",
-                    answers[q.id] === i && "border-primary bg-primary text-primary-foreground",
+                    "flex w-full min-w-0 items-center gap-3.5 break-words rounded-2xl border p-4 text-left text-sm font-medium transition-all duration-200",
+                    selected ? palette.active : palette.idle,
                   )}
                 >
-                  {String.fromCharCode(65 + i)}
-                </span>
-                {opt}
-              </button>
-            ))}
+                  <span
+                    className={cn(
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-full border text-xs font-black transition-all",
+                      selected ? palette.badgeActive : palette.badgeIdle,
+                    )}
+                  >
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span className="min-w-0 flex-1">{opt}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Button
               variant="outline"
-              className="rounded-full"
+              className="rounded-full border-violet-400/60 bg-violet-500/15 font-bold text-violet-700 shadow-[0_0_14px_rgba(167,139,250,0.2)] hover:bg-violet-500/25 dark:text-violet-200"
               disabled={index === 0 || timerMode === "question"}
               onClick={() => setIndex((i) => i - 1)}
             >
@@ -407,7 +505,12 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </Button>
             <Button
               variant="outline"
-              className="rounded-full"
+              className={cn(
+                "rounded-full font-bold transition-all",
+                flagged.includes(q.id)
+                  ? "border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(251,191,36,0.55)]"
+                  : "border-amber-400/60 bg-amber-500/15 text-amber-700 shadow-[0_0_14px_rgba(245,158,11,0.2)] hover:bg-amber-500/25 dark:text-amber-200",
+              )}
               onClick={() =>
                 setFlagged((f) => (f.includes(q.id) ? f.filter((x) => x !== q.id) : [...f, q.id]))
               }
@@ -416,12 +519,15 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
               {flagged.includes(q.id) ? "Unflag" : "Flag"}
             </Button>
             {index < questions.length - 1 ? (
-              <Button className="rounded-full" onClick={() => setIndex((i) => i + 1)}>
+              <Button
+                className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 px-6 font-black text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.45)] hover:brightness-110"
+                onClick={() => setIndex((i) => i + 1)}
+              >
                 Next <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
               <Button
-                className="rounded-full"
+                className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-fuchsia-400 px-6 font-black text-slate-950 shadow-[0_0_22px_rgba(52,211,153,0.5)] hover:brightness-110"
                 disabled={submit.isPending}
                 onClick={() => submit.mutate()}
               >
@@ -431,26 +537,37 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           </div>
         </main>
 
-        <aside className="surface-panel h-fit p-5 lg:sticky lg:top-24">
-          <p className="text-sm font-semibold">Question palette</p>
+        <aside className="h-fit rounded-2xl border border-violet-400/35 bg-gradient-to-b from-violet-500/[0.08] via-cyan-500/[0.05] to-fuchsia-500/[0.08] p-5 shadow-[0_0_28px_rgba(167,139,250,0.16)] lg:sticky lg:top-24">
+          <p className="bg-gradient-to-r from-cyan-400 via-violet-400 to-fuchsia-400 bg-clip-text text-sm font-black text-transparent">
+            Question palette
+          </p>
           <div className="mt-4 grid grid-cols-6 gap-2 lg:grid-cols-5">
             {questions.map((question, i) => {
               const answered = answers[question.id] !== undefined;
+              const isCurrent = i === index;
+              const isFlagged = flagged.includes(question.id);
               return (
                 <button
                   key={question.id}
                   aria-label={`Question ${i + 1}${answers[question.id] !== undefined ? ", answered" : ""}`}
-                  aria-current={i === index ? "step" : undefined}
+                  aria-current={isCurrent ? "step" : undefined}
                   disabled={timerMode === "question" && i !== index}
                   onClick={() => setIndex(i)}
                   className={cn(
-                    "grid h-9 w-9 place-items-center rounded-lg border text-xs font-semibold transition-colors",
-                    i === index && "ring-2 ring-primary ring-offset-2 ring-offset-card",
-                    flagged.includes(question.id)
-                      ? "border-amber-500/60 bg-amber-500/15 text-amber-700"
-                      : answered
-                        ? "border-primary bg-primary/15 text-primary"
-                        : "text-muted-foreground",
+                    "grid h-9 w-9 place-items-center rounded-xl border text-xs font-black transition-all duration-150",
+                    isCurrent &&
+                      "border-cyan-200 bg-gradient-to-br from-cyan-400 to-blue-500 text-slate-950 ring-2 ring-cyan-300 ring-offset-2 ring-offset-background shadow-[0_0_16px_rgba(34,211,238,0.65)]",
+                    !isCurrent &&
+                      isFlagged &&
+                      "border-amber-400 bg-gradient-to-br from-amber-500/35 to-orange-500/30 text-amber-700 shadow-[0_0_12px_rgba(245,158,11,0.35)] dark:text-amber-200",
+                    !isCurrent &&
+                      !isFlagged &&
+                      answered &&
+                      "border-emerald-400 bg-gradient-to-br from-emerald-500/35 to-teal-500/30 text-emerald-700 shadow-[0_0_12px_rgba(16,185,129,0.35)] dark:text-emerald-200",
+                    !isCurrent &&
+                      !isFlagged &&
+                      !answered &&
+                      "border-violet-400/35 bg-violet-500/10 text-violet-700 hover:border-cyan-400/60 hover:bg-cyan-500/20 dark:text-violet-200",
                   )}
                 >
                   {i + 1}
@@ -458,18 +575,24 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
               );
             })}
           </div>
-          <dl className="mt-5 space-y-1.5 text-xs text-muted-foreground">
-            <div className="flex justify-between">
-              <dt>Attempted</dt>
-              <dd>{attempted}</dd>
+          <dl className="mt-5 space-y-2 rounded-xl border border-violet-400/25 bg-background/60 p-3 text-xs font-semibold">
+            <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-300">
+              <dt className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                Attempted
+              </dt>
+              <dd className="font-black">{attempted}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt>Flagged</dt>
-              <dd>{flagged.length}</dd>
+            <div className="flex items-center justify-between text-amber-600 dark:text-amber-300">
+              <dt className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                Flagged
+              </dt>
+              <dd className="font-black">{flagged.length}</dd>
             </div>
           </dl>
           <Button
-            className="mt-5 w-full rounded-full"
+            className="mt-5 w-full rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-fuchsia-400 font-black text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.45)] hover:brightness-110"
             disabled={submit.isPending}
             onClick={() => submit.mutate()}
           >
