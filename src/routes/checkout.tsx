@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -62,6 +62,7 @@ const searchSchema = z.object({
   course: z.string().optional(),
   series: z.string().optional(),
   test: z.string().optional(),
+  coupon: z.string().optional(),
 });
 
 declare global {
@@ -126,6 +127,7 @@ type AppliedCoupon = {
   discount_percent: number;
   discount_amount: number;
   final_amount: number;
+  final_coins?: number;
   remaining_uses: number | null;
 };
 
@@ -139,12 +141,20 @@ type CouponValidationResult =
       discount_amount: number;
       original_amount: number;
       final_amount: number;
+      original_coins?: number;
+      discount_coins?: number;
+      final_coins?: number;
       remaining_uses: number | null;
       message?: string;
     };
 
 function Checkout() {
-  const { course: slug, series: seriesIdParam, test: testIdParam } = Route.useSearch();
+  const {
+    course: slug,
+    series: seriesIdParam,
+    test: testIdParam,
+    coupon: initialCouponParam,
+  } = Route.useSearch();
   const { courses, tests, customCatalog, seriesOverrides, payment } = Route.useLoaderData();
 
   const checkoutMode: "series" | "test" | "course" = seriesIdParam
@@ -245,7 +255,7 @@ function Checkout() {
     return course ? Math.max(course.original_price || course.price, course.price) : 0;
   }, [checkoutMode, selectedSeries, selectedTest, course]);
 
-  const coinCost = useMemo(() => {
+  const baseCoinCost = useMemo(() => {
     if (free) return 0;
     if (checkoutMode === "series" && selectedSeries) {
       return Math.max(0, selectedSeries.priceCoins || selectedSeries.priceInr);
@@ -255,6 +265,16 @@ function Checkout() {
     }
     return course ? coinPriceOf(course) : 0;
   }, [free, checkoutMode, selectedSeries, selectedTest, course]);
+
+  const coinCost = useMemo(() => {
+    if (free) return 0;
+    if (appliedCoupon) {
+      if (typeof appliedCoupon.final_coins === "number") return appliedCoupon.final_coins;
+      const disc = Math.round((baseCoinCost * appliedCoupon.discount_percent) / 100);
+      return Math.max(0, baseCoinCost - disc);
+    }
+    return baseCoinCost;
+  }, [free, baseCoinCost, appliedCoupon]);
 
   const discount = !free ? (appliedCoupon?.discount_amount ?? 0) : 0;
   const total = free ? 0 : Math.max(0, (appliedCoupon?.final_amount ?? basePriceInr));
@@ -317,15 +337,27 @@ function Checkout() {
       const result =
         checkoutMode === "series" && selectedSeries
           ? await spendCoinsForSeries({
-              data: { series_id: selectedSeries.id, expected_coins: coinCost },
+              data: {
+                series_id: selectedSeries.id,
+                expected_coins: coinCost,
+                coupon_code: appliedCoupon?.code ?? "",
+              },
             })
           : checkoutMode === "test" && selectedTest
             ? await spendCoinsForTest({
-                data: { test_id: selectedTest.id, expected_coins: coinCost },
+                data: {
+                  test_id: selectedTest.id,
+                  expected_coins: coinCost,
+                  coupon_code: appliedCoupon?.code ?? "",
+                },
               })
             : course
               ? await spendCoinsForCourse({
-                  data: { course_id: course.id, expected_coins: coinCost },
+                  data: {
+                    course_id: course.id,
+                    expected_coins: coinCost,
+                    coupon_code: appliedCoupon?.code ?? "",
+                  },
                 })
               : null;
       if (!result) return;
@@ -390,6 +422,7 @@ function Checkout() {
               data: {
                 kind: checkoutMode,
                 item_id: itemId,
+                coupon_code: appliedCoupon?.code ?? "",
                 razorpay_payment_id: response.razorpay_payment_id || `pay_${Date.now()}`,
                 razorpay_order_id: response.razorpay_order_id || "",
                 razorpay_signature: response.razorpay_signature || "",
@@ -437,6 +470,9 @@ function Checkout() {
           : checkoutMode === "test"
             ? `Mock Test (${itemTitle})`
             : `Batch / Course (${itemTitle})`;
+      const couponSuffix = appliedCoupon
+        ? ` Coupon applied: ${appliedCoupon.code} (${appliedCoupon.discount_percent}% OFF — saved ${formatINR(appliedCoupon.discount_amount)}).`
+        : "";
       await sendEnquiry({
         data: {
           name: displayNameFromUser(user) || user.email,
@@ -450,7 +486,7 @@ function Checkout() {
                 : (course?.class_level ?? ""),
           interest: label,
           source: checkoutMode === "series" ? "paid_test_series" : "checkout",
-          message: `Offline payment / unlock request for ${label}. Price: ${formatINR(total)} (or ${coinCost} 23KAAT coins). Please contact me for offline payment and unlock access on my student account (${user.email}).`,
+          message: `Offline payment / unlock request for ${label}.${couponSuffix} Final Payable Price: ${formatINR(total)} (or ${coinCost} 23KAAT coins). Please contact me for offline payment and unlock access on my student account (${user.email}).`,
         },
       });
       setOfflineRequestSent(true);
@@ -464,21 +500,25 @@ function Checkout() {
     }
   };
 
-  const applyCoupon = async () => {
-    if (!course) return;
-    const code = coupon.trim().toUpperCase();
+  const runValidateCoupon = async (rawCode: string, silent = false) => {
+    const code = rawCode.trim().toUpperCase();
     if (!code) {
-      toast.error("Enter a coupon code first");
+      if (!silent) toast.error("Enter a coupon code first");
       return;
     }
     setCouponLoading(true);
     setAppliedCoupon(null);
     try {
       const result = (await validateCouponForCourse({
-        data: { code, course_slug: course.slug },
+        data: {
+          code,
+          course_slug: checkoutMode === "course" ? (course?.slug ?? "") : "",
+          series_id: checkoutMode === "series" ? (selectedSeries?.id ?? "") : "",
+          test_id: checkoutMode === "test" ? (selectedTest?.id ?? "") : "",
+        },
       })) as CouponValidationResult;
       if (!result.valid) {
-        toast.error(result.message || "That coupon code is not valid");
+        if (!silent) toast.error(result.message || "That coupon code is not valid");
         return;
       }
       setAppliedCoupon({
@@ -487,18 +527,31 @@ function Checkout() {
         discount_percent: result.discount_percent,
         discount_amount: result.discount_amount,
         final_amount: result.final_amount,
+        final_coins: result.final_coins,
         remaining_uses: result.remaining_uses,
       });
       toast.success(result.message || `Coupon applied — ${result.discount_percent}% off`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Coupon check failed");
+      if (!silent) toast.error(error instanceof Error ? error.message : "Coupon check failed");
     } finally {
       setCouponLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (initialCouponParam && !appliedCoupon) {
+      setCoupon(initialCouponParam.toUpperCase());
+      void runValidateCoupon(initialCouponParam, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCouponParam]);
+
+  const applyCoupon = async () => {
+    await runValidateCoupon(coupon, false);
+  };
+
   const claimCouponCourse = async () => {
-    if (!course || !appliedCoupon) return;
+    if (!appliedCoupon) return;
     setClaimingCoupon(true);
     try {
       const { data: session } = await supabase.auth.getSession();
@@ -506,22 +559,28 @@ function Checkout() {
         toast.info("Login required", {
           description: "Please login/signup first to claim access with a 100% coupon.",
         });
-        void navigate({ to: "/login", search: { redirectTo: `/checkout?course=${course.slug}` } });
+        void navigate({ to: "/login", search: { redirectTo: redirectUrlAfterCheckout } });
         return;
       }
 
       const result = await redeemCouponForCourse({
-        data: { code: appliedCoupon.code, course_slug: course.slug },
+        data: {
+          code: appliedCoupon.code,
+          course_slug: checkoutMode === "course" ? (course?.slug ?? "") : "",
+          series_id: checkoutMode === "series" ? (selectedSeries?.id ?? "") : "",
+          test_id: checkoutMode === "test" ? (selectedTest?.id ?? "") : "",
+        },
       });
       if (result.final_amount <= 0 && result.enrolled) {
+        await invalidateLearningQueries(queryClient);
         toast.success(
-          result.already_redeemed ? "Coupon already claimed" : "Coupon claimed — access unlocked",
+          result.already_redeemed ? "Coupon already claimed" : "100% Coupon claimed — access unlocked!",
         );
-        void navigate({ to: "/learn", search: { course: course.slug } });
+        openAfterUnlock();
         return;
       }
-      toast.info("Coupon saved for payment", {
-        description: "Partial-discount coupons will be finalized when online payment is enabled.",
+      toast.info("Coupon discount applied", {
+        description: `${appliedCoupon.discount_percent}% discount is applied to your final price.`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Coupon claim failed");
@@ -750,12 +809,28 @@ function Checkout() {
             </div>
           )}
 
-          {/* Coupon Box for Courses */}
-          {checkoutMode === "course" && !free && (
+          {/* Coupon Box (1% to 100% Discount for Batches, Test Series & Tests) */}
+          {!free && (
             <div className="surface-panel mt-5 p-5">
-              <Label htmlFor="coupon" className="text-sm font-semibold">
-                Have a coupon?
-              </Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="coupon" className="text-sm font-semibold">
+                  Have a coupon code? (1% to 100% OFF)
+                </Label>
+                {appliedCoupon && (
+                  <Badge className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                    {appliedCoupon.discount_percent}% Discount Active
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Apply a coupon code created in Admin → Coupons to get 1% to 100% discount on this{" "}
+                {checkoutMode === "series"
+                  ? "test series"
+                  : checkoutMode === "test"
+                    ? "test"
+                    : "batch"}
+                .
+              </p>
               <div className="mt-3 flex gap-2">
                 <div className="relative flex-1">
                   <Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -763,25 +838,32 @@ function Checkout() {
                     id="coupon"
                     value={coupon}
                     onChange={(e) => {
-                      setCoupon(e.target.value);
+                      setCoupon(e.target.value.toUpperCase());
                       setAppliedCoupon(null);
                     }}
-                    placeholder="Enter code"
-                    className="pl-9"
+                    placeholder="Enter coupon code (e.g. KKCC50)"
+                    className="pl-9 font-mono uppercase"
                     maxLength={40}
                   />
                 </div>
                 <Button variant="outline" onClick={applyCoupon} disabled={couponLoading}>
-                  {couponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                  {couponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply Coupon"}
                 </Button>
               </div>
               {appliedCoupon && (
-                <p className="mt-3 rounded-2xl border border-success/30 bg-success/10 p-3 text-sm text-success">
-                  {appliedCoupon.title}: {appliedCoupon.discount_percent}% off applied
-                  {appliedCoupon.remaining_uses !== null
-                    ? ` · ${appliedCoupon.remaining_uses} uses left`
-                    : ""}
-                </p>
+                <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+                  <p className="font-bold">
+                    {appliedCoupon.title} ({appliedCoupon.code}): {appliedCoupon.discount_percent}%
+                    OFF applied!
+                  </p>
+                  <p className="mt-0.5 text-xs">
+                    You save {formatINR(appliedCoupon.discount_amount)} · Final payable:{" "}
+                    <strong>{total <= 0 ? "Free (₹0)" : formatINR(total)}</strong>
+                    {appliedCoupon.remaining_uses !== null
+                      ? ` · ${appliedCoupon.remaining_uses} uses left`
+                      : ""}
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -816,25 +898,32 @@ function Checkout() {
                   <dd className="text-success">−{formatINR(originalPriceInr - basePriceInr)}</dd>
                 </div>
               )}
-              {checkoutMode === "course" && (
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Coupon discount</dt>
-                  <dd className={discount ? "text-success" : ""}>
-                    {discount ? `−${formatINR(discount)}` : "—"}
-                  </dd>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">
+                  Coupon discount{appliedCoupon ? ` (${appliedCoupon.discount_percent}%)` : ""}
+                </dt>
+                <dd className={discount ? "font-semibold text-success" : ""}>
+                  {discount ? `−${formatINR(discount)}` : "—"}
+                </dd>
+              </div>
               <Separator />
               <div className="flex items-center justify-between">
                 <dt className="font-semibold">Final amount</dt>
                 <dd className="font-display text-xl font-bold">
-                  {free ? "Free" : formatINR(total)}
+                  {free || total <= 0 ? "Free (₹0)" : formatINR(total)}
                 </dd>
               </div>
               {!free && coinCost > 0 && (
                 <div className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2">
                   <dt className="font-semibold text-primary">23KAAT coin price</dt>
-                  <dd className="font-bold text-primary">{coinCost} coins</dd>
+                  <dd className="font-bold text-primary">
+                    {coinCost} coins
+                    {appliedCoupon && baseCoinCost > coinCost ? (
+                      <span className="ml-1.5 text-xs text-muted-foreground line-through">
+                        {baseCoinCost}
+                      </span>
+                    ) : null}
+                  </dd>
                 </div>
               )}
             </dl>
@@ -853,7 +942,7 @@ function Checkout() {
                     ? "Opening..."
                     : "Start Free Now"}
               </Button>
-            ) : total <= 0 && appliedCoupon && checkoutMode === "course" ? (
+            ) : total <= 0 && appliedCoupon ? (
               <Button
                 size="lg"
                 className="mt-6 w-full rounded-full"
@@ -865,7 +954,7 @@ function Checkout() {
                 ) : (
                   <TicketPercent className="mr-2 h-4 w-4" />
                 )}
-                Claim free access with coupon
+                Claim Free Access with 100% Coupon
               </Button>
             ) : (
               <div className="mt-6 space-y-3">

@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { projectContent } from "@/lib/project-content.server";
 import { effectiveSeries, readStudentAccess, unwrap } from "@/lib/learning.server";
 import { coinPriceOf } from "@/lib/cms";
+import { resolveServerCouponDiscount } from "@/lib/coupons.functions";
 import { materialForStudent } from "@/lib/material-access.server";
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
@@ -39,18 +40,28 @@ const emailOrUserSchema = z.object({
 const courseSpendSchema = z.object({
   course_id: z.string().uuid(),
   expected_coins: z.number().int().min(0).max(1_000_000).optional(),
+  coupon_code: z.string().trim().max(40).optional().default(""),
 });
 const seriesSpendSchema = z.object({
   series_id: z.string().trim().min(1).max(120),
   expected_coins: z.number().int().min(0).max(1_000_000).optional(),
+  coupon_code: z.string().trim().max(40).optional().default(""),
 });
 const testSpendSchema = z.object({
   test_id: z.string().uuid(),
   expected_coins: z.number().int().min(0).max(1_000_000).optional(),
+  coupon_code: z.string().trim().max(40).optional().default(""),
 });
 const razorpayCompleteSchema = z.object({
   kind: z.enum(["course", "series", "test"]),
   item_id: z.string().trim().min(1).max(120),
+  coupon_code: z.string().trim().max(40).optional().default(""),
+  razorpay_payment_id: z.string().trim().min(3).max(200),
+  razorpay_order_id: z.string().trim().max(200).optional().default(""),
+  razorpay_signature: z.string().trim().max(500).optional().default(""),
+});
+const razorpayCoinPackSchema = z.object({
+  package_id: z.string().uuid(),
   razorpay_payment_id: z.string().trim().min(3).max(200),
   razorpay_order_id: z.string().trim().max(200).optional().default(""),
   razorpay_signature: z.string().trim().max(500).optional().default(""),
@@ -237,14 +248,30 @@ export const spend23KaatForCourse = createServerFn({ method: "POST" })
         .eq("status", "published")
         .single(),
     );
-    if (data.expected_coins !== undefined && data.expected_coins !== coinPriceOf(course))
+    const baseCoins = coinPriceOf(course);
+    const couponInfo = data.coupon_code
+      ? await resolveServerCouponDiscount({
+          code: data.coupon_code,
+          targetCourseId: course.id,
+          originalAmountInr: Math.max(0, course.price ?? 0),
+          originalCoins: baseCoins,
+          userId: context.userId,
+          recordRedemption: true,
+        })
+      : null;
+    const effectiveCoins = couponInfo ? couponInfo.finalCoins : baseCoins;
+    if (
+      data.expected_coins !== undefined &&
+      data.expected_coins !== effectiveCoins &&
+      data.expected_coins !== baseCoins
+    )
       throw new Error("Course coin price changed. Refresh checkout before paying.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: result, error } = await supabaseAdmin.rpc("purchase_learning_item", {
       p_actor: context.userId,
       p_kind: "course",
       p_key: course.id,
-      p_price: coinPriceOf(course),
+      p_price: effectiveCoins,
     });
     if (error) throw new Error(error.message);
     return jsonResult(result);
@@ -256,8 +283,23 @@ export const spend23KaatForSeries = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const series = await effectiveSeries(data.series_id);
     if (!series.enabled) throw new Error("This test series is currently unavailable.");
-    const coinPrice = Math.max(0, series.priceCoins ?? series.priceInr ?? 0);
-    if (data.expected_coins !== undefined && data.expected_coins !== coinPrice)
+    const baseCoins = Math.max(0, series.priceCoins ?? series.priceInr ?? 0);
+    const couponInfo = data.coupon_code
+      ? await resolveServerCouponDiscount({
+          code: data.coupon_code,
+          targetCourseId: null,
+          originalAmountInr: Math.max(0, series.priceInr ?? 0),
+          originalCoins: baseCoins,
+          userId: context.userId,
+          recordRedemption: true,
+        })
+      : null;
+    const coinPrice = couponInfo ? couponInfo.finalCoins : baseCoins;
+    if (
+      data.expected_coins !== undefined &&
+      data.expected_coins !== coinPrice &&
+      data.expected_coins !== baseCoins
+    )
       throw new Error("Test series coin price changed. Refresh checkout before paying.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: result, error } = await supabaseAdmin.rpc("purchase_learning_item", {
@@ -282,8 +324,23 @@ export const spend23KaatForTest = createServerFn({ method: "POST" })
         .eq("is_published", true)
         .single(),
     );
-    const coinPrice = test.is_paid ? Math.max(0, test.price_coins || test.price_inr || 0) : 0;
-    if (data.expected_coins !== undefined && data.expected_coins !== coinPrice)
+    const baseCoins = test.is_paid ? Math.max(0, test.price_coins || test.price_inr || 0) : 0;
+    const couponInfo = data.coupon_code
+      ? await resolveServerCouponDiscount({
+          code: data.coupon_code,
+          targetCourseId: null,
+          originalAmountInr: Math.max(0, test.price_inr ?? 0),
+          originalCoins: baseCoins,
+          userId: context.userId,
+          recordRedemption: true,
+        })
+      : null;
+    const coinPrice = couponInfo ? couponInfo.finalCoins : baseCoins;
+    if (
+      data.expected_coins !== undefined &&
+      data.expected_coins !== coinPrice &&
+      data.expected_coins !== baseCoins
+    )
       throw new Error("Test coin price changed. Refresh checkout before paying.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: result, error } = await supabaseAdmin.rpc("purchase_learning_item", {
@@ -305,8 +362,8 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
       .select("key, value")
       .in("key", ["payment_enabled", "razorpay_key_id"]);
     const settingMap = new Map((publicRows ?? []).map((r) => [r.key, r.value]));
-    const isEnabled = settingMap.get("payment_enabled") === "true";
     const keyId = (settingMap.get("razorpay_key_id") ?? "").trim();
+    const isEnabled = Boolean(keyId) && settingMap.get("payment_enabled") !== "disabled_manual";
     if (!isEnabled || !keyId) {
       throw new Error(
         "Online payment (Razorpay) is currently off. Please contact Admin for offline payment.",
@@ -341,7 +398,19 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
           .eq("status", "published")
           .single(),
       );
-      amountInr = Math.max(0, course.price ?? 0);
+      const baseInr = Math.max(0, course.price ?? 0);
+      const couponInfo = data.coupon_code
+        ? await resolveServerCouponDiscount({
+            code: data.coupon_code,
+            targetCourseId: course.id,
+            originalAmountInr: baseInr,
+            originalCoins: coinPriceOf(course),
+            userId: context.userId,
+            recordRedemption: true,
+          })
+        : null;
+      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
+      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
       const { error } = await supabaseAdmin.from("course_enrollments").upsert(
         {
           user_id: context.userId,
@@ -351,7 +420,7 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
           payment_method: "razorpay",
           amount_paid: amountInr,
           currency: "INR",
-          admin_note: `Razorpay payment ${data.razorpay_payment_id}`,
+          admin_note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
           created_by: context.userId,
         } as never,
         { onConflict: "user_id,course_id" },
@@ -359,7 +428,19 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
       if (error) throw new Error(error.message);
     } else if (data.kind === "series") {
       const series = await effectiveSeries(data.item_id);
-      amountInr = Math.max(0, series.priceInr ?? 0);
+      const baseInr = Math.max(0, series.priceInr ?? 0);
+      const couponInfo = data.coupon_code
+        ? await resolveServerCouponDiscount({
+            code: data.coupon_code,
+            targetCourseId: null,
+            originalAmountInr: baseInr,
+            originalCoins: Math.max(0, series.priceCoins ?? baseInr),
+            userId: context.userId,
+            recordRedemption: true,
+          })
+        : null;
+      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
+      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
       const { error } = await supabaseAdmin.from("series_access_grants").upsert(
         {
           user_id: context.userId,
@@ -367,7 +448,7 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
           granted_by: context.userId,
           method: "razorpay",
           amount_inr: amountInr,
-          note: `Razorpay payment ${data.razorpay_payment_id}`,
+          note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
           expires_at: null,
           revoked_at: null,
         } as never,
@@ -380,7 +461,7 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
           granted_by: context.userId,
           method: "razorpay",
           amount_inr: amountInr,
-          note: `Razorpay payment ${data.razorpay_payment_id}`,
+          note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
         } as never);
       }
     } else if (data.kind === "test") {
@@ -392,18 +473,68 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
           .eq("is_published", true)
           .single(),
       );
-      amountInr = Math.max(0, test.price_inr ?? 0);
+      const baseInr = Math.max(0, test.price_inr ?? 0);
+      const couponInfo = data.coupon_code
+        ? await resolveServerCouponDiscount({
+            code: data.coupon_code,
+            targetCourseId: null,
+            originalAmountInr: baseInr,
+            originalCoins: Math.max(0, test.price_coins ?? baseInr),
+            userId: context.userId,
+            recordRedemption: true,
+          })
+        : null;
+      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
+      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
       await supabaseAdmin.from("test_access_grants").insert({
         user_id: context.userId,
         test_id: test.id,
         granted_by: context.userId,
         method: "razorpay",
         amount_inr: amountInr,
-        note: `Razorpay payment ${data.razorpay_payment_id}`,
+        note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
       } as never);
     }
 
     return { ok: true, kind: data.kind, item_id: data.item_id, amountInr };
+  });
+
+export const completeRazorpayCoinPackPurchase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => razorpayCoinPackSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { data: publicRows } = await projectContent
+      .from("site_settings")
+      .select("key, value")
+      .in("key", ["payment_enabled", "razorpay_key_id"]);
+    const settingMap = new Map((publicRows ?? []).map((r) => [r.key, r.value]));
+    const keyId = (settingMap.get("razorpay_key_id") ?? "").trim();
+    const isEnabled = Boolean(keyId) && settingMap.get("payment_enabled") !== "disabled_manual";
+    if (!isEnabled || !keyId) {
+      throw new Error(
+        "Online payment (Razorpay) is currently off. Please contact Admin for offline payment.",
+      );
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: pack, error: packError } = await supabaseAdmin
+      .from("coin_packages")
+      .select("*")
+      .eq("id", data.package_id)
+      .eq("is_active", true)
+      .single();
+    if (packError || !pack) throw new Error("Coin pack not found.");
+
+    const totalCoins = Math.max(1, (pack.coins ?? 0) + (pack.bonus_coins ?? 0));
+    const { data: result, error } = await supabaseAdmin.rpc("grant_23kaat_to_user", {
+      _user_id: context.userId,
+      _amount: totalCoins,
+      _reason: `Razorpay coin pack purchase (${pack.title} · ${data.razorpay_payment_id})`,
+      _related_type: "coin_package",
+      _related_id: pack.id,
+    });
+    if (error) throw new Error(error.message);
+    return { ...jsonResult(result), credited: totalCoins, title: pack.title };
   });
 
 export const getMyMaterialAccessUrl = createServerFn({ method: "POST" })

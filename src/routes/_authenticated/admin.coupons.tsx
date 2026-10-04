@@ -259,18 +259,37 @@ function CouponManager() {
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <Label htmlFor="discount">Discount %</Label>
+                <Label htmlFor="discount">Discount % (1%–100%)</Label>
                 <Input
                   id="discount"
                   type="number"
-                  min={0}
+                  min={1}
                   max={100}
                   value={form.discount_percent}
                   onChange={(event) =>
-                    setForm({ ...form, discount_percent: Number(event.target.value) })
+                    setForm({
+                      ...form,
+                      discount_percent: Math.min(100, Math.max(1, Number(event.target.value) || 1)),
+                    })
                   }
                   className="mt-1.5"
                 />
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {[10, 25, 50, 75, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setForm({ ...form, discount_percent: pct })}
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
+                        form.discount_percent === pct
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {pct === 100 ? "100% Free" : `${pct}%`}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <Label htmlFor="max-uses">Max uses</Label>
@@ -300,14 +319,14 @@ function CouponManager() {
             </div>
 
             <div>
-              <Label htmlFor="course">Course scope</Label>
+              <Label htmlFor="course">Batch / Series scope</Label>
               <select
                 id="course"
                 className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
                 value={form.applies_to_course_id}
                 onChange={(event) => setForm({ ...form, applies_to_course_id: event.target.value })}
               >
-                <option value="all">All paid courses</option>
+                <option value="all">All paid batches, courses &amp; test series</option>
                 {courses.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.title}
