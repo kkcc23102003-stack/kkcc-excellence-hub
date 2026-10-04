@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -14,11 +15,17 @@ import {
   Pencil,
   Plus,
   Save,
+  Sparkles,
   Trash2,
   Unlock,
   UserPlus,
   X,
 } from "lucide-react";
+import {
+  buildFallbackExplanation,
+  parseBulkMcqText,
+  type ParsedBulkQuestion,
+} from "@/lib/test-bulk-parse";
 import { toast } from "sonner";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { listSyllabus, syllabusNodesToRows } from "@/lib/syllabus.functions";
@@ -273,6 +280,41 @@ function TestQuestionWriter() {
   const [bulkText, setBulkText] = useState("");
   const [bulkMarks, setBulkMarks] = useState("4");
   const [bulkNegativeMarks, setBulkNegativeMarks] = useState("1");
+  /*
+   * Two-step publish: Step 1 only *parses* the paste into a preview (no
+   * database write). The questions reach the test only when the admin presses
+   * "Next → Publish" in Step 2, with their own edits included.
+   */
+  const [bulkStep, setBulkStep] = useState<1 | 2>(1);
+  const [bulkPreview, setBulkPreview] = useState<ParsedBulkQuestion[]>([]);
+  const [bulkPreviewChecked, setBulkPreviewChecked] = useState<boolean[]>([]);
+
+  const openBulkPreview = () => {
+    const parsed = parseBulkMcqText(bulkText);
+    if (!parsed.length) {
+      toast.error(
+        "Koi valid question nahi mila. Format: Q1. question, A) option, B) option, Answer: A, Explanation: …",
+      );
+      return;
+    }
+    const marks = Number(bulkMarks || 4);
+    const negative = Number(bulkNegativeMarks || 0);
+    setBulkPreview(parsed.map((question) => ({ ...question, marks, negative_marks: negative })));
+    setBulkPreviewChecked(parsed.map(() => true));
+    setBulkStep(2);
+  };
+
+  const patchPreview = (index: number, patch: Partial<ParsedBulkQuestion>) =>
+    setBulkPreview((current) =>
+      current.map((question, position) =>
+        position === index ? { ...question, ...patch } : question,
+      ),
+    );
+
+  const approvedQuestions = bulkPreview.filter((_, index) => bulkPreviewChecked[index] !== false);
+  const missingExplanations = approvedQuestions.filter(
+    (question) => !question.explanation.trim(),
+  ).length;
   const [confirmDeleteQuestion, setConfirmDeleteQuestion] = useState<string | null>(null);
   const [confirmDeleteTest, setConfirmDeleteTest] = useState<string | null>(null);
 
@@ -474,7 +516,14 @@ function TestQuestionWriter() {
   });
 
   const bulkAdd = useMutation({
-    mutationFn: (switchToManual: boolean) =>
+    mutationFn: ({
+      switchToManual,
+      publish,
+    }: {
+      switchToManual: boolean;
+      /** true only from the "Next → Publish" button of Step 2. */
+      publish: boolean;
+    }) =>
       bulkAddFn({
         data: {
           test_id: activeTestId as string,
@@ -482,13 +531,30 @@ function TestQuestionWriter() {
           marks: Number(bulkMarks || 4),
           negative_marks: Number(bulkNegativeMarks || 1),
           text: bulkText,
+          // The admin-approved preview rows are published verbatim.
+          ...(publish
+            ? {
+                questions: approvedQuestions.map((question) => ({
+                  question_text: question.question_text,
+                  options: question.options,
+                  correct_index: question.correct_index,
+                  explanation: question.explanation,
+                  ...(question.marks !== undefined ? { marks: question.marks } : {}),
+                  ...(question.negative_marks !== undefined
+                    ? { negative_marks: question.negative_marks }
+                    : {}),
+                })),
+              }
+            : {}),
           switchToManual,
         },
       }),
     onSuccess: (res) => {
       void invalidateLearningQueries(queryClient);
-      toast.success(`Added ${res.addedCount} custom questions to this test!`);
+      toast.success(`${res.addedCount} questions publish ho gaye — test ab live hai`);
       setBulkText("");
+      setBulkPreview([]);
+      setBulkStep(1);
       setShowBulkPaste(false);
       invalidateAll();
     },
@@ -1097,10 +1163,12 @@ function TestQuestionWriter() {
                   </div>
 
                   {showBulkPaste ? (
-                    <div className="mb-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                    <div className="mb-4 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs font-bold">
-                          Paste Multiple MCQs at Once (Q1... A)... B)... C)... D)... Answer: A)
+                          {bulkStep === 1
+                            ? "Step 1 of 2 · Paste MCQs (question + explanation)"
+                            : `Step 2 of 2 · Preview & publish — ${approvedQuestions.length} question${approvedQuestions.length === 1 ? "" : "s"}`}
                         </p>
                         <div className="flex items-center gap-2 text-xs">
                           <label className="flex items-center gap-1">
@@ -1125,37 +1193,234 @@ function TestQuestionWriter() {
                           </label>
                         </div>
                       </div>
-                      <Textarea
-                        rows={7}
-                        value={bulkText}
-                        onChange={(e) => setBulkText(e.target.value)}
-                        placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
-                        className="font-mono text-xs"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          className="rounded-full font-bold"
-                          disabled={!bulkText.trim() || bulkAdd.isPending}
-                          onClick={() => bulkAdd.mutate(true)}
-                        >
-                          {bulkAdd.isPending ? (
-                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Plus className="mr-1.5 h-4 w-4" />
-                          )}
-                          Import Questions (Use Only My Questions)
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full font-bold"
-                          disabled={!bulkText.trim() || bulkAdd.isPending}
-                          onClick={() => bulkAdd.mutate(false)}
-                        >
-                          Import Questions (Keep Auto Bank Fill)
-                        </Button>
-                      </div>
+
+                      {bulkStep === 1 ? (
+                        <>
+                          <Textarea
+                            rows={7}
+                            value={bulkText}
+                            onChange={(e) => setBulkText(e.target.value)}
+                            placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
+                            className="font-mono text-xs"
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="rounded-full font-bold"
+                              disabled={!bulkText.trim()}
+                              onClick={openBulkPreview}
+                            >
+                              <ArrowRight className="mr-1.5 h-4 w-4" />
+                              Preview questions (1/2)
+                            </Button>
+                            <span className="text-[11px] text-muted-foreground">
+                              {bulkText.trim()
+                                ? `${parseBulkMcqText(bulkText).length} question(s) detected — preview ke baad hi publish hoga.`
+                                : "Paste karke Preview dabayein. Explanation likhne par wahi explanation student ko dikhegi."}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <Badge variant="secondary" className="rounded-full">
+                              {approvedQuestions.length} selected
+                            </Badge>
+                            <Badge variant="outline" className="rounded-full">
+                              {
+                                approvedQuestions.filter((q) => q.explanation_source === "paste")
+                                  .length
+                              }{" "}
+                              explanation aapki
+                            </Badge>
+                            {missingExplanations > 0 ? (
+                              <Badge variant="destructive" className="rounded-full">
+                                {missingExplanations} me explanation nahi — auto banegi
+                              </Badge>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 rounded-full px-2 text-[11px]"
+                              onClick={() => setBulkStep(1)}
+                            >
+                              <ArrowLeft className="mr-1 h-3 w-3" />
+                              Edit paste
+                            </Button>
+                          </div>
+
+                          <div className="max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+                            {bulkPreview.map((question, index) => (
+                              <div
+                                key={`bulk-${index}`}
+                                className="rounded-xl border bg-background/80 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <label className="flex items-start gap-2 text-xs font-bold">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                                      checked={bulkPreviewChecked[index] !== false}
+                                      onChange={(event) =>
+                                        setBulkPreviewChecked((current) =>
+                                          current.map((value, position) =>
+                                            position === index ? event.target.checked : value,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                    Q{index + 1}
+                                  </label>
+                                  <div className="flex items-center gap-1">
+                                    {question.explanation_source === "paste" ? (
+                                      <Badge
+                                        variant="secondary"
+                                        className="rounded-full text-[10px]"
+                                      >
+                                        Your explanation
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="rounded-full text-[10px]">
+                                        Auto explanation
+                                      </Badge>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 rounded-full p-0"
+                                      onClick={() =>
+                                        setBulkPreview((current) =>
+                                          current.filter((_, position) => position !== index),
+                                        )
+                                      }
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <Textarea
+                                  rows={2}
+                                  className="mt-2 text-xs"
+                                  value={question.question_text}
+                                  onChange={(event) =>
+                                    patchPreview(index, { question_text: event.target.value })
+                                  }
+                                />
+                                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                                  {question.options.map((option, optionPosition) => (
+                                    <label
+                                      key={`opt-${index}-${optionPosition}`}
+                                      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
+                                        question.correct_index === optionPosition
+                                          ? "border-emerald-500 bg-emerald-500/10 font-bold"
+                                          : ""
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`answer-${index}`}
+                                        className="h-3.5 w-3.5"
+                                        checked={question.correct_index === optionPosition}
+                                        onChange={() =>
+                                          patchPreview(index, { correct_index: optionPosition })
+                                        }
+                                      />
+                                      <span className="shrink-0 text-muted-foreground">
+                                        {String.fromCharCode(65 + optionPosition)}.
+                                      </span>
+                                      <input
+                                        className="min-w-0 flex-1 bg-transparent outline-none"
+                                        value={option}
+                                        onChange={(event) =>
+                                          patchPreview(index, {
+                                            options: question.options.map((value, position) =>
+                                              position === optionPosition
+                                                ? event.target.value
+                                                : value,
+                                            ),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                  ))}
+                                </div>
+                                <div className="mt-2">
+                                  <div className="mb-1 flex items-center justify-between">
+                                    <Label className="text-[11px]">
+                                      Explanation (student isse dekhega)
+                                    </Label>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 rounded-full px-2 text-[10px]"
+                                      onClick={() =>
+                                        patchPreview(index, {
+                                          explanation: buildFallbackExplanation(
+                                            question,
+                                            activeTest?.subject ?? "",
+                                          ),
+                                          explanation_source: "auto",
+                                        })
+                                      }
+                                    >
+                                      <Sparkles className="mr-1 h-3 w-3" />
+                                      Generate
+                                    </Button>
+                                  </div>
+                                  <Textarea
+                                    rows={2}
+                                    className="text-xs"
+                                    value={question.explanation}
+                                    placeholder="Explanation paste karein ya Generate dabayein"
+                                    onChange={(event) =>
+                                      patchPreview(index, {
+                                        explanation: event.target.value,
+                                        explanation_source: event.target.value.trim()
+                                          ? "paste"
+                                          : "auto",
+                                      })
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              className="rounded-full font-bold"
+                              disabled={!approvedQuestions.length || bulkAdd.isPending}
+                              onClick={() =>
+                                bulkAdd.mutate({ switchToManual: true, publish: true })
+                              }
+                            >
+                              {bulkAdd.isPending ? (
+                                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                              )}
+                              Next → Publish ({approvedQuestions.length}) · Use Only My Questions
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full font-bold"
+                              disabled={!approvedQuestions.length || bulkAdd.isPending}
+                              onClick={() =>
+                                bulkAdd.mutate({ switchToManual: false, publish: true })
+                              }
+                            >
+                              Next → Publish ({approvedQuestions.length}) · Keep Auto Bank Fill
+                            </Button>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Jab tak Next → Publish na dabayein, test me kuch add nahi hota. Jo
+                            preview me dikh raha hai, bilkul wahi questions aur explanation publish
+                            honge.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : null}
 

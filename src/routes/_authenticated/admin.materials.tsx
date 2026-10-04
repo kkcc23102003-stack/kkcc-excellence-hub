@@ -7,7 +7,10 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  ImagePlus,
   Loader2,
+  Pencil,
+  PenLine,
   Plus,
   Search,
   Trash2,
@@ -42,7 +45,15 @@ import {
   describeVisuals,
   renderNotesBody,
   analyzeNotes,
+  visualSvg,
 } from "@/lib/notes-visuals";
+import {
+  EMPTY_DIRECTIVES,
+  parseVisualDirectives,
+  updateNoteWithDirectives,
+  type VisualDirectives,
+} from "@/lib/notes-visuals/directives";
+import { NotesCanvasEditor } from "@/components/kkcc/notes-canvas-editor";
 import { friendlyError, uploadContentFile } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/admin/materials")({
@@ -480,8 +491,74 @@ function MaterialForm({
   onSave: (v: MaterialInput) => void | Promise<unknown>;
 }) {
   const [v, setV] = useState<MaterialInput>(() => toInput(material));
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [uploadingVisual, setUploadingVisual] = useState<number | "extra" | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  /*
+   * Diagram settings live inside the note text (see notes-visuals/directives),
+   * so the database stays untouched and the note stays portable. These helpers
+   * are what the buttons below write to.
+   */
+  const noteDirectives = useMemo<VisualDirectives>(
+    () => parseVisualDirectives(v.description).directives,
+    [v.description],
+  );
+  const rawVisuals = useMemo(
+    () => analyzeNotes(parseVisualDirectives(v.description).text).visuals,
+    [v.description],
+  );
   // Recomputed as the admin types, so the preview below is always the truth.
   const visualsCache = useMemo(() => analyzeNotes(v.description).visuals, [v.description]);
+  const setDirectives = (next: VisualDirectives) =>
+    setV((current) => ({
+      ...current,
+      description: updateNoteWithDirectives(current.description, next),
+    }));
+  const toggleHide = (number: number) =>
+    setDirectives({
+      ...noteDirectives,
+      hide: noteDirectives.hide.includes(number)
+        ? noteDirectives.hide.filter((value) => value !== number)
+        : [...noteDirectives.hide, number],
+    });
+  const renameVisual = (number: number) => {
+    const current = rawVisuals[number - 1]?.spec;
+    const suggested = current && "title" in current ? current.title : "";
+    const title = window.prompt("Diagram ka naya title", suggested);
+    if (title === null) return;
+    const rename = { ...noteDirectives.rename };
+    if (title.trim()) rename[number] = title.trim();
+    else delete rename[number];
+    setDirectives({ ...noteDirectives, rename });
+  };
+  const uploadImage = async (file: File, target: number | "extra") => {
+    setUploadingVisual(target);
+    try {
+      const uploaded = await uploadContentFile(file, "notes-images");
+      const url = uploaded.url || uploaded.path;
+      if (target === "extra") {
+        setDirectives({
+          ...noteDirectives,
+          images: [...noteDirectives.images, { url, caption: "" }],
+        });
+        toast.success("Photo notes me add ho gayi");
+      } else {
+        setDirectives({
+          ...noteDirectives,
+          replace: {
+            ...noteDirectives.replace,
+            [target]: { url, caption: `Photo — diagram ${target}` },
+          },
+        });
+        toast.success(`Diagram ${target} ki jagah aapki photo lag gayi`);
+      }
+    } catch (error) {
+      toast.error(friendlyError(error));
+    } finally {
+      setUploadingVisual(null);
+    }
+  };
   useEffect(() => setV(toInput(material)), [material]);
   const folder = `materials/${v.course_id ?? "library"}`;
 
@@ -548,8 +625,78 @@ function MaterialForm({
             Apna diagram chahiye to likhein <code>:::flow Naam</code> &rarr; step → step &rarr; step
             &rarr; <code>:::</code> (ya <code>:::cycle</code> / <code>:::tree</code> /{" "}
             <code>:::compare</code> / <code>:::timeline</code> / <code>:::chart</code> /{" "}
-            <code>:::auto</code>). Band karne ke liye <code>[visuals:off]</code> likh dein.
+            <code>:::auto</code>). Math formulas apne aap typeset hote hain — likhein{" "}
+            <code>{"x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"}</code>, <code>{"\\pi r^2"}</code> ya{" "}
+            <code>{"2H_2 + O_2 -> 2H_2O"}</code>.
           </p>
+
+          {/* ---------------------------------------- diagram controls */}
+          <div className="mt-3 rounded-2xl border bg-card/60 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Diagram control
+                </span>
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={noteDirectives.mode === "none"}
+                    onChange={(event) => {
+                      const mode = event.target.checked ? "none" : "auto";
+                      setDirectives({ ...noteDirectives, mode });
+                      toast.success(
+                        mode === "none"
+                          ? "Is note me koi diagram nahi banega (text only)"
+                          : "Diagrams dobara on kar diye",
+                      );
+                    }}
+                  />
+                  No diagrams for this note
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-full text-xs"
+                  onClick={() => setCanvasOpen(true)}
+                >
+                  <PenLine className="mr-1 h-3.5 w-3.5" />
+                  Handwrite / paste
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-full text-xs"
+                  disabled={uploadingVisual === "extra"}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {uploadingVisual === "extra" ? (
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  Add photo
+                </Button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadImage(file, "extra");
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Punjabi / Hindi / English jaise subject me “No diagrams” tick kar dein — sirf text
+              rahega. Har diagram ko rename, delete ya apni photo se replace bhi kar sakte hain.
+            </p>
+          </div>
           {v.description.trim() ? (
             <div className="mt-3 rounded-2xl border bg-muted/20 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -575,6 +722,128 @@ function MaterialForm({
                   __html: renderNotesBody(v.description, { fontScale: 13 }),
                 }}
               />
+              {rawVisuals.length || noteDirectives.images.length ? (
+                <details className="mt-2 rounded-xl border bg-card/70 p-2" open>
+                  <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Har diagram ka control ({rawVisuals.length} auto +{" "}
+                    {noteDirectives.images.length} photo)
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {rawVisuals.map((entry, index) => {
+                      const number = index + 1;
+                      const hidden = noteDirectives.hide.includes(number);
+                      const replaced = noteDirectives.replace[number];
+                      const title =
+                        noteDirectives.rename[number] ||
+                        ("title" in entry.spec ? entry.spec.title : `Diagram ${number}`);
+                      return (
+                        <div
+                          key={`ctl-${number}`}
+                          className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/70 p-2"
+                        >
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-black">
+                            {number}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-bold">{title}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {VISUAL_KIND_LABELS[entry.spec.kind]}
+                              {hidden ? " · hidden" : ""}
+                              {replaced ? " · replaced by your photo" : ""}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-full px-2 text-[11px]"
+                              onClick={() => toggleHide(number)}
+                            >
+                              {hidden ? (
+                                <Eye className="mr-1 h-3 w-3" />
+                              ) : (
+                                <EyeOff className="mr-1 h-3 w-3" />
+                              )}
+                              {hidden ? "Show" : "Delete"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-full px-2 text-[11px]"
+                              onClick={() => renameVisual(number)}
+                            >
+                              <Pencil className="mr-1 h-3 w-3" />
+                              Edit
+                            </Button>
+                            <label className="inline-flex h-7 cursor-pointer items-center rounded-full border px-2 text-[11px] font-semibold">
+                              {uploadingVisual === number ? (
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              ) : (
+                                <ImagePlus className="mr-1 h-3 w-3" />
+                              )}
+                              Photo
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) void uploadImage(file, number);
+                                  event.target.value = "";
+                                }}
+                              />
+                            </label>
+                          </div>
+                          {/* Live preview of this exact diagram (or the photo that replaced it). */}
+                          <div className="w-full overflow-x-auto rounded-lg border bg-card p-1">
+                            {replaced ? (
+                              <img
+                                src={replaced.url}
+                                alt={title}
+                                className="mx-auto max-h-40 rounded"
+                              />
+                            ) : (
+                              <div
+                                className="kkcc-note-reader"
+                                dangerouslySetInnerHTML={{ __html: visualSvg(entry.spec) }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {noteDirectives.images.map((image, index) => (
+                      <div
+                        key={`extra-${index}`}
+                        className="flex items-center gap-2 rounded-lg border bg-background/70 p-2"
+                      >
+                        <img
+                          src={image.url}
+                          alt={image.caption || "Admin photo"}
+                          className="h-10 w-10 rounded object-cover"
+                        />
+                        <p className="min-w-0 flex-1 truncate text-xs font-bold">
+                          {image.caption || `Photo ${index + 1}`}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 rounded-full px-2 text-[11px]"
+                          onClick={() =>
+                            setDirectives({
+                              ...noteDirectives,
+                              images: noteDirectives.images.filter((_, i) => i !== index),
+                            })
+                          }
+                        >
+                          <Trash2 className="mr-1 h-3 w-3" />
+                          Delete
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -769,6 +1038,34 @@ function MaterialForm({
           Save changes
         </Button>
       </div>
+
+      {canvasOpen ? (
+        <NotesCanvasEditor
+          onClose={() => setCanvasOpen(false)}
+          onInsert={async ({ dataUrl, caption }) => {
+            /*
+             * A handwritten page is a real image, so it is uploaded to storage
+             * like any other file. If storage is unavailable (or offline), the
+             * page is kept inline in the note so the admin never loses work.
+             */
+            let url = dataUrl;
+            try {
+              const blob = await (await fetch(dataUrl)).blob();
+              const file = new File([blob], `handwritten-${Date.now()}.jpg`, {
+                type: "image/jpeg",
+              });
+              const uploaded = await uploadContentFile(file, "notes-images");
+              url = uploaded.url || uploaded.path;
+            } catch {
+              url = dataUrl;
+            }
+            setDirectives({
+              ...noteDirectives,
+              images: [...noteDirectives.images, { url, caption }],
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

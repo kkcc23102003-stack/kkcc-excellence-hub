@@ -815,3 +815,128 @@ html.high-refresh:not(.lite-motion) .reveal {
     border-left-color: #4338ca;
   }
 }
+
+/* ------------------------------------------------------------ formulas in notes
+   Written as plain text (`x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}`), typeset here.
+   No web fonts: system serif keeps it identical on screen and on paper. */
+.kkcc-math-block {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in oklab, var(--primary) 7%, transparent);
+  font-family: "Cambria Math", Cambria, Georgia, "Times New Roman", serif;
+  font-size: 1.06em;
+  line-height: 1.9;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.kkcc-note-reader .kkcc-math-block + .kkcc-math-block {
+  margin-top: -0.35rem;
+}
+
+.kkcc-math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 0.18em;
+  line-height: 1.15;
+}
+
+.kkcc-math-num {
+  padding: 0 0.28em 0.05em;
+  border-bottom: 1.4px solid currentColor;
+}
+
+.kkcc-math-den {
+  padding: 0.05em 0.28em 0;
+}
+
+.kkcc-math-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0 0.1em;
+}
+
+.kkcc-math-radical {
+  font-size: 1.18em;
+  line-height: 1;
+}
+
+.kkcc-math-radicand {
+  border-top: 1.4px solid currentColor;
+  padding: 0.06em 0.22em 0;
+  margin-top: 0.2em;
+}
+
+.kkcc-math-sup,
+.kkcc-math-sub {
+  font-size: 0.72em;
+}
+
+.kkcc-math-text {
+  font-style: italic;
+}
+
+/* Images the admin adds to a note: uploaded photo, screenshot from Samsung
+   Notes, or a replacement for an auto diagram that did not fit the topic. */
+.kkcc-note-figure {
+  margin: 1rem 0;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.kkcc-note-image {
+  text-align: center;
+}
+
+.kkcc-note-image img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border-radius: 0.85rem;
+}
+
+.kkcc-note-image-caption {
+  margin: 0.4rem 0 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.kkcc-note-figure img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: #fff;
+}
+
+.kkcc-note-figure figcaption {
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@media print {
+  .kkcc-math-block {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    white-space: normal;
+  }
+
+  .kkcc-note-figure img {
+    border-color: #cbd5e1;
+  }
+}

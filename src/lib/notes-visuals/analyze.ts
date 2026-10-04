@@ -19,6 +19,9 @@
  * the server, and inside the printable HTML.
  */
 
+import { looksLikeFormula } from "./math";
+import { applyDirectives, parseVisualDirectives, type VisualDirectives } from "./directives";
+
 export type FlowSpec = { kind: "flow"; title: string; steps: string[] };
 export type CycleSpec = { kind: "cycle"; title: string; steps: string[] };
 export type TreeSpec = {
@@ -40,6 +43,13 @@ export type TimelineSpec = {
   title: string;
   events: { label: string; text: string }[];
 };
+export type ImageSpec = {
+  kind: "image";
+  /** Uploaded photo / handwritten page. Only real image URLs are accepted. */
+  url: string;
+  caption: string;
+};
+
 export type ChartSpec = {
   kind: "chart";
   title: string;
@@ -47,10 +57,12 @@ export type ChartSpec = {
   series: { label: string; value: number; suffix: string }[];
 };
 
-export type VisualSpec = FlowSpec | CycleSpec | TreeSpec | CompareSpec | TimelineSpec | ChartSpec;
+export type VisualSpec =
+  FlowSpec | CycleSpec | TreeSpec | CompareSpec | TimelineSpec | ChartSpec | ImageSpec;
 
 export type TextBlock = {
-  type: "heading" | "subheading" | "paragraph" | "bullet" | "numbered";
+  type: "heading" | "subheading" | "paragraph" | "bullet" | "numbered" | "formula";
+  /** `formula` blocks are typeset with the math renderer. */
   text: string;
 };
 
@@ -72,6 +84,14 @@ const NUMBERED = /^\s*\d{1,2}[.)]\s+/;
 /** Dash/bullet marks only — a numbered line followed by these is a sub-heading. */
 const DASH_BULLET = /^\s*(?:[-*•‣▪–])\s+/;
 const HEADING_LIKE = /^\s*(?:#{1,4}\s+|[A-Z][A-Z0-9 ,&()/'-]{3,}:?\s*$)/;
+
+/** Formula lines are typeset, never treated as headings or lists. */
+function isFormulaLine(line: string): boolean {
+  const text = line.trim();
+  if (!text || text.length > 240) return false;
+  if (isBullet(text)) return false;
+  return looksLikeFormula(text);
+}
 
 function stripBullet(line: string): string {
   return line.replace(BULLET, "").trim();
@@ -462,8 +482,10 @@ function toSections(lines: string[]): Section[] {
 
 export function analyzeNotes(input: string): AnalyzedNotes {
   const raw = input ?? "";
-  const visualsDisabled = VISUALS_OFF.test(raw);
-  const text = raw.replace(VISUALS_OFF, "").replace(/\r\n?/g, "\n");
+  const { directives, text: withoutDirectives } = parseVisualDirectives(raw);
+  const visualsDisabled =
+    VISUALS_OFF.test(raw) || directives.mode === "none" || directives.hide.includes(0);
+  const text = withoutDirectives.replace(VISUALS_OFF, "").replace(/\r\n?/g, "\n");
 
   const blocks: TextBlock[] = [];
   const visuals: PlacedVisual[] = [];
@@ -515,6 +537,11 @@ export function analyzeNotes(input: string): AnalyzedNotes {
       }
       if (!line.trim()) continue;
 
+      if (isFormulaLine(line)) {
+        blocks.push({ type: "formula", text: line.trim() });
+        paragraphs.push(line.trim());
+        continue;
+      }
       if (isBullet(line)) {
         const text = stripBullet(line);
         bullets.push(text);
@@ -614,7 +641,20 @@ export function analyzeNotes(input: string): AnalyzedNotes {
     }
   }
 
-  return { blocks, visuals, visualsDisabled };
+  return applyAnalyzed(blocks, visuals, visualsDisabled, directives);
+}
+
+/** Apply the note's own hide / rename / replace / photo settings. */
+function applyAnalyzed(
+  blocks: TextBlock[],
+  visuals: PlacedVisual[],
+  visualsDisabled: boolean,
+  directives: VisualDirectives,
+): AnalyzedNotes {
+  if (visualsDisabled && !directives.images.length)
+    return { blocks, visuals: [], visualsDisabled: true };
+  const applied = applyDirectives(visualsDisabled ? [] : visuals, directives);
+  return { blocks, visuals: applied, visualsDisabled };
 }
 
 /** Detection used by `:::auto` / `:::diagram` fences: analyse the content only. */

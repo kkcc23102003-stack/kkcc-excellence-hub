@@ -1404,6 +1404,71 @@ Coaching Centre** as a rotated watermark layer, with the brand line in the page
 header and footer. That layer is a fixed print layer, which is why it appears on
 page 1, page 2, and every page after.
 
+### Math formulas in notes are typeset, not printed as code
+
+Plain text is enough — the reader, the admin preview and the printed PDF all
+typeset it with a dependency-free renderer (`src/lib/notes-visuals/math.ts`), so
+the print window still works with no internet:
+
+| Admin writes                           | Student sees                             |
+| -------------------------------------- | ---------------------------------------- |
+| `x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}` | a stacked fraction with a real radical   |
+| `\pi r^2`, `mc^2`, `sin^2 \theta`      | π r², mc², sin² θ                        |
+| `2H_2 + O_2 -> 2H_2O`                  | chemical subscripts and a reaction arrow |
+| `\alpha`, `\sum_{i=1}^{n}`, `\times`   | α, ∑ with limits, ×                      |
+
+A line that is a formula becomes its own centred formula block; a sentence with a
+formula inside it is typeset in place. Ordinary sentences (Punjabi, Hindi,
+English, history) are never touched — a line only counts as math when it carries
+LaTeX commands, math symbols, `^`/`_` groups, a chemical formula or a real
+equation. Everything is HTML-escaped first, so an admin can never inject markup.
+
+### Per-diagram control in the admin panel
+
+The note editor shows a **Diagram control** box and a **Har diagram ka control**
+list where each generated diagram can be:
+
+- **previewed** live as the exact SVG the student will see,
+- **edited** (rename the diagram title),
+- **deleted** (one toggle, the text stays untouched),
+- **replaced** with an uploaded photo — a printed diagram, a photo of the
+  textbook page, or a screenshot,
+- **switched off entirely** with the _No diagrams for this note_ checkbox, which
+  is what Punjabi / Hindi / English notes want.
+
+Settings are stored inside the note text as one `:::visuals {...}` line, so the
+database schema is unchanged, a copied note carries its settings, and the
+preview, the reader and the printed PDF all read the same source of truth. Only
+`data:image/…`, `https://…` and `/…` image URLs are accepted.
+
+### Handwriting and paste (notes app inside the admin panel)
+
+_Handwrite / paste_ opens a full-screen canvas (`src/components/kkcc/notes-canvas-editor.tsx`)
+with pen, highlighter, eraser, six colours, thickness, undo, clear and
+_Add photo_. It works with finger, stylus and mouse, and **Ctrl/Cmd+V pastes an
+image straight from any notes app** — the pasted page becomes the canvas
+background, and the admin can write on top of it. The finished page is saved as
+a JPEG, uploaded once, and inserted into the note as a figure (inline in the
+note if storage is unreachable, so work is never lost).
+
+### Bulk paste: preview first, publish on Next
+
+Bulk paste is now two steps, and **nothing is written to the test before the
+admin approves it**:
+
+1. **Step 1 — paste** MCQs with their explanations and press _Preview questions_.
+   Parsing is shared with the server (`src/lib/test-bulk-parse.ts`), so the
+   preview is exactly what will be published.
+2. **Step 2 — preview & publish**: every question is editable (question text,
+   options, correct option, explanation), each one can be dropped, and the
+   explanation the admin pasted is kept word for word. Only questions with no
+   explanation get the generated one. Pressing **Next → Publish** inserts the
+   reviewed rows verbatim and then updates the test statistics.
+
+`Answer:` / `Ans:` / `Correct:` and `Explanation:` / `Solution:` are all
+understood, options may be `A)` / `(A)` / `1)` style, and a numbered option line
+is never mistaken for the next question.
+
 ## Performance notes
 
 - The ~1.7 MB exam bank is code-split (`src/lib/exam-bank/lazy.ts`): the quiz page

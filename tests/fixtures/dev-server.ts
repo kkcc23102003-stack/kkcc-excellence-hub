@@ -73,6 +73,23 @@ const sessionFor = (user: NonNullable<ReturnType<typeof users.get>>) => ({
 });
 
 /** Demo note used by the local preview to prove the auto diagrams work. */
+/**
+ * A tiny inline "handwritten page" used by the demo note. Real uploads go to
+ * storage; this one is inline so the local preview works with no network.
+ */
+const DEMO_HANDWRITTEN_IMAGE = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+<rect width="640" height="360" fill="#fffdf5"/>
+<line x1="40" y1="70" x2="600" y2="70" stroke="#fcd34d" stroke-width="3"/>
+<text x="48" y="52" font-family="Georgia,serif" font-size="26" font-weight="bold" fill="#1e293b">GST — mera handwritten page</text>
+<text x="48" y="118" font-family="Georgia,serif" font-size="22" fill="#1d4ed8">GST = Rate x Base / 100</text>
+<text x="48" y="164" font-family="Georgia,serif" font-size="22" fill="#1d4ed8">Base 1000, Rate 18% -&gt; GST 180</text>
+<text x="48" y="210" font-family="Georgia,serif" font-size="22" fill="#b91c1c">CGST 9% + SGST 9% (intra-state)</text>
+<text x="48" y="256" font-family="Georgia,serif" font-size="22" fill="#047857">IGST 18% (inter-state)</text>
+<text x="48" y="318" font-family="Georgia,serif" font-size="20" font-style="italic" fill="#475569">Admin ne Samsung Notes jaise canvas me likha</text>
+</svg>`,
+)}`;
+
 const DEMO_NOTES_WITH_DIAGRAMS = `Types of GST
 
 - CGST — collected by the Centre on intra-state supply
@@ -111,6 +128,34 @@ Important milestones
 
 :::cycle GST money flow
 Consumer -> Business -> Government -> Public services -> Consumer
+:::
+
+Tax formulas (math typesetting)
+
+Amount = Rate \times Base
+\text{GST} = \frac{\text{Rate} \times \text{Base}}{100}
+Net price = Base + GST
+`;
+
+/**
+ * Punjabi note: the admin switched diagrams off for language subjects, so the
+ * reader shows clean text only — no tree, no chart.
+ */
+const DEMO_NOTES_TEXT_ONLY = `ਪੰਜਾਬੀ ਵਿਆਕਰਨ — ਨਾਂਵ
+
+ਨਾਂਵ (Noun)
+
+- ਕਿਸੇ ਵਿਅਕਤੀ, ਥਾਂ ਜਾਂ ਵਸਤੂ ਦੇ ਨਾਂ ਨੂੰ ਨਾਂਵ ਕਹਿੰਦੇ ਹਨ
+- ਨਾਂਵ ਦੇ ਪੰਜ ਭੇਦ ਹੁੰਦੇ ਹਨ
+- ਵਿਆਕਰਨ ਦੀ ਸਮਝ ਪੜ੍ਹਨ ਅਤੇ ਲਿਖਣ ਦੋਵਾਂ ਵਿੱਚ ਮਦਦ ਕਰਦੀ ਹੈ
+
+Examples
+
+- ਰਾਮ, ਦਿੱਲੀ, ਕਿਤਾਬ, ਪੰਜਾਬ
+- ਵਾਕ ਵਿੱਚ ਨਾਂਵ ਪਛਾਣਨਾ ਸਿੱਖੋ
+- ਰੋਜ਼ ਅਭਿਆਸ ਕਰੋ
+
+:::visuals {"mode":"none"}
 :::
 `;
 
@@ -189,6 +234,30 @@ doc.tables["lectures"] = [
 ];
 doc.tables["materials"] = [
   {
+    // A language note where the admin switched auto diagrams OFF — pure text.
+    id: "12000000-0000-4000-8000-000000000004",
+    course_id: null,
+    lecture_id: null,
+    title: "ਪੰਜਾਬੀ ਵਿਆਕਰਨ — ਨਾਂਵ (text only, no diagrams)",
+    description: DEMO_NOTES_TEXT_ONLY,
+    subject: "Punjabi",
+    class_level: "Class 10",
+    chapter: "ਵਿਆਕਰਨ",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 3,
+    module_title: "Language",
+    batch: "",
+    material_type: "Notes",
+    access_type: "free",
+    price: 0,
+    coin_price: 0,
+    is_published: true,
+    sort_order: 1,
+    created_at: now,
+    updated_at: now,
+  },
+  {
     // A note with no PDF at all: the reader shows the text plus the diagrams and
     // charts that are generated from it, and printing carries the KKCC watermark.
     id: "12000000-0000-4000-8000-000000000002",
@@ -216,7 +285,21 @@ doc.tables["materials"] = [
   {
     id: "12000000-0000-4000-8000-000000000003",
     title: "Paid Notes — buy from checkout (demo)",
-    description: "Advanced GST revision notes. Paid hai, to student checkout se kharid sakta hai.",
+    description: [
+      "Advanced GST revision notes. Paid hai, to student checkout se kharid sakta hai.",
+      "",
+      "Rate structure",
+      "- 5 percent essential goods",
+      "- 18 percent most services",
+      "- 28 percent luxury goods",
+      "",
+      "Tax formulas",
+      "GST = \\frac{Rate \\times Base}{100}",
+      "",
+      "Admin par demo: ek diagram photo se replace, ek handwritten page add.",
+      `:::visuals {"replace":{"1":{"url":"${DEMO_HANDWRITTEN_IMAGE}","caption":"Handwritten GST page"}},"images":[{"url":"${DEMO_HANDWRITTEN_IMAGE}","caption":"Handwritten GST page"}]}`,
+      ":::",
+    ].join("\n"),
     course_id: null,
     lecture_id: null,
     subject: "Commerce",

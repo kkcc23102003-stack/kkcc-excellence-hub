@@ -12,9 +12,11 @@
  */
 import { analyzeNotes, type TextBlock, type VisualSpec } from "./analyze";
 import { escapeHtml, visualSvg, wrapText } from "./render";
+import { looksLikeFormula, renderFormulaLine, renderMath } from "./math";
 
 export { analyzeNotes } from "./analyze";
 export { escapeHtml, visualSvg } from "./render";
+export { looksLikeFormula, renderFormulaLine, renderMath } from "./math";
 export type { TextBlock, VisualSpec } from "./analyze";
 
 export const KKCC_BRAND_PRIMARY = "KKCC Excellence Hub";
@@ -37,22 +39,43 @@ export function watermarkHtml(): string {
   return `<div class="kkcc-print-watermark" aria-hidden="true">${cells.join("")}</div>`;
 }
 
+/**
+ * One line of the admin's text. A line that is a formula (or a bullet that
+ * carries one, e.g. "E = mc^2") is typeset; everything else is escaped text, so
+ * the author can never inject markup.
+ */
+function inlineText(text: string): string {
+  if (looksLikeFormula(text)) return renderFormulaLine(text);
+  // A formula sitting inside a sentence is typeset too, never re-written.
+  return escapeHtml(text);
+}
+
+function isFormula(block: TextBlock): boolean {
+  return block.type === "formula" || looksLikeFormula(block.text);
+}
+
 function textBlockHtml(block: TextBlock): string {
   switch (block.type) {
     case "heading":
       return `<h2 class="kkcc-note-h2">${escapeHtml(block.text)}</h2>`;
     case "subheading":
       return `<h3 class="kkcc-note-h3">${escapeHtml(block.text)}</h3>`;
+    case "formula":
+      return `<div class="kkcc-math-block" role="math">${renderFormulaLine(block.text)}</div>`;
     default:
-      return `<p class="kkcc-note-p">${escapeHtml(block.text)}</p>`;
+      return `<p class="kkcc-note-p">${inlineText(block.text)}</p>`;
   }
 }
 
 function listItemHtml(block: TextBlock): string {
-  return `<li class="kkcc-note-li">${escapeHtml(block.text)}</li>`;
+  return `<li class="kkcc-note-li">${inlineText(block.text)}</li>`;
 }
 
 function visualHtml(spec: VisualSpec): string {
+  if (spec.kind === "image") {
+    // A photo carries its own caption inside the figure.
+    return `<figure class="kkcc-visual kkcc-visual-image kkcc-note-figure">${visualSvg(spec)}</figure>`;
+  }
   return `<figure class="kkcc-visual kkcc-visual-${spec.kind}">${visualSvg(spec)}<figcaption>${escapeHtml(spec.title)}</figcaption></figure>`;
 }
 
@@ -107,6 +130,8 @@ export function renderNotesBody(text: string, options: NotesRenderOptions = {}):
     pushVisuals(index);
   });
   closeList();
+  // Photos/settings pinned to "after the last paragraph" land here.
+  pushVisuals(Number.MAX_SAFE_INTEGER);
 
   const rendered = html.join("\n");
   return `<div class="kkcc-note-body" style="font-size:${fontScale}px">${rendered || `<p class="kkcc-note-p">${escapeHtml(text ?? "")}</p>`}</div>`;
@@ -135,6 +160,21 @@ body{background:#f1f5f9;color:#0f172a;font-family:Segoe UI,system-ui,-apple-syst
 .kkcc-note-li{margin:5px 0;padding-left:2px}
 .kkcc-visual{margin:16px 0;padding:10px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;break-inside:avoid;page-break-inside:avoid}
 .kkcc-visual svg{width:100%;height:auto;display:block}
+/* Formulas: plain text in, printed formula out. Serif stacks exist everywhere. */
+.kkcc-math-block{margin:12px 0;padding:10px 14px;border:1px solid #c7d2fe;border-radius:14px;background:#eef2ff;font-family:"Cambria Math",Cambria,Georgia,"Times New Roman",serif;font-size:1.06em;line-height:1.9;text-align:center;overflow-x:auto;break-inside:avoid;page-break-inside:avoid}
+.kkcc-math-frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 3px;line-height:1.15}
+.kkcc-math-num{padding:0 5px 1px;border-bottom:1.4px solid currentColor}
+.kkcc-math-den{padding:1px 5px 0}
+.kkcc-math-sqrt{display:inline-flex;align-items:stretch;margin:0 2px}
+.kkcc-math-radical{font-size:1.18em;line-height:1}
+.kkcc-math-radicand{border-top:1.4px solid currentColor;padding:2px 4px 0;margin-top:3px}
+.kkcc-math-sup,.kkcc-math-sub{font-size:.72em}
+.kkcc-math-text{font-style:italic}
+/* Photos the admin adds (handwritten pages, replaced diagrams). */
+.kkcc-visual-image{background:#fff}
+.kkcc-note-image{text-align:center}
+.kkcc-note-image img{max-width:100%;height:auto;display:block;margin:0 auto;border-radius:12px}
+.kkcc-note-image-caption{margin:6px 0 0;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
 .kkcc-visual figcaption{margin-top:6px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
 .kkcc-print-watermark{display:none}
 .kkcc-print-footer{display:none}
@@ -212,6 +252,7 @@ export function describeVisuals(specs: VisualSpec[]): string {
 
 /** Labels for the admin preview chips. */
 export const VISUAL_KIND_LABELS: Record<VisualSpec["kind"], string> = {
+  image: "Photo",
   flow: "Flow diagram",
   cycle: "Cycle diagram",
   tree: "Classification tree",

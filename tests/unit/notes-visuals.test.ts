@@ -9,6 +9,12 @@ import {
   watermarkHtml,
 } from "../../src/lib/notes-visuals";
 import { escapeHtml, wrapText } from "../../src/lib/notes-visuals/render";
+import { looksLikeFormula, renderFormulaLine } from "../../src/lib/notes-visuals/math";
+import {
+  EMPTY_DIRECTIVES,
+  parseVisualDirectives,
+  updateNoteWithDirectives,
+} from "../../src/lib/notes-visuals/directives";
 
 const TYPES_OF_NOTES = `Types of Taxes
 
@@ -165,4 +171,125 @@ test("The printable note keeps both brand names on every page", () => {
   const document = readFileSync("src/lib/notes-visuals/index.ts", "utf8");
   assert.match(document, /KKCC_BRAND_PRIMARY = "KKCC Excellence Hub"/);
   assert.match(document, /KKCC_BRAND_SECONDARY = "Kusum Kartik Coaching Centre"/);
+});
+
+/* --------------------------------------------------------------- formulas */
+
+test("a plain-text formula line becomes a real fraction with a root", () => {
+  const html = renderNotesBody("Quadratic Formula\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n");
+  assert.match(html, /class="kkcc-math-block"/);
+  assert.match(html, /class="kkcc-math-frac"/);
+  assert.match(html, /class="kkcc-math-num"/);
+  assert.match(html, /class="kkcc-math-den"/);
+  assert.match(html, /class="kkcc-math-radicand"/);
+  assert.ok(html.includes("√"), "the square-root sign should be drawn");
+  assert.ok(!html.includes("\\frac"), "raw LaTeX must never reach the student");
+  assert.ok(!html.includes("\\sqrt"));
+});
+
+test("powers, greek letters and multiplication signs stay readable", () => {
+  const html = renderNotesBody("Area of circle = \\pi r^2\nE = mc^2\n");
+  assert.ok(html.includes("π r²"));
+  assert.ok(html.includes("mc²"));
+});
+
+test("chemical equations get subscripts and a real arrow", () => {
+  assert.equal(looksLikeFormula("2H_2 + O_2 -> 2H_2O"), true);
+  assert.equal(looksLikeFormula("H2SO4 is sulphuric acid"), true);
+  const html = renderFormulaLine("2H_2 + O_2 -> 2H_2O");
+  assert.match(html, /class="kkcc-math-sub"/);
+  assert.ok(html.includes("→"));
+});
+
+test("a normal history sentence is never treated as math", () => {
+  assert.equal(looksLikeFormula("Punjab was divided in 1947 after partition."), false);
+  const html = renderNotesBody("Punjab was divided in 1947 after partition.\n");
+  assert.ok(html.includes("Punjab was divided in 1947"));
+  assert.ok(!html.includes("kkcc-math-block"));
+});
+
+test("HTML inside a formula is escaped, not executed", () => {
+  const html = renderFormulaLine("<img src=x onerror=alert(1)> = \\frac{1}{2}");
+  assert.ok(!html.includes("<img"));
+  assert.ok(html.includes("&lt;img"));
+});
+
+test("nested groups never print stray braces or backslashes", () => {
+  const html = renderFormulaLine("\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1");
+  assert.ok(!html.includes("\\"));
+  assert.ok(!html.includes("}}"));
+});
+
+/* ------------------------------------------------- per-note diagram control */
+
+const DIRECTIVE_NOTE =
+  "Photosynthesis\n\nTypes\n- Light reaction\n- Dark reaction\n- Calvin cycle\n";
+
+test("one diagram can be hidden while the text stays intact", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, { ...EMPTY_DIRECTIVES, hide: [1] });
+  assert.equal(analyzeNotes(stored).visuals.length, 0);
+  assert.ok(stored.includes("Light reaction"));
+  assert.ok(analyzeNotes(DIRECTIVE_NOTE).visuals.length > 0, "engine still finds one by default");
+});
+
+test("no-diagram switch gives a clean text-only note for language subjects", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, { ...EMPTY_DIRECTIVES, mode: "none" });
+  const result = analyzeNotes(stored);
+  assert.equal(result.visuals.length, 0);
+  assert.equal(result.visualsDisabled, true);
+  assert.ok(!renderNotesBody(stored).includes("kkcc-visual"));
+});
+
+test("a diagram title can be renamed from the panel", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, {
+    ...EMPTY_DIRECTIVES,
+    rename: { 1: "Meri apni heading" },
+  });
+  assert.match(renderNotesBody(stored), /Meri apni heading/);
+});
+
+test("a wrong diagram is replaced by the admin's uploaded photo", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, {
+    ...EMPTY_DIRECTIVES,
+    replace: { 1: { url: "data:image/png;base64,AAAA", caption: "Human lungs — photo" } },
+  });
+  const html = renderNotesBody(stored);
+  assert.match(html, /kkcc-visual-image/);
+  assert.ok(html.includes('src="data:image/png;base64,AAAA"'));
+  assert.ok(html.includes("Human lungs — photo"));
+  assert.ok(!html.includes("<svg"), "the generated drawing is gone once replaced");
+});
+
+test("a handwritten page is added as its own figure", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, {
+    ...EMPTY_DIRECTIVES,
+    images: [{ url: "https://cdn.example.com/hand-1.jpg", caption: "Handwritten page" }],
+  });
+  const html = renderNotesBody(stored);
+  assert.ok(html.includes("https://cdn.example.com/hand-1.jpg"));
+  assert.ok(html.includes("Handwritten page"));
+});
+
+test("javascript: URLs are refused and the diagram is kept", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, {
+    ...EMPTY_DIRECTIVES,
+    replace: { 1: { url: "javascript:alert(1)", caption: "x" } },
+  });
+  const html = renderNotesBody(stored);
+  assert.ok(!html.includes("javascript:"));
+  assert.match(html, /kkcc-visual/);
+});
+
+test("settings round-trip through the note text and never print", () => {
+  const stored = updateNoteWithDirectives(DIRECTIVE_NOTE, {
+    ...EMPTY_DIRECTIVES,
+    mode: "none",
+    hide: [2],
+    rename: { 1: "Steps" },
+  });
+  const parsed = parseVisualDirectives(stored).directives;
+  assert.equal(parsed.mode, "none");
+  assert.deepEqual(parsed.hide, [2]);
+  assert.equal(parsed.rename[1], "Steps");
+  assert.ok(!renderNotesBody(stored).includes(":::visuals"));
 });

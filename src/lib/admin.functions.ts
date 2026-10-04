@@ -28,6 +28,12 @@ import {
   projectContent,
   readProjectDocument,
 } from "@/lib/project-content.server";
+import {
+  buildFallbackExplanation,
+  parseBulkMcqText,
+  prepareBulkRows,
+  type ParsedBulkQuestion,
+} from "@/lib/test-bulk-parse";
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -559,133 +565,12 @@ type ParsedMcq = {
   explanation: string;
 };
 
-function optionIndex(value: string) {
-  const trimmed = value.trim();
-  if (/^[A-D]$/i.test(trimmed)) return trimmed.toUpperCase().charCodeAt(0) - 65;
-  if (/^[1-4]$/.test(trimmed)) return Number(trimmed) - 1;
-  return -1;
-}
-
-function cleanQuestionText(value: string) {
-  return value.replace(/^\s*(?:q\s*)?\d+\s*[).:-]\s*/i, "").trim();
-}
-
-function buildFallbackExplanation(question: ParsedMcq, subject: string) {
-  const correctOption = question.options[question.correct_index] ?? "the marked option";
-  return `Correct answer is ${correctOption}. This ${subject || "exam"} question is solved by matching the question statement with the correct concept and eliminating the other options. Review the topic once more for stronger retention.`;
-}
-
-function parseMcqText(text: string): ParsedMcq[] {
-  const lines = text
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const questions: ParsedMcq[] = [];
-  let current: {
-    question: string[];
-    options: string[];
-    answerRaw: string;
-    explanation: string[];
-    mode: "question" | "option" | "explanation";
-  } | null = null;
-
-  const flush = () => {
-    if (!current) return;
-    const question_text = current.question.join(" ").trim();
-    const options = current.options.map((option) => option.trim()).filter(Boolean);
-    let correct_index = optionIndex(current.answerRaw);
-    if (correct_index < 0 && current.answerRaw) {
-      const answerText = current.answerRaw.toLowerCase();
-      correct_index = options.findIndex((option) => option.toLowerCase() === answerText);
-    }
-    if (
-      question_text &&
-      options.length >= 2 &&
-      correct_index >= 0 &&
-      correct_index < options.length
-    ) {
-      questions.push({
-        question_text,
-        options,
-        correct_index,
-        explanation: current.explanation.join(" ").trim(),
-      });
-    }
-    current = null;
-  };
-
-  for (const line of lines) {
-    const questionMatch = line.match(/^\s*(?:q\s*)?\d+\s*[).:-]\s*(.+)$/i);
-    const optionMatch = line.match(/^\s*(?:\(?([A-Da-d])\)?|([1-4]))\s*[).:-]\s*(.+)$/);
-    const answerMatch = line.match(/^\s*(?:answer|ans|correct(?:\s*answer)?)\s*[:-]\s*(.+)$/i);
-    const explanationMatch = line.match(/^\s*(?:explanation|solution)\s*[:-]\s*(.*)$/i);
-
-    if (questionMatch && (!current || current.options.length > 0 || current.answerRaw)) {
-      flush();
-      current = {
-        question: [questionMatch[1]?.trim() ?? ""],
-        options: [],
-        answerRaw: "",
-        explanation: [],
-        mode: "question",
-      };
-      continue;
-    }
-
-    if (!current) {
-      current = {
-        question: [cleanQuestionText(line)],
-        options: [],
-        answerRaw: "",
-        explanation: [],
-        mode: "question",
-      };
-      continue;
-    }
-
-    if (questionMatch && current.options.length === 0 && !current.answerRaw) {
-      current.question.push(questionMatch[1]?.trim() ?? "");
-      continue;
-    }
-
-    if (optionMatch) {
-      current.options.push((optionMatch[3] ?? "").trim());
-      current.mode = "option";
-      continue;
-    }
-
-    if (answerMatch) {
-      current.answerRaw = (answerMatch[1] ?? "").trim();
-      current.mode = "explanation";
-      continue;
-    }
-
-    if (explanationMatch) {
-      current.explanation.push((explanationMatch[1] ?? "").trim());
-      current.mode = "explanation";
-      continue;
-    }
-
-    if (current.mode === "option" && current.options.length > 0) {
-      current.options[current.options.length - 1] += ` ${line}`;
-    } else if (current.mode === "explanation") {
-      current.explanation.push(line);
-    } else {
-      current.question.push(cleanQuestionText(line));
-    }
-  }
-
-  flush();
-  return questions;
-}
-
 export const createTestFromMcqText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => mcqImportSchema.parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const questions = parseMcqText(data.text);
+    const questions = parseBulkMcqText(data.text);
     if (!questions.length) {
       throw new Error(
         "No valid MCQs found. Use format: Q1. question, A) option, B) option, C) option, D) option, Answer: B",
@@ -887,6 +772,23 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
         marks: z.number().int().min(1).max(100).default(4),
         negative_marks: z.number().int().min(0).max(100).default(1),
         text: z.string().trim().min(5).max(100000),
+        /**
+         * The exact rows the admin approved in the preview step. When present
+         * these are published verbatim — the pasted text is only the fallback.
+         */
+        questions: z
+          .array(
+            z.object({
+              question_text: z.string().trim().min(3).max(2000),
+              options: z.array(z.string().trim().min(1).max(500)).min(2).max(6),
+              correct_index: z.number().int().min(0).max(5),
+              explanation: z.string().trim().max(5000).default(""),
+              marks: z.number().int().min(1).max(100).optional(),
+              negative_marks: z.number().int().min(0).max(100).optional(),
+            }),
+          )
+          .max(300)
+          .optional(),
         switchToManual: z.boolean().optional(),
       })
       .parse(input),
@@ -897,7 +799,16 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
       await projectContent.from("tests").select("*").eq("id", data.test_id).maybeSingle(),
     );
     if (!parent) throw new Error("Parent test not found.");
-    const parsed = parseMcqText(data.text);
+    const fromPreview: ParsedBulkQuestion[] = (data.questions ?? []).map((question) => ({
+      question_text: question.question_text,
+      options: question.options,
+      correct_index: question.correct_index,
+      explanation: question.explanation,
+      explanation_source: question.explanation ? "paste" : "auto",
+      ...(question.marks !== undefined ? { marks: question.marks } : {}),
+      ...(question.negative_marks !== undefined ? { negative_marks: question.negative_marks } : {}),
+    }));
+    const parsed = fromPreview.length ? fromPreview : parseBulkMcqText(data.text);
     if (!parsed.length) {
       throw new Error(
         "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
@@ -908,18 +819,12 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
       .select("id")
       .eq("test_id", data.test_id);
     const baseOrder = (existing.data ?? []).length;
-    const rows = parsed.map((q, idx) => ({
-      test_id: data.test_id,
-      question_text: q.question_text,
+    const rows = prepareBulkRows(parsed, {
       subject: data.subject || parent.subject || "General",
-      options: q.options,
-      correct_index: q.correct_index,
       marks: data.marks,
       negative_marks: data.negative_marks,
-      explanation:
-        q.explanation || buildFallbackExplanation(q, data.subject || parent.subject || "General"),
-      sort_order: baseOrder + idx,
-    }));
+      startOrder: baseOrder,
+    }).map((row) => ({ ...row, test_id: data.test_id }));
     const { error } = await projectContent.from("test_questions").insert(rows as never);
     if (error) throw new Error(error.message);
     if (data.switchToManual) {
@@ -1563,7 +1468,7 @@ export const adminBulkImportCustomChapterQuestions = createServerFn({ method: "P
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const parsed = parseMcqText(data.text);
+    const parsed = parseBulkMcqText(data.text);
     if (!parsed.length) {
       throw new Error(
         "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
@@ -1790,7 +1695,7 @@ function synthesizeQuestionsFromPromptAndBank(input: {
 
   // First: if the Admin provided MCQ-like text in prompt, parse it directly
   if (input.prompt.trim().length > 10) {
-    const parsedMcqs = parseMcqText(input.prompt);
+    const parsedMcqs = parseBulkMcqText(input.prompt);
     for (const q of parsedMcqs) {
       const norm = q.question_text.trim().toLowerCase();
       if (!input.existingTexts.has(norm) && results.length < input.count) {

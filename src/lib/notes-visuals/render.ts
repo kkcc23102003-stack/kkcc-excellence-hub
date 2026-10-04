@@ -11,6 +11,7 @@ import type {
   CompareSpec,
   CycleSpec,
   FlowSpec,
+  ImageSpec,
   TimelineSpec,
   TreeSpec,
   VisualSpec,
@@ -369,9 +370,22 @@ function donutSvg(spec: ChartSpec): string {
   return frame(spec.title, height, parts.join(""));
 }
 
+/* ------------------------------------------------------------------ image */
+
+/**
+ * A photo the admin uploaded — a handwritten page, a screenshot from a notes
+ * app, or a printed diagram. Rendered as plain HTML (not SVG) so it prints at
+ * full resolution.
+ */
+export function imageFigureHtml(spec: ImageSpec): string {
+  const caption = spec.caption?.trim();
+  return `<div class="kkcc-note-image"><img src="${escapeHtml(spec.url)}" alt="${escapeHtml(caption || "Study note image")}" loading="lazy" decoding="async" />${caption ? `<p class="kkcc-note-image-caption">${escapeHtml(caption)}</p>` : ""}</div>`;
+}
+
 /* ------------------------------------------------------------- dispatcher */
 
 export function visualSvg(spec: VisualSpec): string {
+  if (spec.kind === "image") return imageFigureHtml(spec);
   switch (spec.kind) {
     case "flow":
       return flowSvg(spec);
