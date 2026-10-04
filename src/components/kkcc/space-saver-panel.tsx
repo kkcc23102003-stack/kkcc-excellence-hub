@@ -33,10 +33,10 @@ export function SpaceSaverPanel() {
     <section className="surface-panel mb-6 space-y-4 p-5">
       <h2 className="text-lg font-bold">Free-plan space saver</h2>
       <p className="text-sm text-muted-foreground">
-        Published questions, notes text and templates already use private project content, not
-        Supabase tables. Keep a backup of that content and use persistent hosting storage. Drive
-        links avoid copying PDFs into Supabase Storage; their sharing permissions remain your
-        responsibility.
+        Template banks remain in project files. Managed notes and CMS settings now use Supabase
+        tables by default, so their text also consumes database space. Other educational backends
+        retain their own configuration; keep them backed up. Drive links avoid copying PDFs into
+        Supabase Storage; their sharing permissions remain your responsibility.
       </p>
       <a className="text-sm underline" href={SQL_URL}>
         Download Space Saver SQL — one-time setup, deletes nothing

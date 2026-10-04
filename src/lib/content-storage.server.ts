@@ -28,7 +28,9 @@ export async function contentStorageSettings() {
   const map = new Map([...publicRows.data, ...privateRows.data].map((row) => [row.key, row.value]));
   return {
     provider: map.get("storage_provider") || "supabase",
-    bucket: map.get("storage_bucket") || "",
+    bucket:
+      map.get("storage_bucket") ||
+      ((map.get("storage_provider") || "supabase") === "supabase" ? "course-content" : ""),
     region: map.get("storage_region") || "auto",
     endpoint: map.get("storage_endpoint") || "",
     public_base_url: map.get("storage_public_base_url") || "",
@@ -104,4 +106,15 @@ export async function resolveContentUrl(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+/** Call only after access checks (or for an explicitly free public note). */
+export async function resolveNoteImages(text: string): Promise<string> {
+  const { noteImageRefs, replaceNoteImageRefs } = await import("./note-image-refs");
+  const urls = Object.fromEntries(
+    await Promise.all(
+      noteImageRefs(text).map(async (ref) => [ref, (await resolveContentUrl(ref)) || ref]),
+    ),
+  );
+  return replaceNoteImageRefs(text, urls);
 }

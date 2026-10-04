@@ -1,5 +1,5 @@
 import { isFreeCourse } from "@/lib/cms";
-import { resolveContentUrl } from "@/lib/content-storage.server";
+import { resolveContentUrl, resolveNoteImages } from "@/lib/content-storage.server";
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -62,6 +62,8 @@ async function publicMaterials(materials: Row<"materials">[]) {
         effectiveAccessType === "free" ? await resolveContentUrl(material.file_url) : null;
       return {
         ...material,
+        description:
+          effectiveAccessType === "free" ? await resolveNoteImages(material.description || "") : "",
         access_type: effectiveAccessType,
         file_url:
           effectiveAccessType === "free" ? resolved || buildPublicNoteDataUrl(material) : null,
@@ -171,17 +173,21 @@ export const getMyCourseLearningDeck = createServerFn({ method: "GET" })
     };
   });
 
-export const listPublicMaterials = createServerFn({ method: "GET" }).handler(async () =>
-  publicMaterials(
-    unwrap(
-      await projectContent
-        .from("materials")
-        .select("*")
-        .eq("is_published", true)
-        .order("sort_order"),
-    ),
-  ),
-);
+export const listPublicMaterials = createServerFn({ method: "GET" }).handler(async () => {
+  const rows = unwrap(await projectContent.from("materials").select("*").order("sort_order"));
+  const flag = unwrap(
+    await projectContent
+      .from("site_settings")
+      .select("value")
+      .eq("key", "builtin_materials_adopted")
+      .maybeSingle(),
+  );
+  const { builtInMaterials } = await import("@/lib/builtin-materials.server");
+  const storedIds = new Set(rows.map((row) => row.id));
+  const samples =
+    flag?.value === "true" ? [] : builtInMaterials().filter((row) => !storedIds.has(row.id));
+  return publicMaterials([...rows.filter((row) => row.is_published), ...samples]);
+});
 export const listPublicLectures = createServerFn({ method: "GET" }).handler(async () => {
   const [lectures, courses] = await Promise.all([
     projectContent.from("lectures").select("*").order("sort_order"),

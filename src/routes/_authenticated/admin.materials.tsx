@@ -1,3 +1,6 @@
+import { noteImageRefs, replaceNoteImageRefs } from "@/lib/note-image-refs";
+import { previewAdminNoteImages } from "@/lib/storage-upload.functions";
+import { getAdminStorageSettings } from "@/lib/platform-settings.functions";
 import { DiagramTemplateLibrary } from "@/components/kkcc/diagram-template-library";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  adoptBuiltInMaterials,
   adminListCourses,
   adminListMaterials,
   deleteMaterial,
@@ -77,14 +81,21 @@ export const Route = createFileRoute("/_authenticated/admin/materials")({
   errorComponent: ({ error }) => (
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
-        <h1 className="text-2xl font-bold">Admin access required</h1>
+        <h1 className="text-2xl font-bold">Study material setup / access</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {error instanceof Error ? error.message : String(error)}
         </p>
         <p className="mx-auto mt-4 max-w-xl text-sm text-muted-foreground">
-          Study material manager is locked to Supabase admins only. Add your user to
-          <code> public.user_roles</code> with role <code>admin</code> to control it.
+          If the message says Supabase notes setup is required, run the Notes Supabase SQL and
+          configure the server service-role environment variable, then redeploy. Only an
+          authenticated admin can manage notes.
         </p>
+        <a
+          className="mt-4 block underline"
+          href="https://github.com/kkcc23102003-stack/kkcc-excellence-hub/raw/arena/01a10030-kkcc-excellence-hub/KKCC-Excellence-Hub-NOTES-SUPABASE.sql"
+        >
+          Download Notes Supabase setup SQL
+        </a>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button asChild className="rounded-full">
             <Link to="/dashboard">Back to dashboard</Link>
@@ -207,7 +218,22 @@ function MaterialsManager() {
   const listMaterials = useServerFn(adminListMaterials);
   const listCourses = useServerFn(adminListCourses);
   const save = useServerFn(saveMaterial);
+  const adopt = useServerFn(adoptBuiltInMaterials);
+  const adoption = useMutation({
+    mutationFn: () => adopt(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "materials"] });
+      toast.success("Sample library is now editable below. Deleted samples will not reappear.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const remove = useServerFn(deleteMaterial);
+  const loadStorage = useServerFn(getAdminStorageSettings);
+  const storage = useQuery({
+    queryKey: ["admin", "storage"],
+    queryFn: () => loadStorage(),
+    retry: false,
+  });
 
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -278,7 +304,7 @@ function MaterialsManager() {
         access_type: "free",
         price: 0,
         coin_price: 0,
-        is_published: true,
+        is_published: false,
         sort_order: materials.length,
       },
       { onSuccess: (row) => row?.id && setOpenId(row.id as string) },
@@ -293,6 +319,31 @@ function MaterialsManager() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <div className="mb-4 rounded-xl border p-4 text-sm">
+          <strong>
+            Upload storage:{" "}
+            {storage.data?.provider ||
+              (storage.isError ? "Unavailable — check settings" : "Loading…")}
+          </strong>
+          <p>
+            Supabase is the default; S3 is optional, not required. A protected Supabase file is not
+            an S3 file. Sample notes below can be edited, copied, unpublished or deleted just like
+            your own notes.
+          </p>
+          <Link to="/admin/storage" className="font-bold underline">
+            Storage settings / select Supabase
+          </Link>
+        </div>
+        <div className="mb-4 rounded-xl border p-4">
+          <p className="mb-2 text-sm">
+            Built-in sample notes ko ek baar admin-managed library mein le aayein. Phir Edit,
+            Free/Paid, Publish/Unpublish aur Delete sab controls lagenge; deleted samples
+            automatically wapas nahi aayenge.
+          </p>
+          <Button disabled={adoption.isPending} onClick={() => adoption.mutate()}>
+            Make sample notes editable
+          </Button>
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button asChild variant="ghost" size="sm" className="rounded-full self-start">
             <Link to="/admin">
@@ -365,6 +416,25 @@ function MaterialsManager() {
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={saveMutation.isPending}
+                    onClick={() => {
+                      const { id: _id, ...copy } = toInput(m);
+                      saveMutation.mutate(
+                        {
+                          ...copy,
+                          title: `${m.title.slice(0, 190)} (copy)`,
+                          is_published: false,
+                          sort_order: materials.length,
+                        },
+                        { onSuccess: (row) => row?.id && setOpenId(row.id as string) },
+                      );
+                    }}
+                  >
+                    Duplicate as draft
+                  </Button>
                   {/* One tap Free / Paid — the student side updates instantly. */}
                   <Button
                     size="sm"
@@ -373,13 +443,15 @@ function MaterialsManager() {
                     title="Ye notes sabke liye free kar dein"
                     onClick={() => {
                       if (m.access_type === "free") return;
-                      saveMutation.mutate({
-                        ...toInput(m),
-                        access_type: "free",
-                        price: 0,
-                        coin_price: 0,
-                      });
-                      toast.success(`"${m.title}" ab Free hai`);
+                      saveMutation.mutate(
+                        {
+                          ...toInput(m),
+                          access_type: "free",
+                          price: 0,
+                          coin_price: 0,
+                        },
+                        { onSuccess: () => toast.success(`"${m.title}" ab Free hai`) },
+                      );
                     }}
                   >
                     Free
@@ -394,14 +466,19 @@ function MaterialsManager() {
                         setOpenId(m.id);
                         return;
                       }
-                      saveMutation.mutate({
-                        ...toInput(m),
-                        access_type: "paid",
-                        price: m.price && m.price > 0 ? m.price : 49,
-                        coin_price: m.coin_price && m.coin_price > 0 ? m.coin_price : 49,
-                      });
+                      saveMutation.mutate(
+                        {
+                          ...toInput(m),
+                          access_type: "paid",
+                          price: m.price && m.price > 0 ? m.price : 49,
+                          coin_price: m.coin_price && m.coin_price > 0 ? m.coin_price : 49,
+                        },
+                        {
+                          onSuccess: () =>
+                            toast.success(`"${m.title}" ab Paid hai — ₹ price check kar lein`),
+                        },
+                      );
                       setOpenId(m.id);
-                      toast.success(`"${m.title}" ab Paid hai — ₹ price check kar lein`);
                     }}
                   >
                     Paid
@@ -492,6 +569,15 @@ function MaterialForm({
   onSave: (v: MaterialInput) => void | Promise<unknown>;
 }) {
   const [v, setV] = useState<MaterialInput>(() => toInput(material));
+  const previewImages = useServerFn(previewAdminNoteImages);
+  const refs = noteImageRefs(v.description);
+  const imageUrls = useQuery({
+    queryKey: ["admin", "note-image-previews", refs],
+    queryFn: () => previewImages({ data: { refs } }),
+    enabled: refs.length > 0,
+    staleTime: 30 * 60 * 1000,
+  });
+  const previewText = replaceNoteImageRefs(v.description, imageUrls.data ?? {});
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [uploadingVisual, setUploadingVisual] = useState<number | "extra" | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -757,7 +843,7 @@ function MaterialForm({
               <div
                 className="kkcc-note-reader mt-2 max-h-72 overflow-y-auto rounded-xl bg-card p-3 text-foreground"
                 dangerouslySetInnerHTML={{
-                  __html: renderNotesBody(v.description, { fontScale: 13 }),
+                  __html: renderNotesBody(previewText, { fontScale: 13 }),
                 }}
               />
               {rawVisuals.length || noteDirectives.images.length ? (
@@ -836,7 +922,7 @@ function MaterialForm({
                           <div className="w-full overflow-x-auto rounded-lg border bg-card p-1">
                             {replaced ? (
                               <img
-                                src={replaced.url}
+                                src={imageUrls.data?.[replaced.url] ?? replaced.url}
                                 alt={title}
                                 className="mx-auto max-h-40 rounded"
                               />
@@ -856,13 +942,39 @@ function MaterialForm({
                         className="flex items-center gap-2 rounded-lg border bg-background/70 p-2"
                       >
                         <img
-                          src={image.url}
+                          src={imageUrls.data?.[image.url] ?? image.url}
                           alt={image.caption || "Admin photo"}
                           className="h-10 w-10 rounded object-cover"
                         />
-                        <p className="min-w-0 flex-1 truncate text-xs font-bold">
-                          {image.caption || `Photo ${index + 1}`}
-                        </p>
+                        <Input
+                          aria-label={`Photo ${index + 1} caption`}
+                          className="min-w-0 flex-1"
+                          value={image.caption}
+                          placeholder={`Photo ${index + 1} caption`}
+                          onChange={(event) =>
+                            setDirectives({
+                              ...noteDirectives,
+                              images: noteDirectives.images.map((entry, i) =>
+                                i === index ? { ...entry, caption: event.target.value } : entry,
+                              ),
+                            })
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={index === 0}
+                          onClick={() => {
+                            const images = [...noteDirectives.images];
+                            [images[index - 1], images[index]] = [
+                              images[index]!,
+                              images[index - 1]!,
+                            ];
+                            setDirectives({ ...noteDirectives, images });
+                          }}
+                        >
+                          ↑
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1027,9 +1139,8 @@ function MaterialForm({
             accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip,image/*,audio/*,video/*"
             label="Upload file"
             onUploaded={(url) => {
-              const next = { ...v, file_url: url, is_published: true };
+              const next = { ...v, file_url: url };
               setV(next);
-              return onSave(next);
             }}
           />
         </div>
@@ -1056,7 +1167,6 @@ function MaterialForm({
             onUploaded={(url) => {
               const next = { ...v, thumbnail_url: url };
               setV(next);
-              return onSave(next);
             }}
           />
           <label className="flex items-center gap-2 pb-2 text-sm">
@@ -1081,22 +1191,12 @@ function MaterialForm({
         <NotesCanvasEditor
           onClose={() => setCanvasOpen(false)}
           onInsert={async ({ dataUrl, caption }) => {
-            /*
-             * A handwritten page is a real image, so it is uploaded to storage
-             * like any other file. If storage is unavailable (or offline), the
-             * page is kept inline in the note so the admin never loses work.
-             */
-            let url = dataUrl;
-            try {
-              const blob = await (await fetch(dataUrl)).blob();
-              const file = new File([blob], `handwritten-${Date.now()}.jpg`, {
-                type: "image/jpeg",
-              });
-              const uploaded = await uploadContentFile(file, "notes-images");
-              url = uploaded.url || uploaded.path;
-            } catch {
-              url = dataUrl;
-            }
+            // Keep the canvas open on failure; never silently store a huge inline
+            // image or redirect the upload to another provider.
+            const blob = await (await fetch(dataUrl)).blob();
+            const file = new File([blob], `handwritten-${Date.now()}.jpg`, { type: "image/jpeg" });
+            const uploaded = await uploadContentFile(file, "notes-images");
+            const url = uploaded.url || uploaded.path;
             setDirectives({
               ...noteDirectives,
               images: [...noteDirectives.images, { url, caption }],

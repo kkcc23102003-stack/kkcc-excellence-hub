@@ -3,7 +3,7 @@ import { notesPrintDocument } from "@/lib/notes-visuals";
 import type { StudentContext } from "@/lib/learning.server";
 import { readStudentAccess, unwrap } from "@/lib/learning.server";
 import { projectContent } from "@/lib/project-content.server";
-import { resolveContentUrl } from "@/lib/content-storage.server";
+import { resolveContentUrl, resolveNoteImages } from "@/lib/content-storage.server";
 
 function buildInlineNoteDataUrl(material: {
   title?: string | null;
@@ -69,8 +69,11 @@ export async function materialForStudent(context: StudentContext, id: string) {
   }
   if (!allowed)
     throw new Error(mode === "paid" ? "MATERIAL_ACCESS_REQUIRED" : "COURSE_ACCESS_REQUIRED");
+  const description = await resolveNoteImages(material.description || "");
   const resolvedUrl = await resolveContentUrl(material.file_url);
   const file_url =
-    resolvedUrl && resolvedUrl !== "#" ? resolvedUrl : buildInlineNoteDataUrl(material);
-  return { ok: true, material_id: material.id, file_url };
+    resolvedUrl && resolvedUrl !== "#"
+      ? resolvedUrl
+      : buildInlineNoteDataUrl({ ...material, description });
+  return { ok: true, material_id: material.id, file_url, description };
 }

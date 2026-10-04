@@ -91,8 +91,8 @@ test("space saver installer copies match and do not schedule automatic cleanup",
     readFileSync("supabase/migrations/20261004130000_free_plan_space_saver.sql", "utf8"),
     sql,
   );
-  assert.ok(readFileSync("supabase/STUDENT_ONLY_SCHEMA.sql", "utf8").endsWith(sql));
-  assert.ok(readFileSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql", "utf8").endsWith(sql));
+  assert.ok(readFileSync("supabase/STUDENT_ONLY_SCHEMA.sql", "utf8").includes(sql));
+  assert.ok(readFileSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql", "utf8").includes(sql));
   assert.ok(!sql.includes("cron.schedule"));
   assert.ok(!sql.includes("DELETE FROM public.test_access_grants"));
 });

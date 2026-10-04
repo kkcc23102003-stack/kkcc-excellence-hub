@@ -1,3 +1,5 @@
+> **4 October update — notes read-only fix:** Managed notes/materials, settings and file metadata now default to dedicated **Supabase tables**. Uploads default to **Supabase Storage**. Run `KKCC-Excellence-Hub-NOTES-SUPABASE.sql` and configure the server-only `SUPABASE_SERVICE_ROLE_KEY`, then redeploy. No private S3 bucket or persistent volume is required for these features. This supersedes older statements below that all notes text lives outside Supabase. Static question/diagram template banks remain project files.
+
 > **Implemented source / local-tested release candidate — 1 October 2026.** This is not an assertion of a production deployment or complete academic sign-off. Start with [student-only deployment instructions](docs/DEPLOYMENT_STUDENT_ONLY.md) and [the exhaustive bank audit](docs/audit/QUESTION_BANK_COVERAGE.md). Supabase is for student/auth/access-related data only; educational content stays in the existing project bank and private project/external storage. Do not run the historical combined CMS SQL for a fresh install.
 
 ## Reproduce the implemented application
@@ -1614,3 +1616,75 @@ For files, compressed note photos are already supported. Drive URLs avoid a
 second PDF copy but retain Drive sharing/link-leak risks; changing storage
 provider alone does not migrate existing objects. There is no zero-space or
 unlimited-Free-plan guarantee. Actual production savings depend on eligible data.
+
+### Supabase uploads and complete sample-note controls (4 October 2026)
+
+Supabase remains the shipped upload default (`course-content`). Admin → Storage
+now offers **Use Supabase Storage** with a warning: selecting it does NOT migrate
+existing S3/R2/local objects. Re-upload old attachments before changing an already
+used provider. No S3 account is required. A **private Supabase bucket** is still
+Supabase, not S3; we do not make paid content public. With Supabase selected, a
+missing bucket setting defaults to `course-content`, and upload errors are surfaced
+instead of silently writing files into local public storage. Canvas failures keep
+the editor open rather than saving a large inline fallback.
+
+Admin → Materials shows the current upload provider. Click **Make sample notes
+editable** once to adopt the built-in study library into managed materials. Stable
+IDs and ignore-on-conflict imports preserve existing edits. After successful
+adoption, the built-in list is no longer appended by the student page: deleting or
+unpublishing a sample stays effective. Existing fixture samples are editable too;
+the live preview now preserves material edits/deletions and the adoption flag
+across fixture restarts. Automated fixtures still reset deterministically.
+
+The material editor supports title/body, subject/chapter/class/batch/course,
+Free/Paid prices, file/Drive URL, cover, order, note mode and visual controls.
+Additional controls: Duplicate as draft, photo caption editing and move-up ordering.
+New notes start as drafts; uploading a file/image stages it in the editor without
+automatically saving/publishing the material. Press Save after checking it.
+Deleting a note does not delete shared files from storage. Copies share existing
+attachments until replaced. Built-in source code is not rewritten by admin edits.
+
+Supabase image tokens now survive note editing. Fresh signed URLs are generated
+for authorized display only; permanent tokens, not expiring URLs, remain saved.
+Paid note bodies are omitted from public material responses and are returned only
+after the student access check. Free notes remain publicly readable by design.
+
+No new database schema is needed for this update if the existing material/settings
+backend and Supabase storage policies are installed. This does not migrate existing
+material metadata or project-content backend configuration; it controls uploaded
+files and the existing admin-managed materials backend. Keep that backend persistent
+and backed up. No live Supabase settings were modified from this sandbox.
+
+
+### Fix for “Project content is read only” on notes (screenshot issue)
+
+The upload provider and metadata backend are separate. Selecting Supabase Storage
+alone could not fix the old fallback to read-only JSON on serverless hosting.
+Managed tables now map to `kkcc_materials`, `kkcc_site_settings`,
+`kkcc_private_settings` and `kkcc_content_files` using the server Supabase client.
+Missing setup returns an actionable SQL/environment error, not a request for S3
+and not a silent write to ephemeral disk. Explicit `KKCC_CONTENT_BACKEND=file`
+continues to support local fixtures; **remove that override in production**.
+
+Existing-project deployment:
+1. Back up existing content. Run **KKCC-Excellence-Hub-NOTES-SUPABASE.sql** once
+   in Supabase SQL Editor. It copies matching legacy materials/settings when
+   present, without replacing existing destination edits. It deletes nothing.
+2. On hosting, configure the existing Supabase URL/public key plus server-only
+   **SUPABASE_SERVICE_ROLE_KEY**. Never prefix that secret with `VITE_` or paste
+   it into chat. Redeploy the updated app. Notes use the managed tables even on
+   Vercel/read-only hosting; no S3 configuration is required.
+3. Admin → Materials → Make sample notes editable, then edit/save normally.
+4. Admin → Storage → Use Supabase Storage for future uploaded files if another
+   provider had previously been selected. Existing objects are not migrated.
+
+The dedicated tables have RLS and no browser-role grants. Server handlers enforce
+admin writes and student access. The public material API omits paid note bodies.
+Supabase service-role authorization and fresh schema tests cover persistence,
+updates/deletion, reruns and rejection of anonymous/student direct table access.
+
+This changes the storage accounting: **saved notes text/settings/file metadata now
+consume Supabase database space**, and uploaded files consume Supabase Storage.
+Template banks are not copied there. Existing local/S3 JSON documents are not
+available to SQL: export/import them separately before switching if they contain
+important content. Production data itself has not been inspected or modified.

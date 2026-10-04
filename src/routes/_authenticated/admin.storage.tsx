@@ -133,6 +133,24 @@ function AdminStoragePage() {
     onError: (error: Error) => toast.error(friendlyError(error)),
   });
 
+  const useSupabase = useMutation({
+    mutationFn: () =>
+      save({
+        data: {
+          provider: "supabase",
+          bucket: "course-content",
+          region: "",
+          endpoint: "",
+          public_base_url: "",
+          migration_status: "idle",
+        },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "storage"] });
+      toast.success("Supabase Storage selected. Existing files have not been moved.");
+    },
+    onError: (error: Error) => toast.error(friendlyError(error)),
+  });
   const secrets = settingsQuery.data?.secrets;
   const external = provider !== "supabase" && provider !== "external_url";
 
@@ -157,6 +175,27 @@ function AdminStoragePage() {
           </Button>
         </div>
 
+        <div className="mb-5 rounded-xl border p-4">
+          <h2 className="font-bold">Use Supabase for notes and study-material uploads</h2>
+          <p className="my-2 text-sm">
+            No S3 account needed. Protected buckets belong to Supabase too; keep paid content
+            private. Switching provider does not migrate old files—re-upload old attachments before
+            changing an already-used provider.
+          </p>
+          <Button
+            disabled={useSupabase.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Use Supabase course-content for new uploads? Existing files are not migrated. Old files on another provider may need re-uploading.",
+                )
+              )
+                useSupabase.mutate();
+            }}
+          >
+            Use Supabase Storage
+          </Button>
+        </div>
         <SpaceSaverPanel />
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="surface-panel p-5">

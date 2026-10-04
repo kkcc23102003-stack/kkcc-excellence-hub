@@ -1977,3 +1977,27 @@ export const adminGenerateAiChapterQuestions = createServerFn({ method: "POST" }
       questions: aiQuestions,
     };
   });
+
+/** One-time adoption; source IDs are stable, and existing admin edits win on retries. */
+export const adoptBuiltInMaterials = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { builtInMaterials } = await import("@/lib/builtin-materials.server");
+    const flag = await projectContent
+      .from("site_settings")
+      .select("value")
+      .eq("key", "builtin_materials_adopted")
+      .maybeSingle();
+    if (flag.error) throw new Error(flag.error.message);
+    if (flag.data?.value === "true") return { ok: true };
+    const result = await projectContent
+      .from("materials")
+      .upsert(builtInMaterials(), { onConflict: "id", ignoreDuplicates: true });
+    if (result.error) throw new Error(result.error.message);
+    const saved = await projectContent
+      .from("site_settings")
+      .upsert({ key: "builtin_materials_adopted", value: "true" }, { onConflict: "key" });
+    if (saved.error) throw new Error(saved.error.message);
+    return { ok: true };
+  });

@@ -61,6 +61,7 @@ const IMAGE_FENCE = /:::\s*image\s*(.*?)\n([\s\S]*?):::/gi;
 export function safeImageUrl(value: string | undefined | null): string | null {
   const url = (value ?? "").trim();
   if (!url) return null;
+  if (/^kkcc-file:\/\/[^/\s]+\/[^\s"<>]+$/.test(url)) return url;
   if (url.startsWith("data:image/")) return url;
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("/")) return url;

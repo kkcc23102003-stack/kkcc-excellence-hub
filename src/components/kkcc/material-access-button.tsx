@@ -92,7 +92,7 @@ export function MaterialAccessButton({
   title,
   subject,
   chapter,
-  description,
+  description: publicDescription,
   materialType,
   className = "mt-5 w-full",
 }: {
@@ -111,19 +111,11 @@ export function MaterialAccessButton({
 }) {
   const { user, loading: authLoading } = useAuthUser();
   const client = useQueryClient();
-  // Diagrams/charts are generated from the admin's plain text. Analysing twice
-  // is pointless, so both the reader and the toolbar share one result.
-  const notesAnalysis = useMemo(() => analyzeNotes(description ?? ""), [description]);
-  const generatedVisualCount = notesAnalysis.visuals.length;
   const fetchAccess = useServerFn(getMyMaterialAccessUrl);
   const spendCoins = useServerFn(spend23KaatForMaterial);
   const [loading, setLoading] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [fontScale, setFontScale] = useState<number>(15);
-  const noteBodyHtml = useMemo(
-    () => renderNotesBody(description ?? "", { fontScale }),
-    [description, fontScale],
-  );
   const changeFont = (delta: number) =>
     setFontScale((scale) => Math.min(22, Math.max(13, scale + delta)));
   const mode = normaliseAccessType(accessType, price, courseId);
@@ -137,9 +129,21 @@ export function MaterialAccessButton({
     refetchInterval: 15_000,
     queryFn: async () => {
       const result = await fetchAccess({ data: { material_id: materialId! } });
-      return { userId: user!.id, url: result.file_url };
+      return { userId: user!.id, url: result.file_url, description: result.description };
     },
   });
+
+  const description = free
+    ? publicDescription
+    : !access.isError && access.data?.userId === user?.id
+      ? access.data?.description
+      : "";
+  const notesAnalysis = useMemo(() => analyzeNotes(description ?? ""), [description]);
+  const generatedVisualCount = notesAnalysis.visuals.length;
+  const noteBodyHtml = useMemo(
+    () => renderNotesBody(description ?? "", { fontScale }),
+    [description, fontScale],
+  );
 
   const resolvedUrl = free
     ? fileUrl

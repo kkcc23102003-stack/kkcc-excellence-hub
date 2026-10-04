@@ -191,15 +191,10 @@ export const uploadSmallContentFileViaServer = createServerFn({ method: "POST" }
         upsert: true,
         cacheControl: "3600",
       });
-      if (error) {
-        const fs = await import("node:fs/promises");
-        const path = await import("node:path");
-        const localPath = path.join(process.cwd(), "public", "uploads", key);
-        await fs.mkdir(path.dirname(localPath), { recursive: true });
-        await fs.writeFile(localPath, buffer);
-        const localUrl = `/uploads/${key}`;
-        return { provider: "local", bucket: "local-public", path: key, public_url: localUrl };
-      }
+      if (error)
+        throw new Error(
+          `Supabase upload failed: ${error.message}. Check Admin → Storage and bucket policies; no file was saved to local/S3 storage.`,
+        );
     } else {
       const client = contentStorageClient(settings);
       if (!client) throw new Error("Storage provider is not configured.");
@@ -285,4 +280,19 @@ export const deleteEducationalFile = createServerFn({ method: "POST" })
     const deleted = await projectContent.from("files").delete().eq("id", metadata.data.id);
     if (deleted.error) throw new Error(deleted.error.message);
     return { removed: true };
+  });
+
+export const previewAdminNoteImages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({ refs: z.array(z.string().max(4000).startsWith("kkcc-file://")).max(100) })
+      .parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    await assertAdmin(context);
+    const { resolveContentUrl } = await import("@/lib/content-storage.server");
+    return Object.fromEntries(
+      await Promise.all(data.refs.map(async (ref) => [ref, (await resolveContentUrl(ref)) || ref])),
+    );
   });

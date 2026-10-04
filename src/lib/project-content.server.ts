@@ -1,8 +1,9 @@
+import { MANAGED_CONTENT_TABLES, NOTES_SETUP_ERROR } from "./managed-content-tables";
 /**
- * Existing CMS row shapes backed by project data, NOT Supabase.
- * Templates stay in src/lib/exam-bank. Editable content/configuration lives in
- * a versioned JSON document on a persistent volume or private S3-compatible
- * bucket. The seed is bundled server-side, never served from public/.
+ * Shared CMS adapter: managed notes/settings/files use dedicated Supabase tables.
+ * Explicit file mode supports local fixtures. Other educational tables retain
+ * the existing remote/JSON backend path; template banks remain source files.
+ * The seed is bundled server-side, never served from public/.
  */
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
@@ -108,7 +109,7 @@ export function invalidateProjectContentCache(table?: string) {
     return;
   }
   for (const key of remoteSelectCache.keys()) {
-    if (key.startsWith(`${table}:`)) remoteSelectCache.delete(key);
+    if (key.startsWith(`${MANAGED_CONTENT_TABLES[table] || table}:`)) remoteSelectCache.delete(key);
   }
 }
 
@@ -607,11 +608,12 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
   private async execute(): Promise<Result<Output>> {
     if (
       process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" ||
-      missingRemoteTables.has(this.table)
+      (!MANAGED_CONTENT_TABLES[this.table] && missingRemoteTables.has(this.table))
     ) {
       return this.executeLocal();
     }
-    const table = this.table as string;
+    const managed = MANAGED_CONTENT_TABLES[this.table];
+    const table = managed || this.table;
     const cacheKey =
       this.operation === "select"
         ? `${table}:${this.selectColumns}:${this.cardinality}:${this.head}:${this.offset}:${this.cap}:${JSON.stringify(this.remoteFilters)}:${JSON.stringify(this.orders)}`
@@ -706,6 +708,12 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
             result.error.message || "",
           )
         ) {
+          if (managed)
+            return {
+              data: null as Output,
+              error: { message: NOTES_SETUP_ERROR, code: "NOTES_SETUP_REQUIRED" },
+              count: null,
+            };
           missingRemoteTables.add(table);
           return this.executeLocal();
         }
@@ -732,6 +740,12 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (/not configured|Missing Supabase|unavailable in fixture|does not exist/i.test(msg)) {
+        if (managed)
+          return {
+            data: null as Output,
+            error: { message: NOTES_SETUP_ERROR, code: "NOTES_SETUP_REQUIRED" },
+            count: null,
+          };
         missingRemoteTables.add(table);
         return this.executeLocal();
       }

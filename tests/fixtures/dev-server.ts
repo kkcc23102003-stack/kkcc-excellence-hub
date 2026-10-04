@@ -435,6 +435,21 @@ if (!isLivePreview) {
 }
 doc.tables["private_settings"] = [];
 mkdirSync("data", { recursive: true });
+if (process.env["KKCC_LIVE_PREVIEW"] === "1" && existsSync(runtime)) {
+  const previous = JSON.parse(readFileSync(runtime, "utf8"));
+  const adopted = previous.tables?.site_settings?.find(
+    (row: { key: string }) => row.key === "builtin_materials_adopted",
+  );
+  if (adopted)
+    doc.tables["site_settings"] = [
+      ...(doc.tables["site_settings"] || []).filter(
+        (row) => row["key"] !== "builtin_materials_adopted",
+      ),
+      adopted,
+    ];
+  if (Array.isArray(previous.tables?.materials))
+    doc.tables["materials"] = previous.tables.materials;
+}
 writeFileSync(runtime, JSON.stringify(doc), { mode: 0o600 });
 await database.query(
   "INSERT INTO public.coin_transactions(user_id,amount,source,reason) VALUES($1,1000,'admin_grant','fixture'),($2,1000,'admin_grant','fixture')",
@@ -499,6 +514,18 @@ const server = createServer(async (req, res) => {
         "content-type": "application/sql; charset=utf-8",
         "content-length": String(buf.length),
         "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/notes-supabase.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-NOTES-SUPABASE.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-NOTES-SUPABASE.sql"',
         "cache-control": "no-store",
       });
       res.end(buf);
