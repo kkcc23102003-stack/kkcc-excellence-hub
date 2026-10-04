@@ -98,6 +98,9 @@ export type TestRow = {
   generation_topic: string;
   generation_difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
   generation_count: number;
+  syllabus_subject: string;
+  syllabus_chapter: string;
+  syllabus_topic: string;
   generation_marks?: number;
   generation_negative_marks?: number;
   created_at: string;
@@ -155,6 +158,16 @@ export type TestSeriesOverrideRow = {
   price_coins: number | null;
   sort_order: number | null;
   updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SyllabusNodeRow = {
+  id: string;
+  parent_id: string | null;
+  node_type: "subject" | "chapter" | "topic";
+  name: string;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 };
@@ -444,6 +457,9 @@ export type LearningAttemptRow = {
   user_id: string;
   test_id: string | null;
   series_id: string | null;
+  subject?: string | null;
+  chapter?: string | null;
+  seed?: string | null;
   duration_seconds: number;
   question_timer_seconds: number;
   status: string;
@@ -494,6 +510,11 @@ export type DB = {
         Partial<MaterialRow>
       >;
       tests: TableDefinition<TestRow, WithGeneratedDefaults<TestRow>, Partial<TestRow>>;
+      syllabus_nodes: TableDefinition<
+        SyllabusNodeRow,
+        WithGeneratedDefaults<SyllabusNodeRow>,
+        Partial<SyllabusNodeRow>
+      >;
       test_access_grants: TableDefinition<
         TestAccessGrantRow,
         WithGeneratedDefaults<TestAccessGrantRow>,

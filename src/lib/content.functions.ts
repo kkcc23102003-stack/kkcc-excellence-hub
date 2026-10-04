@@ -8,6 +8,7 @@ import { getSupabasePublicConfig } from "@/integrations/supabase/env";
 import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { projectContent } from "@/lib/project-content.server";
+import { readCustomSeriesCatalog } from "@/lib/learning.server";
 import { protectVideoUrl } from "@/lib/video";
 import { isCurrentEnrollment } from "@/lib/learning-access";
 
@@ -32,12 +33,42 @@ async function protectLectures(lectures: Row<"lectures">[]) {
     })),
   );
 }
+function buildPublicNoteDataUrl(material: Row<"materials">) {
+  const title = material.title || "KKCC Study Note";
+  const subject = [material.subject, material.chapter, material.class_level]
+    .filter(Boolean)
+    .join(" · ");
+  const body = material.description || `${title} — Complete Study Note & Revision Points.`;
+  const escapedBody = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br/>");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"/><title>${title}</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;width:100%;max-width:780px;margin:0 auto;padding:16px;line-height:1.75;color:#0f172a;background:#f8fafc;overflow-wrap:anywhere;word-break:break-word}h1{margin:0 0 10px;color:#0f172a;font-size:clamp(20px,4.5vw,28px);line-height:1.3}.meta{font-size:12px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:clamp(16px,4vw,28px);box-shadow:0 4px 20px rgba(15,23,42,.05);font-size:clamp(15px,3.8vw,16px)}.print-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;max-width:240px;margin-bottom:14px;padding:10px 18px;border-radius:999px;background:#0284c7;color:#fff;font-weight:700;font-size:14px;border:none;cursor:pointer}@media print{.print-btn{display:none}body{background:#fff;padding:0}.card{border:none;box-shadow:none;padding:0}}</style></head><body><button class="print-btn" onclick="window.print()">Print / Save as PDF</button><div class="card"><div class="meta">KKCC Excellence Hub · ${subject || "Study Material"} · ${material.material_type || "Notes"}</div><h1>${title}</h1><div>${escapedBody}</div></div></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
 async function publicMaterials(materials: Row<"materials">[]) {
   return Promise.all(
-    materials.map(async (material) => ({
-      ...material,
-      file_url: material.access_type === "free" ? await resolveContentUrl(material.file_url) : null,
-    })),
+    materials.map(async (material) => {
+      const hasPaidPrice = Number(material.price ?? 0) > 0 || Number(material.coin_price ?? 0) > 0;
+      const effectiveAccessType =
+        material.access_type === "paid" || hasPaidPrice
+          ? "paid"
+          : material.access_type === "free" || !material.course_id
+            ? "free"
+            : "course";
+      const resolved =
+        effectiveAccessType === "free" ? await resolveContentUrl(material.file_url) : null;
+      return {
+        ...material,
+        access_type: effectiveAccessType,
+        file_url:
+          effectiveAccessType === "free"
+            ? resolved || buildPublicNoteDataUrl(material)
+            : null,
+      };
+    }),
   );
 }
 export type PublicPlatformStats = {
@@ -225,4 +256,8 @@ export const getPublicPlatformStats = createServerFn({ method: "GET" }).handler(
 });
 export const listSeriesOverrides = createServerFn({ method: "GET" }).handler(async () =>
   unwrap(await projectContent.from("test_series_overrides").select("*")),
+);
+
+export const getCustomSeriesCatalog = createServerFn({ method: "GET" }).handler(async () =>
+  readCustomSeriesCatalog(),
 );

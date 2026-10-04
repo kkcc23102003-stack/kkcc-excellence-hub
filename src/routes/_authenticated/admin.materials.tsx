@@ -60,7 +60,9 @@ export const Route = createFileRoute("/_authenticated/admin/materials")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <p className="mx-auto mt-4 max-w-xl text-sm text-muted-foreground">
           Study material manager is locked to Supabase admins only. Add your user to
           <code> public.user_roles</code> with role <code>admin</code> to control it.
@@ -441,13 +443,50 @@ function MaterialForm({
           />
         </div>
         <div className="sm:col-span-2">
-          <Label>Description</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>Study Notes Content / Description (Shown directly in the Note Reader)</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-7 rounded-full text-xs font-bold"
+              onClick={() => {
+                const subj = v.subject.trim() || "General Studies";
+                const chap = v.chapter.trim() || v.title.trim() || "Core Topic";
+                const generated = `1. CHAPTER OVERVIEW — ${chap.toUpperCase()} (${subj.toUpperCase()})
+• Core definition, constitutional/theoretical foundation, and primary scope of ${chap} in ${subj}.
+• High-frequency exam concepts, chronology, and standard terminology asked in competitive papers.
+
+2. KEY EXAM POINTERS & FACTS
+• Point 1: Fundamental principle and primary classification of ${chap}.
+• Point 2: Important dates, articles, formulas, or landmark developments related to ${chap}.
+• Point 3: Standard exceptions, special cases, and comparative distinctions in ${subj}.
+
+3. QUICK REVISION SUMMARY
+• Revise all definitions, match-the-following pairs, and statement-based questions for ${chap} before attempting the chapter test.`;
+                setV({
+                  ...v,
+                  title:
+                    v.title === "Untitled note" || !v.title.trim()
+                      ? `${chap} — Complete Revision Notes`
+                      : v.title,
+                  description: v.description.trim()
+                    ? `${v.description.trim()}\n\n${generated}`
+                    : generated,
+                  pages: v.pages || 5,
+                });
+                toast.success(`Generated structured study notes for ${subj} → ${chap}!`);
+              }}
+            >
+              ✨ Auto-Generate Notes Outline
+            </Button>
+          </div>
           <Textarea
-            className="mt-1.5"
-            rows={3}
+            className="mt-1.5 font-mono text-xs leading-relaxed"
+            rows={8}
             value={v.description}
             onChange={(e) => setV({ ...v, description: e.target.value })}
-            placeholder="What does this resource cover?"
+            placeholder="Write or paste complete chapter study notes here (students can read & print this directly even without a PDF file), or attach a PDF / Google Drive link below."
           />
         </div>
         <div>
@@ -579,12 +618,12 @@ function MaterialForm({
 
         <div className="sm:col-span-2 flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">
-            <Label>File (PDF / resource)</Label>
+            <Label>File / Google Drive URL</Label>
             <Input
               className="mt-1.5"
               value={v.file_url ?? ""}
               onChange={(e) => setV({ ...v, file_url: e.target.value || null })}
-              placeholder="Upload a file or paste a link"
+              placeholder="Paste Google Drive / hosted PDF link or upload a file"
             />
           </div>
           <UploadButton
@@ -599,8 +638,10 @@ function MaterialForm({
           />
         </div>
         <div className="sm:col-span-2 -mt-1 rounded-2xl border bg-background/60 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-          Scanned notes: keep each PDF below 45 MB. Prefer 300–450 DPI, or split a heavy 600-DPI
-          scan into chapter PDFs to avoid slow uploads and Free-plan storage failures.
+          Google Drive: paste the Share link directly. Set the Drive file permission so the intended
+          students can open it. Drive/hosted URLs stay external and are not uploaded to KKCC
+          Storage. Scanned notes: keep each PDF below 45 MB. Prefer 300–450 DPI, or split a heavy
+          600-DPI scan into chapter PDFs to avoid slow uploads and Free-plan storage failures.
         </div>
         <div className="sm:col-span-2 flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">

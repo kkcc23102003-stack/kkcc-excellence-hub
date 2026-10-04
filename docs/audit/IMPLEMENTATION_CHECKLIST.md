@@ -3,6 +3,7 @@
 Source: public repository commit `68a32af`, original ZIP retained unchanged.
 
 ## Work items
+
 - [ ] Student-only Supabase boundary; project-backed educational content and configuration; safe legacy export/import without changing IDs.
 - [ ] Canonical student/test/course/series grants, read-after-write verification, expiry/revocation, error propagation.
 - [ ] Student-specific query keys, sign-out cleanup, entitlement refresh.
@@ -17,6 +18,7 @@ Source: public repository commit `68a32af`, original ZIP retained unchanged.
 - [ ] Production build, TypeScript, lint, unit/integration/browser tests and reproducible deployment instructions.
 
 ## Initial reproducible findings
+
 - The repository tracks an archive only, without a package lockfile.
 - Node >=20 in package.json contradicts dependencies requiring Node >=22.12.
 - Baseline tsc fails; baseline lint: 297 errors and 11 warnings; baseline Vite build succeeds but does not type-check.
@@ -33,7 +35,9 @@ Source: public repository commit `68a32af`, original ZIP retained unchanged.
 - Existing CMS queries and legacy migrations place educational content in Supabase.
 
 ## Exam-count evidence
+
 The original source has **35 official-syllabus rules**, **43 distinct paid-catalogue exam tracks**, and **67 bank labels** (including family/group aliases). There is not one unique missing 36th exam. Full manifests are recorded in baseline-bank.json; the final checklist must cover all bank labels, with scope distinctions and genuine source gaps documented.
 
 ## Environment limitations
+
 No production admin/student credentials or Supabase database management access supplied. Public read-only export found zero publicly readable course, lecture, material, test and manual-question rows; published configuration was preserved. Private/unpublished data must be exported by the owner before cutover. Production migration application and live-account acceptance cannot be asserted from a public clone.

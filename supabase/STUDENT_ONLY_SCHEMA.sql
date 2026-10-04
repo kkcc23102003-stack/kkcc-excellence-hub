@@ -662,4 +662,26 @@ CREATE INDEX IF NOT EXISTS kkcc_attempt_history_user ON public.learning_attempts
 
 -- Stop historical educational uploads while preserving unrelated profile/avatar buckets.
 DO $$ DECLARE p record; BEGIN FOR p IN SELECT policyname FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND (coalesce(qual,'')||coalesce(with_check,'')) LIKE '%course-content%' LOOP EXECUTE format('DROP POLICY %I ON storage.objects',p.policyname); END LOOP; END $$;
+
+CREATE TABLE IF NOT EXISTS public.syllabus_nodes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_id uuid REFERENCES public.syllabus_nodes(id) ON DELETE CASCADE,
+  node_type text NOT NULL CHECK (node_type IN ('subject','chapter','topic')),
+  name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_syllabus_nodes_parent ON public.syllabus_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_syllabus_nodes_type_name ON public.syllabus_nodes(node_type, name);
+ALTER TABLE public.syllabus_nodes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Syllabus is publicly readable" ON public.syllabus_nodes;
+CREATE POLICY "Syllabus is publicly readable" ON public.syllabus_nodes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admins manage syllabus" ON public.syllabus_nodes;
+CREATE POLICY "Admins manage syllabus" ON public.syllabus_nodes FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'));
+GRANT SELECT ON public.syllabus_nodes TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.syllabus_nodes TO authenticated;
+GRANT ALL ON public.syllabus_nodes TO service_role;
 COMMIT;

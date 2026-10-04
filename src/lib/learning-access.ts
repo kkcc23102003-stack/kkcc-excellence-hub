@@ -1,4 +1,4 @@
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import { getEffectiveLearningSeries, LEARNING_SERIES } from "@/lib/test-series-catalog";
 
 export function isCurrentGrant(
   grant: { revoked_at?: string | null; expires_at?: string | null },
@@ -21,15 +21,17 @@ export function canonicalSeriesId(
 ): string | null {
   const key = value?.trim().toLocaleLowerCase();
   if (!key) return null;
-  const exact = LEARNING_SERIES.find((item) => item.id.toLocaleLowerCase() === key);
+  const pool = [...getEffectiveLearningSeries(), ...LEARNING_SERIES];
+  const exact = pool.find((item) => item.id.toLocaleLowerCase() === key);
   if (exact) return exact.id; // Canonical code IDs always win over mutable display names.
   if (aliases && Object.hasOwn(aliases, key)) return aliases[key] ?? null;
-  const series = LEARNING_SERIES.find((item) => item.name.trim().toLocaleLowerCase() === key);
+  const series = pool.find((item) => item.name.trim().toLocaleLowerCase() === key);
   return series?.id ?? null;
 }
 export function seriesAliases(overrides: readonly { series_id: string; name: string | null }[]) {
   const matches = new Map<string, Set<string>>();
-  for (const series of LEARNING_SERIES) {
+  const pool = [...getEffectiveLearningSeries(), ...LEARNING_SERIES];
+  for (const series of pool) {
     const key = series.name.trim().toLocaleLowerCase();
     if (!matches.has(key)) matches.set(key, new Set());
     matches.get(key)!.add(series.id);

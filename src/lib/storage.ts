@@ -8,7 +8,7 @@ import {
 
 export const CONTENT_BUCKET = "course-content";
 const YEAR = 60 * 60 * 24 * 365;
-const SERVER_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
+const SERVER_FALLBACK_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Hard client-side ceiling aligned with Supabase Free project's practical single-file limit.
@@ -93,7 +93,7 @@ export function friendlyError(err: unknown): string {
   if (msg.includes("payload too large") || msg.includes("entity too large") || msg.includes("413"))
     return `That file is too large for the storage limit. Keep uploads below ${humanSize(MAX_UPLOAD_BYTES)}; compress scanned PDFs to 300–450 DPI or split them by chapter.`;
   if (msg.includes("bucket") && (msg.includes("not found") || msg.includes("does not exist")))
-    return "External educational storage bucket is missing. Configure the bucket in Admin → Storage; do not run the legacy Supabase CMS schema.";
+    return "Educational storage bucket is missing. Configure the bucket in Admin → Storage and apply the current storage policies.";
   if (msg.includes("mime") || msg.includes("content type"))
     return "That file type is not supported.";
   if (msg.includes("duplicate") || msg.includes("already exists"))
@@ -203,17 +203,30 @@ export async function uploadContentFile(
         size_bytes: file.size,
       },
     });
-    if (!target.upload || !target.path || !target.public_url)
-      throw new Error("External storage did not return an upload target.");
-    const response = await fetch(target.upload.url, {
-      method: target.upload.method,
-      headers: target.upload.headers,
-      body: file,
-    });
-    if (!response.ok)
-      throw new Error(
-        `External storage upload failed (${response.status}). Check bucket CORS and server credentials.`,
-      );
+    if (!target.path || !target.public_url)
+      throw new Error("Storage did not return an upload target.");
+    if (target.provider === "local") {
+      return uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+    }
+    if (target.provider === "supabase") {
+      const { error } = await supabase.storage.from(target.bucket).upload(target.path, file, {
+        contentType: contentType ?? "application/octet-stream",
+        upsert: true,
+        cacheControl: "3600",
+      });
+      if (error) throw new Error(error.message);
+    } else {
+      if (!target.upload) throw new Error("External storage did not return an upload target.");
+      const response = await fetch(target.upload.url, {
+        method: target.upload.method,
+        headers: target.upload.headers,
+        body: file,
+      });
+      if (!response.ok)
+        throw new Error(
+          `External storage upload failed (${response.status}). Check bucket CORS and server credentials.`,
+        );
+    }
     const recorded = await recordUploadedFile({
       data: {
         provider: target.provider,
@@ -230,8 +243,13 @@ export async function uploadContentFile(
       );
     return { path: target.path, url: target.public_url };
   } catch (error) {
-    if (isNetworkLike(error) && file.size <= SERVER_FALLBACK_MAX_BYTES)
-      return uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+    if (file.size <= SERVER_FALLBACK_MAX_BYTES) {
+      try {
+        return await uploadSmallFileViaServerFallback({ file, folder, contentType, ext });
+      } catch {
+        // Fall through to friendlyError below
+      }
+    }
     throw new Error(friendlyError(error));
   }
 }

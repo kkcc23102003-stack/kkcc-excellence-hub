@@ -14,7 +14,11 @@ import {
 } from "@/lib/learning.server";
 import { publicQuestions } from "@/lib/test-scoring";
 import { canonicalSeriesId, isCurrentGrant } from "@/lib/learning-access";
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import {
+  getEffectiveLearningSeries,
+  LEARNING_SERIES,
+  resolveSeriesPrice,
+} from "@/lib/test-series-catalog";
 
 const recipient = {
   user_id: z.string().uuid().optional(),
@@ -36,10 +40,11 @@ const selectionSchema = z.object({
 export const getMyLearningAccess = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const access = await readStudentAccess(context);
-    const [coursesResult, testsResult] = await Promise.all([
+    const [access, coursesResult, testsResult, overridesResult] = await Promise.all([
+      readStudentAccess(context),
       projectContent.from("courses").select("*").eq("status", "published"),
       projectContent.from("tests").select("*").eq("is_published", true).order("sort_order"),
+      projectContent.from("test_series_overrides").select("*"),
     ]);
     const courses = unwrap(coursesResult);
     const tests = unwrap(testsResult);
@@ -53,17 +58,25 @@ export const getMyLearningAccess = createServerFn({ method: "GET" })
           access.series_ids.includes(canonicalSeriesId(test.series_name, access.series_aliases)!),
         ),
     );
-    const overrides = unwrap(await projectContent.from("test_series_overrides").select("*"));
+    const overrides = unwrap(overridesResult);
     const overrideById = new Map(overrides.map((override) => [override.series_id, override]));
-    const series = LEARNING_SERIES.map((item) => {
-      const override = overrideById.get(item.id);
-      return {
-        ...item,
-        enabled: override?.enabled ?? true,
-        priceInr: override?.price_inr ?? item.priceInr,
-        priceCoins: override?.price_coins ?? item.priceCoins,
-      };
-    });
+    const combinedSeries = [...getEffectiveLearningSeries(), ...LEARNING_SERIES];
+    const seenSeries = new Set<string>();
+    const series = combinedSeries
+      .filter((item) => {
+        if (seenSeries.has(item.id)) return false;
+        seenSeries.add(item.id);
+        return true;
+      })
+      .map((item) => {
+        const override = overrideById.get(item.id);
+        const price = resolveSeriesPrice(item, override);
+        return {
+          ...item,
+          enabled: override?.enabled ?? true,
+          ...price,
+        };
+      });
     return {
       ...access,
       courses: courses.filter((course) => access.course_ids.includes(course.id)),

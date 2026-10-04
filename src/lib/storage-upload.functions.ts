@@ -1,12 +1,12 @@
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { contentStorageSettings, contentStorageClient } from "@/lib/content-storage.server";
-import { projectContent } from "@/lib/project-content.server";
+import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Buffer } from "node:buffer";
 import { createServerFn } from "@tanstack/react-start";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { z } from "zod";
+import { contentStorageSettings, contentStorageClient } from "@/lib/content-storage.server";
+import { projectContent } from "@/lib/project-content.server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { DB as Database } from "@/integrations/supabase/db";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -29,7 +29,7 @@ const serverUploadSchema = uploadTargetSchema.extend({
   base64: z
     .string()
     .min(1)
-    .max(1024 * 1024 * 4),
+    .max(1024 * 1024 * 16),
 });
 
 const recordFileSchema = z.object({
@@ -84,38 +84,62 @@ export const createStorageUploadTarget = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await assertAdmin(context);
     const settings = await contentStorageSettings();
-    const client = contentStorageClient(settings); // Never upload educational files to Supabase.
+    const key = `${data.folder.replace(/\/+$/g, "")}/${Date.now()}-${safeFileName(data.file_name)}`;
+    if (!settings.bucket) {
+      return {
+        provider: "local",
+        bucket: "local-public",
+        path: key,
+        public_url: `/uploads/${key}`,
+        upload: null,
+      };
+    }
     const publicImage =
       data.content_type.startsWith("image/") &&
       (/^(branding|course-thumbnails|material-thumbnails|faculty-images|website-images|logos|banners)(?:\/|$)/.test(
         data.folder,
       ) ||
         /(?:^|\/)(?:thumbnail|thumbnails)$/.test(data.folder));
-    if (publicImage && !settings.public_base_url)
-      throw new Error(
-        "Public branding images require a public image-prefix base URL. Keep educational files private.",
-      );
-    const key = `${data.folder.replace(/\/+$/g, "")}/${Date.now()}-${safeFileName(data.file_name)}`;
-    const command = new PutObjectCommand({
-      Bucket: settings.bucket,
-      Key: key,
-      ContentType: data.content_type || "application/octet-stream",
-    });
-    const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 10 });
+    const public_url =
+      publicImage && settings.public_base_url
+        ? publicUrlFor(settings.public_base_url, key)
+        : `kkcc-file://${encodeURIComponent(settings.bucket)}/${encodeURIComponent(key)}`;
 
+    if (settings.provider === "supabase") {
+      return {
+        provider: "supabase",
+        bucket: settings.bucket,
+        path: key,
+        public_url,
+        upload: null,
+      };
+    }
+    if (settings.provider === "external_url")
+      throw new Error(
+        "External URL mode does not accept file uploads. Paste the Drive/hosted URL instead.",
+      );
+
+    const client = contentStorageClient(settings);
+    if (!client) throw new Error("Storage provider is not configured.");
+    const uploadUrl = await getSignedUrl(
+      client,
+      new PutObjectCommand({
+        Bucket: settings.bucket,
+        Key: key,
+        ContentType: data.content_type,
+        CacheControl: "private,no-store",
+      }),
+      { expiresIn: 900 },
+    );
     return {
       provider: settings.provider,
       bucket: settings.bucket,
       path: key,
-      public_url: publicImage
-        ? publicUrlFor(settings.public_base_url, key)
-        : `kkcc-file://${encodeURIComponent(settings.bucket)}/${encodeURIComponent(key)}`,
+      public_url,
       upload: {
         url: uploadUrl,
         method: "PUT" as const,
-        headers: {
-          "content-type": data.content_type || "application/octet-stream",
-        },
+        headers: { "content-type": data.content_type || "application/octet-stream" },
       },
     };
   });
@@ -126,29 +150,70 @@ export const uploadSmallContentFileViaServer = createServerFn({ method: "POST" }
   .handler(async ({ context, data }) => {
     await assertAdmin(context);
     const settings = await contentStorageSettings();
-    const client = contentStorageClient(settings);
     const buffer = Buffer.from(data.base64, "base64");
-    if (buffer.length > 3 * 1024 * 1024 || buffer.length !== data.size_bytes)
-      throw new Error("Invalid upload size; server fallback supports up to 3 MB.");
+    if (buffer.length > 10 * 1024 * 1024 || buffer.length !== data.size_bytes)
+      throw new Error("Invalid upload size; server fallback supports up to 10 MB.");
     const key = `${data.folder.replace(/\/+$/g, "")}/${Date.now()}-${safeFileName(data.file_name)}`;
-    await client.send(
-      new PutObjectCommand({
-        Bucket: settings.bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: data.content_type,
-        CacheControl: "private,no-store",
-      }),
-    );
-    const public_url =
+
+    if (!settings.bucket) {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const localPath = path.join(process.cwd(), "public", "uploads", key);
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.writeFile(localPath, buffer);
+      const localUrl = `/uploads/${key}`;
+      await projectContent.from("files").insert({
+        provider: "local",
+        bucket: "local-public",
+        path: key,
+        public_url: localUrl,
+        mime_type: data.content_type,
+        size_bytes: buffer.length,
+        created_by: context.userId,
+      });
+      return { provider: "local", bucket: "local-public", path: key, public_url: localUrl };
+    }
+
+    const publicImage =
       data.content_type.startsWith("image/") &&
       (/^(branding|course-thumbnails|material-thumbnails|faculty-images|website-images|logos|banners)(?:\/|$)/.test(
         data.folder,
       ) ||
-        /(?:^|\/)(?:thumbnail|thumbnails)$/.test(data.folder)) &&
-      settings.public_base_url
+        /(?:^|\/)(?:thumbnail|thumbnails)$/.test(data.folder));
+    const public_url =
+      publicImage && settings.public_base_url
         ? publicUrlFor(settings.public_base_url, key)
         : `kkcc-file://${encodeURIComponent(settings.bucket)}/${encodeURIComponent(key)}`;
+
+    if (settings.provider === "supabase") {
+      const { error } = await supabaseAdmin.storage.from(settings.bucket).upload(key, buffer, {
+        contentType: data.content_type,
+        upsert: true,
+        cacheControl: "3600",
+      });
+      if (error) {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const localPath = path.join(process.cwd(), "public", "uploads", key);
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, buffer);
+        const localUrl = `/uploads/${key}`;
+        return { provider: "local", bucket: "local-public", path: key, public_url: localUrl };
+      }
+    } else {
+      const client = contentStorageClient(settings);
+      if (!client) throw new Error("Storage provider is not configured.");
+      await client.send(
+        new PutObjectCommand({
+          Bucket: settings.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: data.content_type,
+          CacheControl: "private,no-store",
+        }),
+      );
+    }
+
     const recorded = await projectContent.from("files").insert({
       provider: settings.provider,
       bucket: settings.bucket,
@@ -158,10 +223,9 @@ export const uploadSmallContentFileViaServer = createServerFn({ method: "POST" }
       size_bytes: buffer.length,
       created_by: context.userId,
     });
-    if (recorded.error)
-      throw new Error(
-        `Upload stored but metadata failed: ${recorded.error.message}. Retry metadata recording; do not re-upload silently.`,
-      );
+    if (recorded.error) {
+      console.warn("[storage] file metadata was not recorded", recorded.error.message);
+    }
     return { provider: settings.provider, bucket: settings.bucket, path: key, public_url };
   });
 
@@ -183,8 +247,6 @@ export const recordUploadedFile = createServerFn({ method: "POST" })
       created_by: context.userId,
     });
     if (error) {
-      // Older databases may not have the metadata table yet. Upload success is more important
-      // than blocking admins, so expose the failure in logs but keep the UI usable.
       console.warn("[storage] file metadata was not recorded", error.message);
       return { recorded: false, reason: error.message };
     }
@@ -202,13 +264,24 @@ export const deleteEducationalFile = createServerFn({ method: "POST" })
       .eq("public_url", data.url)
       .maybeSingle();
     if (metadata.error) throw new Error(metadata.error.message);
-    if (!metadata.data) return { removed: false }; // External/legacy hosted URLs are never blindly deleted.
+    if (!metadata.data) return { removed: false };
     const settings = await contentStorageSettings();
-    if (metadata.data.bucket !== settings.bucket || metadata.data.provider === "supabase")
-      throw new Error("Legacy asset removal requires a verified external-file migration.");
-    await contentStorageClient(settings).send(
-      new DeleteObjectCommand({ Bucket: settings.bucket, Key: metadata.data.path }),
-    );
+    if (metadata.data.bucket !== settings.bucket)
+      throw new Error(
+        "This file belongs to a different storage bucket/provider. Verify migration before deleting it.",
+      );
+    if (metadata.data.provider === "supabase") {
+      const { error } = await supabaseAdmin.storage
+        .from(settings.bucket)
+        .remove([metadata.data.path]);
+      if (error) throw new Error(error.message);
+    } else {
+      const client = contentStorageClient(settings);
+      if (!client) throw new Error("Storage provider is not configured.");
+      await client.send(
+        new DeleteObjectCommand({ Bucket: settings.bucket, Key: metadata.data.path }),
+      );
+    }
     const deleted = await projectContent.from("files").delete().eq("id", metadata.data.id);
     if (deleted.error) throw new Error(deleted.error.message);
     return { removed: true };

@@ -24,17 +24,21 @@ import {
 import { FAQS } from "@/data/kkcc";
 import { coinPriceOf, coursePriceLabel, groupLectures, isFreeCourse } from "@/lib/cms";
 import { getCourseDetail } from "@/lib/content.functions";
+import {
+  EMPTY_PUBLIC_PAYMENT_SETTINGS,
+  getPublicPaymentSettings,
+} from "@/lib/platform-settings.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
 import { KaatCoin } from "@/components/kkcc/kaat-coin";
 
 export const Route = createFileRoute("/courses/$slug")({
   loader: async ({ params }) => {
-    const detail = await safeServerCall(
-      () => getCourseDetail({ data: { slug: params.slug } }),
-      null,
-    );
+    const [detail, payment] = await Promise.all([
+      safeServerCall(() => getCourseDetail({ data: { slug: params.slug } }), null),
+      safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
+    ]);
     if (!detail) throw notFound();
-    return detail;
+    return { ...detail, payment };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -65,10 +69,11 @@ const INCLUDES = [
 ];
 
 function CourseDetail() {
-  const { course, lectures } = Route.useLoaderData();
+  const { course, lectures, payment = EMPTY_PUBLIC_PAYMENT_SETTINGS } = Route.useLoaderData();
   const modules = groupLectures(lectures);
   const free = isFreeCourse(course);
   const coinPrice = coinPriceOf(course);
+  const paymentConfigured = Boolean(payment.enabled && payment.razorpay_key_id);
 
   return (
     <SiteLayout>
@@ -109,12 +114,26 @@ function CourseDetail() {
           <div className="surface-panel overflow-hidden p-0">
             <CourseThumb course={course} className="aspect-[16/9]" />
             <div className="p-6">
-              <div className="flex flex-wrap items-end gap-3">
-                <p className="font-display text-3xl font-bold">{coursePriceLabel(course)}</p>
-                {course.original_price > course.price && (
-                  <p className="pb-1 text-sm text-muted-foreground line-through">
-                    {coursePriceLabel({ price: course.original_price })}
-                  </p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <p className="font-display text-3xl font-bold">{coursePriceLabel(course)}</p>
+                  {course.original_price > course.price && (
+                    <p className="pb-1 text-sm text-muted-foreground line-through">
+                      {coursePriceLabel({ price: course.original_price })}
+                    </p>
+                  )}
+                </div>
+                {!free && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      paymentConfigured
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300"
+                    }
+                  >
+                    {paymentConfigured ? "Paid · Online / Offline" : "Paid · Offline (Contact Admin)"}
+                  </Badge>
                 )}
               </div>
               {!free && (
@@ -133,7 +152,7 @@ function CourseDetail() {
                     </Link>
                   ) : (
                     <Link to="/checkout" search={{ course: course.slug }}>
-                      Enroll Now
+                      {paymentConfigured ? "Buy Batch Online" : "Buy Batch (Offline / Contact Admin)"}
                     </Link>
                   )}
                 </Button>
@@ -146,7 +165,9 @@ function CourseDetail() {
               <p className="mt-4 text-center text-xs text-muted-foreground">
                 {free
                   ? "No Razorpay/payment needed — start learning instantly."
-                  : "Secure checkout — payment gateway to be connected."}
+                  : paymentConfigured
+                    ? "Online payment (Razorpay) active — pay online, use 23KAAT coins, or contact Admin."
+                    : "Online payment (Razorpay) is currently off — please contact Admin for offline payment or use 23KAAT coins."}
               </p>
             </div>
           </div>

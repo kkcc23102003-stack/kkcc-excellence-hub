@@ -1565,12 +1565,48 @@ function EndlessQuizQuest({
     const requestedMode = params.get("mode");
     setAdvancedOnly(params.get(ADVANCED_SEARCH_PARAM) === ADVANCED_SEARCH_VALUE);
 
+    const rawSubject = (requestedSubject ?? "").trim();
+    const resolveQuizSubject = (s: string): Subject | null => {
+      if (!s) return null;
+      if (SUBJECTS.includes(s as Subject)) return s as Subject;
+      const lower = s.toLowerCase();
+      const ciMatch = SUBJECTS.find((item) => item.toLowerCase() === lower);
+      if (ciMatch) return ciMatch;
+      if (/[\u0A00-\u0A7F]/.test(s) || lower.includes("punjabi") || lower.includes("gurmukhi")) {
+        if (lower.includes("literature")) return "Punjabi Literature";
+        if (lower.includes("paper b")) return "Punjabi Paper B";
+        if (lower.includes("grammar")) return "Punjabi Grammar";
+        return "Punjabi Paper A";
+      }
+      if (/[\u0900-\u097F]/.test(s) || lower.includes("hindi")) {
+        return lower.includes("literature") ? "Hindi Literature" : "Hindi Grammar";
+      }
+      if (lower.includes("pedagog") || lower.includes("child") || lower.includes("cdp") || lower.includes("teaching")) {
+        return "Teaching Aptitude";
+      }
+      if (lower.includes("punjab") && lower.includes("hist")) return "Punjab History";
+      if (lower.includes("punjab") && lower.includes("geog")) return "Punjab Geography";
+      if (lower.includes("punjab") && lower.includes("econ")) return "Punjab Economics";
+      if (lower.includes("punjab")) return "Punjab GK";
+      if (lower.includes("english")) return lower.includes("language") ? "English Language" : "English Grammar";
+      if (lower.includes("math") || lower.includes("quant") || lower.includes("arithmetic")) return "Quantitative Aptitude";
+      if (lower.includes("reason") || lower.includes("mental") || lower.includes("logical")) return "Reasoning";
+      if (lower.includes("comp") || lower.includes("ict")) return "Computer Awareness";
+      if (lower.includes("evs") || lower.includes("environment") || lower.includes("ecolog")) return "Environment and Ecology";
+      if (lower.includes("polity") || lower.includes("civic") || lower.includes("constitution")) return "Polity";
+      if (lower.includes("history")) return "Modern History";
+      if (lower.includes("geog")) return "Indian Geography";
+      if (lower.includes("econ") || lower.includes("banking")) return "Indian Economy";
+      if (lower.includes("account")) return "Accounting";
+      if (lower.includes("commerce") || lower.includes("business")) return "Commerce";
+      if (lower.includes("science") && !lower.includes("social") && !lower.includes("political")) return "General Science";
+      if (lower.includes("gk") || lower.includes("general knowledge") || lower.includes("general awareness")) return "General Awareness";
+      return null;
+    };
+
+    const resolvedRequestedSubject = resolveQuizSubject(rawSubject);
     const nextExam = requestedExam && EXAM_TRACKS.includes(requestedExam) ? requestedExam : exam;
-    const subjects = getSubjectsForExam(nextExam);
-    const nextSubject: SubjectFilter =
-      requestedSubject && subjects.includes(requestedSubject as Subject)
-        ? (requestedSubject as Subject)
-        : subject;
+    const nextSubject: SubjectFilter = resolvedRequestedSubject ?? subject;
     const topics = getTopicsForSubject(nextExam, nextSubject);
     const nextTopic = requestedTopic && topics.includes(requestedTopic) ? requestedTopic : "Mixed";
     const nextMode = PRACTICE_MODES.includes(requestedMode as PracticeMode)
@@ -1650,10 +1686,7 @@ function EndlessQuizQuest({
         return;
       }
     }
-    const safeSubject =
-      nextSubject !== "Mixed" && !getSubjectsForExam(nextExam).includes(nextSubject)
-        ? "Mixed"
-        : nextSubject;
+    const safeSubject = nextSubject;
     const topics = getTopicsForSubject(nextExam, safeSubject);
     const safeTopic = nextTopic !== "Mixed" && !topics.includes(nextTopic) ? "Mixed" : nextTopic;
     // A new subject/exam/chapter restarts the ladder at Easy; continuing the
@@ -1840,9 +1873,10 @@ function EndlessQuizQuest({
             </Badge>
             <h2 className="text-xl font-bold">Kit 2 Coins Quiz</h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              This quiz never finishes: choose exam, subject, chapter and NCERT/exam-pattern/high-yield mode.
-              NEET, CA, CBSE, ICSE, Punjab, Banking, Railways and UPSC tracks now stay strict to the
-              selected subject, with instant explanations and a 60-second timer.
+              This quiz never finishes: choose exam, subject, chapter and
+              NCERT/exam-pattern/high-yield mode. NEET, CA, CBSE, ICSE, Punjab, Banking, Railways
+              and UPSC tracks now stay strict to the selected subject, with instant explanations and
+              a 60-second timer.
             </p>
           </div>
           <KittuCoin size="md" />
@@ -2083,11 +2117,15 @@ function generateQuestion(
   mode: PracticeMode,
 ): QuizQuestion {
   const availableSubjects = getSubjectsForExam(exam);
-  const subject =
-    filter === "Mixed" || !availableSubjects.includes(filter) ? pick(availableSubjects) : filter;
+  const subject = filter === "Mixed" ? pick(availableSubjects) : filter;
   const selectedTopic = normalizeTopic(exam, subject, topic);
 
   if (selectedTopic !== "Mixed") return makeTopicQuestion(exam, subject, selectedTopic, mode);
+  if (filter !== "Mixed") {
+    const subjectTopics = getTopicsForSubject(exam, subject);
+    const pickedTopic = subjectTopics.length > 0 ? pick(subjectTopics) : "Mixed";
+    return makeTopicQuestion(exam, subject, pickedTopic, mode);
+  }
   if (exam === "NEET") return makeNeetQuestion(mode);
   if (exam === "JEE Main" || exam === "JEE Advanced") {
     if (subject === "Math") return makeJeeMathQuestion(exam === "JEE Advanced", mode);
@@ -3048,7 +3086,6 @@ function makeTeachingQuestionStrict(
   subject: Subject,
   mode: PracticeMode,
 ): QuizQuestion {
-  if (subject === "Teaching Aptitude") return makeTeachingQuestion(exam);
   return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
 }
 
@@ -3173,7 +3210,17 @@ function makeExamBankQuestion(
       sampleExamBankQuestion({ subject, topic, exam: examFilter, difficulty: ladderLevel }) ??
       sampleExamBankQuestion({ subject, topic, difficulty: ladderLevel }) ??
       sampleExamBankQuestion({ subject, topic, exam: examFilter }) ??
-      sampleExamBankQuestion({ subject, topic }));
+      sampleExamBankQuestion({ subject, topic }) ??
+      sampleExamBankQuestion({
+        subject,
+        exam: examFilter,
+        difficulty: PRACTICE_BANK_DIFFICULTY,
+      }) ??
+      sampleExamBankQuestion({ subject, difficulty: PRACTICE_BANK_DIFFICULTY }) ??
+      sampleExamBankQuestion({ subject, exam: examFilter, difficulty: ladderLevel }) ??
+      sampleExamBankQuestion({ subject, difficulty: ladderLevel }) ??
+      sampleExamBankQuestion({ subject, exam: examFilter }) ??
+      sampleExamBankQuestion({ subject }));
   if (!drawn) return null;
   const built = makeConceptQuestion(
     subject,
@@ -3226,7 +3273,7 @@ function makeTopicQuestion(
 
   // The mega exam bank covers Bank/Railway/SSC/NEET/JEE/CA chapters end to end.
   const fromExamBank = makeExamBankQuestion(exam, subject, topic, topicLabel);
-  if (fromExamBank && Math.random() < 0.75) return fromExamBank;
+  if (fromExamBank) return fromExamBank;
 
   // Verified chapter questions get priority; generators still add fresh variety.
   if (Math.random() < 0.6) {
@@ -4022,6 +4069,52 @@ function makeHindiGrammarQuestion(topic: string, topicLabel: string): QuizQuesti
 }
 
 function makePolityTopicQuestion(topic: string, topicLabel: string): QuizQuestion {
+  if (topic.toLowerCase().includes("preamble")) {
+    const preambleQuestions = [
+      {
+        prompt:
+          "Which Constitutional Amendment Act added the words 'Socialist', 'Secular' and 'Integrity' to the Preamble?",
+        answer: "42nd Constitutional Amendment Act, 1976",
+        options: [
+          "42nd Constitutional Amendment Act, 1976",
+          "44th Constitutional Amendment Act, 1978",
+          "24th Constitutional Amendment Act, 1971",
+          "86th Constitutional Amendment Act, 2002",
+        ],
+        explanation:
+          "The 42nd Constitutional Amendment Act, 1976 added 'Socialist', 'Secular' and 'Integrity' to the Preamble of the Indian Constitution.",
+      },
+      {
+        prompt: "Who called the Preamble the 'Identity Card of the Constitution'?",
+        answer: "N. A. Palkhivala",
+        options: ["N. A. Palkhivala", "Dr. B. R. Ambedkar", "K. M. Munshi", "Sir B. N. Rau"],
+        explanation:
+          "Eminent jurist N. A. Palkhivala described the Preamble as the 'Identity Card of the Constitution'.",
+      },
+      {
+        prompt:
+          "Which landmark Supreme Court judgment held that the Preamble is an integral part of the Constitution and subject to the Basic Structure doctrine?",
+        answer: "Kesavananda Bharati v. State of Kerala (1973)",
+        options: [
+          "Kesavananda Bharati v. State of Kerala (1973)",
+          "Berubari Union Case (1960)",
+          "A. K. Gopalan Case (1950)",
+          "Golaknath Case (1967)",
+        ],
+        explanation:
+          "In Kesavananda Bharati (1973), the Supreme Court overruled Berubari Union (1960) and held that the Preamble is part of the Constitution.",
+      },
+    ];
+    const item = pick(preambleQuestions);
+    return makeConceptQuestion(
+      "Polity",
+      topicLabel,
+      item.prompt,
+      item.answer,
+      item.options,
+      item.explanation,
+    );
+  }
   if (topic === "Constitution Schedules" || topic === "Constitution Basics") {
     const schedules = [
       {
@@ -4093,6 +4186,57 @@ function makePolityTopicQuestion(topic: string, topicLabel: string): QuizQuestio
 }
 
 function makeSstTopicQuestion(topic: string, topicLabel: string): QuizQuestion {
+  if (topic.toLowerCase().includes("preamble")) {
+    const preambleQuestions = [
+      {
+        prompt: "With which words does the Preamble to the Constitution of India begin?",
+        answer: "We, the People of India",
+        options: [
+          "We, the People of India",
+          "In the Name of Parliament",
+          "By Order of the President",
+          "We, the States of the Union",
+        ],
+        explanation:
+          "The Preamble begins with 'We, the People of India', signifying that ultimate sovereignty rests with the citizens.",
+      },
+      {
+        prompt:
+          "The Preamble to the Indian Constitution is based on which historic resolution moved on 13 December 1946?",
+        answer: "Objectives Resolution moved by Pandit Jawaharlal Nehru",
+        options: [
+          "Objectives Resolution moved by Pandit Jawaharlal Nehru",
+          "Purna Swaraj Resolution moved by Mahatma Gandhi",
+          "Drafting Resolution moved by Dr. B. R. Ambedkar",
+          "Cabinet Mission Plan moved by Sardar Patel",
+        ],
+        explanation:
+          "Jawaharlal Nehru moved the Objectives Resolution on 13 December 1946, which became the basis of the Preamble.",
+      },
+      {
+        prompt:
+          "Which words were added to the Preamble by the 42nd Constitutional Amendment Act, 1976?",
+        answer: "Socialist, Secular and Integrity",
+        options: [
+          "Socialist, Secular and Integrity",
+          "Liberty, Equality and Fraternity",
+          "Sovereign, Democratic and Republic",
+          "Social, Economic and Political Justice",
+        ],
+        explanation:
+          "The 42nd Amendment Act of 1976 added the three words 'Socialist', 'Secular' and 'Integrity' to the Preamble.",
+      },
+    ];
+    const item = pick(preambleQuestions);
+    return makeConceptQuestion(
+      "SST",
+      topicLabel,
+      item.prompt,
+      item.answer,
+      item.options,
+      item.explanation,
+    );
+  }
   if (topic === "History" || topic === "Nationalism in India") {
     const historyQuestions = [
       {

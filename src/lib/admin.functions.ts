@@ -1,6 +1,33 @@
 import { getExamBankExams, getExamBankTopicsForExam } from "@/lib/exam-bank";
-import { allExamSubjects, unwrap } from "@/lib/learning.server";
-import { projectContent } from "@/lib/project-content.server";
+import {
+  generateCustomSyllabusPaper,
+  generateOnDemandTestPaper,
+  isLegacyScienceFallbackForNonScienceSubject,
+} from "@/lib/generated-test";
+import {
+  allExamSubjects,
+  CUSTOM_SERIES_CATALOG_KEY,
+  readCustomSeriesCatalog,
+  unwrap,
+} from "@/lib/learning.server";
+import {
+  getChapterQuestionCount,
+  getCustomChapterConfig,
+  makeCustomChapterKey,
+  parseSeriesSyllabusText,
+  SERIES_GROUPS,
+  setRuntimeCustomSeriesCatalog,
+  type CustomChapterConfig,
+  type CustomChapterQuestion,
+  type CustomSeriesCatalog,
+  type PaidTestSeries,
+  type SeriesGroup,
+} from "@/lib/test-series-catalog";
+import {
+  flushProjectContentCaches,
+  projectContent,
+  readProjectDocument,
+} from "@/lib/project-content.server";
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -51,7 +78,7 @@ const materialSchema = z.object({
   course_id: z.string().uuid().nullable().optional(),
   lecture_id: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(2).max(200),
-  description: z.string().trim().max(4000).optional(),
+  description: z.string().trim().max(50000).optional(),
   subject: z.string().trim().max(80),
   chapter: z.string().trim().max(120),
   module_title: z.string().trim().max(160).optional(),
@@ -59,7 +86,7 @@ const materialSchema = z.object({
   material_type: z.string().trim().max(60),
   class_level: z.string().trim().max(60),
   pages: z.number().int().min(0).max(10000),
-  file_url: z.string().trim().max(4000).nullable().optional(),
+  file_url: z.string().trim().max(200000).nullable().optional(),
   thumbnail_url: z.string().trim().max(4000).nullable().optional(),
   access_type: z.enum(["course", "free", "paid"]).optional(),
   price: z.number().int().min(0).max(1000000).optional(),
@@ -415,6 +442,9 @@ const testSchema = z.object({
   generation_topic: z.string().trim().max(160).default("Mixed"),
   generation_difficulty: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).default("Difficult"),
   generation_count: z.number().int().min(0).max(1000).default(0),
+  syllabus_subject: z.string().trim().max(120).default(""),
+  syllabus_chapter: z.string().trim().max(200).default(""),
+  syllabus_topic: z.string().trim().max(240).default(""),
 });
 
 export const saveTest = createServerFn({ method: "POST" })
@@ -433,26 +463,26 @@ export const saveTest = createServerFn({ method: "POST" })
     )
       throw new Error("Linked course is missing. Choose an existing course ID.");
     if (data.is_published && data.question_source === "deterministic") {
+      if (data.generation_count < 1 && data.questions_count < 1) {
+        throw new Error("Choose a positive question target before publishing.");
+      }
       const exam =
         data.generation_exam && data.generation_exam !== "All Exams"
           ? data.generation_exam
-          : data.exam_track || data.generation_exam;
-      if (exam !== "All Exams" && !getExamBankExams().includes(exam))
-        throw new Error(
-          "This exam has no exact supported question-bank mapping. No other exam will be substituted.",
-        );
-      if (data.generation_count < 1)
-        throw new Error("Choose a positive question target before publishing.");
-      const subjects = data.generation_subject ? [data.generation_subject] : allExamSubjects(exam);
-      if (
-        !subjects.some((subject) => {
-          const topics = getExamBankTopicsForExam(subject, exam);
-          return data.generation_topic === "Mixed"
-            ? topics.length > 0
-            : topics.includes(data.generation_topic);
-        })
-      )
+          : data.exam_track || data.generation_exam || "All Exams";
+      const targetSubject = data.generation_subject || data.syllabus_subject || data.subject || "";
+      const targetTopic =
+        data.generation_topic && data.generation_topic !== "Mixed"
+          ? data.generation_topic
+          : data.syllabus_chapter || data.generation_topic || "Mixed";
+      const subjects = targetSubject ? [targetSubject] : allExamSubjects(exam);
+      const hasExactBank = subjects.some((subject) => {
+        const topics = getExamBankTopicsForExam(subject, exam);
+        return targetTopic === "Mixed" ? topics.length > 0 : topics.includes(targetTopic);
+      });
+      if (!hasExactBank && !targetSubject.trim()) {
         throw new Error("No mapped subject/chapter questions are available for this recipe.");
+      }
     }
     if (data.is_published && data.question_source === "manual") {
       const count = data.id
@@ -755,6 +785,34 @@ export const listTestQuestions = createServerFn({ method: "GET" })
     return rows ?? [];
   });
 
+async function syncTestQuestionStats(testId: string) {
+  const testRes = await projectContent.from("tests").select("*").eq("id", testId).maybeSingle();
+  if (testRes.error || !testRes.data) return;
+  const rowsRes = await projectContent.from("test_questions").select("*").eq("test_id", testId);
+  const rows = rowsRes.data ?? [];
+  if (testRes.data.question_source === "manual" || rows.length > 0) {
+    const count =
+      testRes.data.question_source === "manual"
+        ? rows.length
+        : Math.max(testRes.data.questions_count, rows.length);
+    const totalMarks =
+      testRes.data.question_source === "manual"
+        ? rows.reduce((sum, r) => sum + (r.marks || 1), 0)
+        : Math.max(
+            testRes.data.total_marks,
+            rows.reduce((sum, r) => sum + (r.marks || 1), 0),
+          );
+    await projectContent
+      .from("tests")
+      .update({
+        questions_count: count,
+        total_marks: totalMarks,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", testId);
+  }
+}
+
 /** Create or update a single hand-written question. */
 export const saveTestQuestion = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -797,6 +855,7 @@ export const saveTestQuestion = createServerFn({ method: "POST" })
           .select("*")
           .single();
     if (error) throw new Error(error.message);
+    await syncTestQuestionStats(data.test_id);
     return row;
   });
 
@@ -805,9 +864,72 @@ export const deleteTestQuestion = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
+    const existing = await projectContent
+      .from("test_questions")
+      .select("test_id")
+      .eq("id", data.id)
+      .maybeSingle();
     const { error } = await projectContent.from("test_questions").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+    if (existing.data?.test_id) {
+      await syncTestQuestionStats(existing.data.test_id);
+    }
     return { ok: true };
+  });
+
+export const bulkAddTestQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        test_id: z.string().uuid(),
+        subject: z.string().trim().max(80).default(""),
+        marks: z.number().int().min(1).max(100).default(4),
+        negative_marks: z.number().int().min(0).max(100).default(1),
+        text: z.string().trim().min(5).max(100000),
+        switchToManual: z.boolean().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const parent = unwrap(
+      await projectContent.from("tests").select("*").eq("id", data.test_id).maybeSingle(),
+    );
+    if (!parent) throw new Error("Parent test not found.");
+    const parsed = parseMcqText(data.text);
+    if (!parsed.length) {
+      throw new Error(
+        "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
+      );
+    }
+    const existing = await projectContent
+      .from("test_questions")
+      .select("id")
+      .eq("test_id", data.test_id);
+    const baseOrder = (existing.data ?? []).length;
+    const rows = parsed.map((q, idx) => ({
+      test_id: data.test_id,
+      question_text: q.question_text,
+      subject: data.subject || parent.subject || "General",
+      options: q.options,
+      correct_index: q.correct_index,
+      marks: data.marks,
+      negative_marks: data.negative_marks,
+      explanation:
+        q.explanation || buildFallbackExplanation(q, data.subject || parent.subject || "General"),
+      sort_order: baseOrder + idx,
+    }));
+    const { error } = await projectContent.from("test_questions").insert(rows as never);
+    if (error) throw new Error(error.message);
+    if (data.switchToManual) {
+      await projectContent
+        .from("tests")
+        .update({ question_source: "manual", updated_at: new Date().toISOString() } as never)
+        .eq("id", data.test_id);
+    }
+    await syncTestQuestionStats(data.test_id);
+    return { ok: true, addedCount: rows.length };
   });
 
 /** Persist a new display order after drag/move in the editor. */
@@ -891,6 +1013,26 @@ export const adminSaveSeriesOverride = createServerFn({ method: "POST" })
       .from("test_series_overrides")
       .upsert(row as never, { onConflict: "series_id" });
     if (error) throw new Error(error.message);
+
+    const current = await readCustomSeriesCatalog();
+    if ((current.addedSeries ?? []).some((item) => item.id === data.series_id)) {
+      const nextAdded = (current.addedSeries ?? []).map((item) =>
+        item.id === data.series_id
+          ? {
+              ...item,
+              ...(data.name ? { name: data.name } : {}),
+              ...(data.summary ? { summary: data.summary } : {}),
+              ...(typeof data.price_inr === "number" ? { priceInr: data.price_inr } : {}),
+              ...(typeof data.price_coins === "number" ? { priceCoins: data.price_coins } : {}),
+            }
+          : item,
+      );
+      await writeCustomSeriesCatalog({
+        ...current,
+        addedSeries: nextAdded,
+      });
+    }
+
     return { ok: true };
   });
 
@@ -944,7 +1086,7 @@ export const pullQuestionsFromBank = createServerFn({ method: "POST" })
     // after that request.
     const { data: test, error: testError } = await projectContent
       .from("tests")
-      .select("id")
+      .select("id, exam_track")
       .eq("id", data.test_id)
       .maybeSingle();
     if (testError) throw new Error(testError.message);
@@ -957,6 +1099,10 @@ export const pullQuestionsFromBank = createServerFn({ method: "POST" })
       .from("tests")
       .update({
         question_source: "deterministic",
+        subject: data.subject,
+        syllabus_subject: data.subject,
+        syllabus_chapter: data.topic !== "Mixed" ? data.topic : "",
+        exam_track: data.exam !== "All Exams" ? data.exam : (test.exam_track ?? ""),
         generation_exam: data.exam,
         generation_subject: data.subject,
         generation_topic: data.topic,
@@ -976,5 +1122,955 @@ export const pullQuestionsFromBank = createServerFn({ method: "POST" })
       added: data.count,
       generatedOnDemand: true,
       savedQuestionRows: 0,
+    };
+  });
+
+async function writeCustomSeriesCatalog(catalog: CustomSeriesCatalog) {
+  setRuntimeCustomSeriesCatalog(catalog);
+  const { error } = await projectContent.from("site_settings").upsert(
+    {
+      key: CUSTOM_SERIES_CATALOG_KEY,
+      value: JSON.stringify(catalog),
+    } as never,
+    { onConflict: "key" },
+  );
+  if (error) throw new Error(error.message);
+  return catalog;
+}
+
+export const adminGetCustomSeriesCatalog = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    return readCustomSeriesCatalog();
+  });
+
+export const adminSaveSeriesSyllabus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().min(1).max(120),
+        syllabus_text: z.string().trim().min(3).max(20000),
+        enabled: z.boolean().optional(),
+        name: z.string().trim().min(2).max(160).nullable().optional(),
+        summary: z.string().trim().min(3).max(2000).nullable().optional(),
+        price_inr: z.number().int().min(0).max(100000).nullable().optional(),
+        price_coins: z.number().int().min(0).max(10000000).nullable().optional(),
+        questions_per_test: z.number().int().min(1).max(200).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const plan = parseSeriesSyllabusText(data.syllabus_text);
+    if (plan.length === 0) {
+      throw new Error(
+        "Enter at least one Subject and Chapter (e.g. General Knowledge :: History of Punjab, Polity).",
+      );
+    }
+    const current = await readCustomSeriesCatalog();
+    const qPerTest = data.questions_per_test ?? current.questionsPerSeriesId?.[data.series_id] ?? 60;
+    const syllabusBySeriesId = {
+      ...(current.syllabusBySeriesId ?? {}),
+      [data.series_id]: plan,
+    };
+    const questionsPerSeriesId = {
+      ...(current.questionsPerSeriesId ?? {}),
+      [data.series_id]: qPerTest,
+    };
+    const addedSeries = (current.addedSeries ?? []).map((item) =>
+      item.id === data.series_id
+        ? {
+            ...item,
+            ...(data.name ? { name: data.name } : {}),
+            ...(data.summary ? { summary: data.summary } : {}),
+            ...(typeof data.price_inr === "number" ? { priceInr: data.price_inr } : {}),
+            ...(typeof data.price_coins === "number" ? { priceCoins: data.price_coins } : {}),
+            subjects: plan.map((p) => p.subject),
+            customPlan: plan,
+            questionsPerTest: qPerTest,
+          }
+        : item,
+    );
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId,
+      questionsPerSeriesId,
+      addedSeries,
+    });
+
+    if (
+      data.enabled !== undefined ||
+      data.name !== undefined ||
+      data.summary !== undefined ||
+      data.price_inr !== undefined ||
+      data.price_coins !== undefined
+    ) {
+      await projectContent.from("test_series_overrides").upsert(
+        {
+          series_id: data.series_id,
+          enabled: data.enabled ?? true,
+          name: data.name ?? null,
+          summary: data.summary ?? null,
+          price_inr: data.price_inr ?? null,
+          price_coins: data.price_coins ?? null,
+          sort_order: null,
+          updated_by: context.userId,
+        } as never,
+        { onConflict: "series_id" },
+      );
+    }
+
+    const totalChapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
+    return {
+      ok: true,
+      subjectsCount: plan.length,
+      chaptersCount: totalChapters,
+      questionsPerChapter: qPerTest,
+      totalAutoQuestions: totalChapters * qPerTest,
+    };
+  });
+
+export const adminResetSeriesSyllabus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const nextMap = { ...(current.syllabusBySeriesId ?? {}) };
+    delete nextMap[data.series_id];
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId: nextMap,
+    });
+    return { ok: true };
+  });
+
+export const adminRemoveTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const isCustomAdded = (current.addedSeries ?? []).some((s) => s.id === data.series_id);
+    const nextAdded = (current.addedSeries ?? []).filter((s) => s.id !== data.series_id);
+    const nextRemoved = isCustomAdded
+      ? (current.removedSeriesIds ?? []).filter((id) => id !== data.series_id)
+      : [...new Set([...(current.removedSeriesIds ?? []), data.series_id])];
+    const nextSyllabus = { ...(current.syllabusBySeriesId ?? {}) };
+    if (isCustomAdded) delete nextSyllabus[data.series_id];
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId: nextSyllabus,
+      removedSeriesIds: nextRemoved,
+      addedSeries: nextAdded,
+    });
+
+    await projectContent.from("test_series_overrides").upsert(
+      {
+        series_id: data.series_id,
+        enabled: false,
+        name: null,
+        summary: null,
+        price_inr: null,
+        price_coins: null,
+        sort_order: null,
+        updated_by: context.userId,
+      } as never,
+      { onConflict: "series_id" },
+    );
+
+    return { ok: true, removed: data.series_id };
+  });
+
+export const adminRestoreTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z.object({ series_id: z.string().trim().min(1).max(120) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const nextRemoved = (current.removedSeriesIds ?? []).filter((id) => id !== data.series_id);
+    await writeCustomSeriesCatalog({
+      ...current,
+      removedSeriesIds: nextRemoved,
+    });
+    await projectContent.from("test_series_overrides").delete().eq("series_id", data.series_id);
+    return { ok: true, restored: data.series_id };
+  });
+
+export const adminCreateCustomTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: z.string().trim().max(120).optional(),
+        name: z.string().trim().min(3).max(160),
+        examTrack: z.string().trim().min(2).max(120),
+        group: z.string().trim().min(2).max(80).default("Punjab State"),
+        summary: z.string().trim().min(5).max(2000),
+        priceInr: z.number().int().min(0).max(100000).default(0),
+        priceCoins: z.number().int().min(0).max(10000000).default(0),
+        syllabus_text: z.string().trim().min(3).max(20000),
+        questionsPerTest: z.number().int().min(1).max(200).optional().default(60),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const plan = parseSeriesSyllabusText(data.syllabus_text);
+    if (plan.length === 0) {
+      throw new Error(
+        "Enter at least one Subject and Chapter (e.g. General Knowledge :: History of Punjab, Polity).",
+      );
+    }
+    const cleanId =
+      (data.id?.trim() || data.name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80) || `custom-series-${Date.now()}`;
+
+    const group: SeriesGroup = (SERIES_GROUPS as readonly string[]).includes(data.group)
+      ? (data.group as SeriesGroup)
+      : "Punjab State";
+
+    const qPerTest = data.questionsPerTest ?? 60;
+    const newSeries: PaidTestSeries = {
+      id: cleanId,
+      name: data.name.trim(),
+      examTrack: data.examTrack.trim(),
+      group,
+      subjects: plan.map((p) => p.subject),
+      summary: data.summary.trim(),
+      priceInr: data.priceInr,
+      priceCoins: data.priceCoins,
+      customPlan: plan,
+      questionsPerTest: qPerTest,
+    };
+
+    const current = await readCustomSeriesCatalog();
+    const filteredAdded = (current.addedSeries ?? []).filter((s) => s.id !== cleanId);
+    const filteredRemoved = (current.removedSeriesIds ?? []).filter((id) => id !== cleanId);
+    const syllabusBySeriesId = {
+      ...(current.syllabusBySeriesId ?? {}),
+      [cleanId]: plan,
+    };
+    const questionsPerSeriesId = {
+      ...(current.questionsPerSeriesId ?? {}),
+      [cleanId]: qPerTest,
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId,
+      questionsPerSeriesId,
+      removedSeriesIds: filteredRemoved,
+      addedSeries: [newSeries, ...filteredAdded],
+    });
+
+    await projectContent.from("test_series_overrides").upsert(
+      {
+        series_id: cleanId,
+        enabled: true,
+        name: data.name.trim(),
+        summary: data.summary.trim(),
+        price_inr: data.priceInr,
+        price_coins: data.priceCoins,
+        sort_order: null,
+        updated_by: context.userId,
+      } as never,
+      { onConflict: "series_id" },
+    );
+
+    const totalChapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
+    return {
+      ok: true,
+      series: newSeries,
+      subjectsCount: plan.length,
+      chaptersCount: totalChapters,
+      questionsPerChapter: qPerTest,
+      totalAutoQuestions: totalChapters * qPerTest,
+    };
+  });
+
+export const adminClearAllTestSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    await writeCustomSeriesCatalog({
+      ...current,
+      syllabusBySeriesId: {},
+      removedSeriesIds: [],
+      addedSeries: [],
+      includeBuiltIn: false,
+    });
+    const allTests = await projectContent.from("tests").select("id");
+    for (const row of allTests.data ?? []) {
+      await projectContent.from("test_questions").delete().eq("test_id", row.id);
+      await projectContent.from("tests").delete().eq("id", row.id);
+    }
+    return { ok: true };
+  });
+
+export const adminToggleBuiltInSeries = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => z.object({ includeBuiltIn: z.boolean() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    await writeCustomSeriesCatalog({
+      ...current,
+      includeBuiltIn: data.includeBuiltIn,
+    });
+    return { ok: true, includeBuiltIn: data.includeBuiltIn };
+  });
+
+export const adminOptimizeAndCleanServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const startMs = Date.now();
+    await assertAdmin(context);
+    const cacheFlush = flushProjectContentCaches();
+    let cleanedAbandonedAttempts = 0;
+    try {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const stale = await context.supabase
+        .from("learning_attempts")
+        .delete()
+        .eq("status", "started")
+        .lt("started_at", cutoff)
+        .select("id");
+      cleanedAbandonedAttempts = stale.data?.length ?? 0;
+    } catch {
+      // Safe fallback when learning_attempts is managed via RPC
+    }
+    const { document } = await readProjectDocument();
+    const customCatalog = await readCustomSeriesCatalog();
+    const durationMs = Math.max(1, Date.now() - startMs);
+    return {
+      ok: true,
+      durationMs,
+      clearedSelectEntries: cacheFlush.clearedSelectEntries,
+      clearedMissingTables: cacheFlush.clearedMissingTables,
+      cleanedAbandonedAttempts,
+      counts: {
+        courses: (document.tables["courses"] ?? []).length,
+        lectures: (document.tables["lectures"] ?? []).length,
+        materials: (document.tables["materials"] ?? []).length,
+        tests: (document.tables["tests"] ?? []).length,
+        questions: (document.tables["test_questions"] ?? []).length,
+        customSeries: (customCatalog.addedSeries ?? []).length,
+        includeBuiltIn: Boolean(customCatalog.includeBuiltIn),
+      },
+      optimizedAt: new Date().toISOString(),
+    };
+  });
+
+const customChapterQuestionSchema = z.object({
+  series_id: z.string().trim().max(120).optional().default("*"),
+  subject: z.string().trim().min(1).max(120),
+  chapter: z.string().trim().min(1).max(200),
+  mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
+  question: z.object({
+    id: z.string().trim().max(120).optional(),
+    question_text: z.string().trim().min(3).max(2000),
+    options: z.array(z.string().trim().min(1).max(600)).min(2).max(6),
+    correct_index: z.number().int().min(0).max(5),
+    explanation: z.string().trim().max(4000).optional().default(""),
+    difficulty: z.enum(["Easy", "Moderate", "Difficult"]).optional().default("Moderate"),
+    marks: z.number().int().min(0).max(100).optional().default(1),
+    negative_marks: z.number().int().min(0).max(100).optional().default(0),
+  }),
+});
+
+export const adminSaveCustomChapterQuestion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => customChapterQuestionSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const options = data.question.options.map((o) => o.trim()).filter(Boolean);
+    if (options.length < 2) throw new Error("Please write at least 2 options.");
+    if (data.question.correct_index >= options.length) {
+      throw new Error("Please select which option is the correct answer.");
+    }
+
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode ?? "custom_plus_bank",
+      questions: [],
+    };
+    const qId =
+      data.question.id?.trim() || `cq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const nextItem: CustomChapterQuestion = {
+      id: qId,
+      question_text: data.question.question_text.trim(),
+      options,
+      correct_index: data.question.correct_index,
+      explanation:
+        data.question.explanation?.trim() ||
+        `Correct answer is ${options[data.question.correct_index]}.`,
+      difficulty: data.question.difficulty ?? "Moderate",
+      marks: data.question.marks ?? 1,
+      negative_marks: data.question.negative_marks ?? 0,
+    };
+
+    const hasExisting = existing.questions.some((q) => q.id === qId);
+    const nextQuestions = hasExisting
+      ? existing.questions.map((q) => (q.id === qId ? nextItem : q))
+      : [...existing.questions, nextItem];
+
+    const nextMap: Record<string, CustomChapterConfig> = {
+      ...(current.customQuestionsByChapter ?? {}),
+      [key]: {
+        mode: data.mode ?? existing.mode,
+        questions: nextQuestions,
+      },
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+
+    return { ok: true, key, totalCount: nextQuestions.length, question: nextItem };
+  });
+
+export const adminBulkImportCustomChapterQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
+        marks: z.number().int().min(0).max(100).optional().default(1),
+        negative_marks: z.number().int().min(0).max(100).optional().default(0),
+        text: z.string().trim().min(5).max(100000),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const parsed = parseMcqText(data.text);
+    if (!parsed.length) {
+      throw new Error(
+        "No valid MCQs found. Use format:\nQ1. Your question?\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nAnswer: A\nExplanation: Optional solution",
+      );
+    }
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode ?? "custom_plus_bank",
+      questions: [],
+    };
+    const newItems: CustomChapterQuestion[] = parsed.map((q, idx) => ({
+      id: `cq-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
+      question_text: q.question_text,
+      options: q.options,
+      correct_index: q.correct_index,
+      explanation: q.explanation || buildFallbackExplanation(q, data.subject),
+      difficulty: "Moderate",
+      marks: data.marks ?? 1,
+      negative_marks: data.negative_marks ?? 0,
+    }));
+
+    const nextQuestions = [...existing.questions, ...newItems];
+    const nextMap: Record<string, CustomChapterConfig> = {
+      ...(current.customQuestionsByChapter ?? {}),
+      [key]: {
+        mode: data.mode ?? existing.mode,
+        questions: nextQuestions,
+      },
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+
+    return { ok: true, key, addedCount: newItems.length, totalCount: nextQuestions.length };
+  });
+
+export const adminSetCustomChapterMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        mode: z.enum(["custom_only", "custom_plus_bank"]),
+        question_count: z.number().int().min(1).max(200).nullable().optional(),
+        default_questions_per_chapter: z.number().int().min(1).max(200).nullable().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode,
+      questions: [],
+    };
+    const nextConfig: CustomChapterConfig = {
+      ...existing,
+      mode: data.mode,
+    };
+    if (data.question_count === null) {
+      delete nextConfig.questionCount;
+    } else if (typeof data.question_count === "number") {
+      nextConfig.questionCount = data.question_count;
+    }
+    const nextCatalog: CustomSeriesCatalog = {
+      ...current,
+      customQuestionsByChapter: {
+        ...(current.customQuestionsByChapter ?? {}),
+        [key]: nextConfig,
+      },
+    };
+    if (typeof data.default_questions_per_chapter === "number") {
+      nextCatalog.defaultQuestionsPerChapter = data.default_questions_per_chapter;
+    }
+    await writeCustomSeriesCatalog(nextCatalog);
+    return {
+      ok: true,
+      key,
+      mode: data.mode,
+      questionCount: nextConfig.questionCount ?? nextCatalog.defaultQuestionsPerChapter ?? 60,
+    };
+  });
+
+export const adminDeleteCustomChapterQuestion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        question_id: z.string().trim().min(1).max(120),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing = current.customQuestionsByChapter?.[key];
+    if (!existing) return { ok: true, totalCount: 0 };
+    const nextQuestions = existing.questions.filter((q) => q.id !== data.question_id);
+    const nextMap = { ...(current.customQuestionsByChapter ?? {}) };
+    if (nextQuestions.length === 0 && !existing.questionCount) {
+      delete nextMap[key];
+    } else {
+      nextMap[key] = { ...existing, questions: nextQuestions };
+    }
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+    return { ok: true, totalCount: nextQuestions.length };
+  });
+
+export const adminClearCustomChapterQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const nextMap = { ...(current.customQuestionsByChapter ?? {}) };
+    delete nextMap[key];
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+    return { ok: true };
+  });
+
+export const adminPreviewQuestionBank = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        exam: z.string().trim().max(120).optional().default("All Exams"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        difficulty: z
+          .enum(["Easy", "Moderate", "Difficult", "Mixed"])
+          .optional()
+          .default("Mixed"),
+        count: z.number().int().min(1).max(200).optional().default(30),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const customCatalog = await readCustomSeriesCatalog();
+    const customConfig = getCustomChapterConfig(
+      data.series_id,
+      data.subject,
+      data.chapter,
+      customCatalog,
+    );
+    const configuredQuestionCount = getChapterQuestionCount(
+      data.series_id,
+      data.subject,
+      data.chapter,
+      customCatalog,
+    );
+
+    const recipe = {
+      exam: data.exam || "All Exams",
+      subject: data.subject,
+      topic: data.chapter,
+      difficulty: data.difficulty,
+      count: data.count,
+      marks: 1,
+      negative_marks: 0,
+      seed: `preview:${data.subject}:${data.chapter}`,
+    };
+
+    const templateQuestions = generateCustomSyllabusPaper(recipe);
+    const cleanCustomQuestions = (customConfig?.questions ?? []).filter(
+      (q) => !isLegacyScienceFallbackForNonScienceSubject(q.question_text, data.subject, data.chapter),
+    );
+
+    return {
+      ok: true,
+      configuredQuestionCount,
+      mode: customConfig?.mode ?? "custom_plus_bank",
+      customQuestions: cleanCustomQuestions,
+      templateQuestions: templateQuestions.map((q) => ({
+        id: q.id,
+        question_text: q.question_text,
+        options: q.options,
+        correct_index: q.correct_index,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        subject: q.subject,
+        chapter: q.chapter,
+      })),
+    };
+  });
+
+function synthesizeQuestionsFromPromptAndBank(input: {
+  subject: string;
+  chapter: string;
+  prompt: string;
+  difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
+  count: number;
+  marks: number;
+  negative_marks: number;
+  existingTexts: Set<string>;
+}): CustomChapterQuestion[] {
+  const results: CustomChapterQuestion[] = [];
+  const levels: Array<"Easy" | "Moderate" | "Difficult"> =
+    input.difficulty === "Mixed" ? ["Easy", "Moderate", "Difficult"] : [input.difficulty];
+
+  // First: if the Admin provided MCQ-like text in prompt, parse it directly
+  if (input.prompt.trim().length > 10) {
+    const parsedMcqs = parseMcqText(input.prompt);
+    for (const q of parsedMcqs) {
+      const norm = q.question_text.trim().toLowerCase();
+      if (!input.existingTexts.has(norm) && results.length < input.count) {
+        input.existingTexts.add(norm);
+        results.push({
+          id: `ai-${Date.now()}-${results.length + 1}-${Math.random().toString(36).slice(2, 6)}`,
+          question_text: q.question_text,
+          options: q.options.slice(0, 4),
+          correct_index: q.correct_index,
+          explanation: q.explanation || buildFallbackExplanation(q, input.subject),
+          difficulty: levels[results.length % levels.length]!,
+          marks: input.marks,
+          negative_marks: input.negative_marks,
+          source: "ai",
+        });
+      }
+    }
+
+    // Second: if prompt contains notes/sentences/key-value facts (e.g. "Objective Resolution - 13 Dec 1946" or bullet points)
+    if (results.length < input.count) {
+      const lines = input.prompt
+        .split(/\r?\n|(?<=[.?!])\s+/)
+        .map((l) => l.replace(/^[-*•\d.)\s]+/, "").trim())
+        .filter((l) => l.length >= 12);
+
+      const kvPairs: Array<{ left: string; right: string; raw: string }> = [];
+      for (const line of lines) {
+        const kvMatch = line.match(/^([^:—–-]{3,80})\s*(?::|—|–|-|\bis\b|\bwas\b|\bare\b)\s*(.{3,140})$/i);
+        if (kvMatch) {
+          kvPairs.push({
+            left: kvMatch[1]!.trim(),
+            right: kvMatch[2]!.replace(/[.]+$/, "").trim(),
+            raw: line,
+          });
+        }
+      }
+
+      const fallbackPool = [
+        `None of the listed statements in ${input.chapter}`,
+        `Unrelated administrative provision outside ${input.subject}`,
+        `A repealed colonial regulation not applicable to ${input.chapter}`,
+        `Only a non-binding draft proposal rejected in committee`,
+      ];
+
+      for (let i = 0; i < kvPairs.length && results.length < input.count; i++) {
+        const pair = kvPairs[i]!;
+        const otherRights = kvPairs
+          .filter((_, idx) => idx !== i)
+          .map((p) => p.right)
+          .filter((r) => r.toLowerCase() !== pair.right.toLowerCase());
+        const distractors = [...new Set([...otherRights, ...fallbackPool])].slice(0, 3);
+        if (distractors.length === 3) {
+          const correctPos = i % 4;
+          const options = [...distractors];
+          options.splice(correctPos, 0, pair.right);
+          const qText = `In ${input.subject} (${input.chapter}), which of the following accurately describes or corresponds to "${pair.left}"?`;
+          const norm = qText.toLowerCase();
+          if (!input.existingTexts.has(norm)) {
+            input.existingTexts.add(norm);
+            results.push({
+              id: `ai-${Date.now()}-${results.length + 1}-${Math.random().toString(36).slice(2, 6)}`,
+              question_text: qText,
+              options,
+              correct_index: correctPos,
+              explanation: `${pair.left}: ${pair.right}. (${input.subject} — ${input.chapter})`,
+              difficulty: levels[results.length % levels.length]!,
+              marks: input.marks,
+              negative_marks: input.negative_marks,
+              source: "ai",
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Third: fill remaining requested count using the curated & template engine for this Subject + Chapter
+  if (results.length < input.count) {
+    const needed = input.count - results.length;
+    const isPreamble =
+      input.chapter.toLowerCase().includes("preamble") ||
+      input.prompt.toLowerCase().includes("preamble");
+    const topicHint =
+      input.prompt.trim().length > 2 && input.prompt.trim().length <= 80
+        ? `${input.chapter} (${input.prompt.trim()})`
+        : input.chapter;
+    const recipe = {
+      exam: "All Exams",
+      subject: input.subject,
+      topic: isPreamble ? "Preamble" : topicHint,
+      difficulty: input.difficulty,
+      count: Math.min(200, needed + 30),
+      marks: input.marks,
+      negative_marks: input.negative_marks,
+      seed: `ai-gen:${Date.now()}:${input.subject}:${input.chapter}:${input.prompt.slice(0, 40)}`,
+    };
+    const strictPaper = isPreamble ? [] : generateOnDemandTestPaper(recipe);
+    const candidates =
+      strictPaper.length >= needed ? strictPaper : generateCustomSyllabusPaper(recipe);
+
+    for (const cand of candidates) {
+      if (results.length >= input.count) break;
+      const norm = cand.question_text.trim().toLowerCase();
+      if (input.existingTexts.has(norm)) continue;
+      input.existingTexts.add(norm);
+      results.push({
+        id: `ai-${Date.now()}-${results.length + 1}-${Math.random().toString(36).slice(2, 6)}`,
+        question_text: cand.question_text,
+        options: cand.options.slice(0, 4),
+        correct_index: cand.correct_index,
+        explanation: cand.explanation,
+        difficulty: cand.difficulty,
+        marks: input.marks,
+        negative_marks: input.negative_marks,
+        source: "ai",
+      });
+    }
+  }
+
+  return results;
+}
+
+export const adminGenerateAiChapterQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        series_id: z.string().trim().max(120).optional().default("*"),
+        subject: z.string().trim().min(1).max(120),
+        chapter: z.string().trim().min(1).max(200),
+        prompt: z.string().trim().max(20000).optional().default(""),
+        count: z.number().int().min(1).max(60).optional().default(10),
+        difficulty: z
+          .enum(["Easy", "Moderate", "Difficult", "Mixed"])
+          .optional()
+          .default("Mixed"),
+        marks: z.number().int().min(0).max(100).optional().default(1),
+        negative_marks: z.number().int().min(0).max(100).optional().default(0),
+        mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const current = await readCustomSeriesCatalog();
+    const key = makeCustomChapterKey(data.series_id, data.subject, data.chapter);
+    const existing: CustomChapterConfig = current.customQuestionsByChapter?.[key] ?? {
+      mode: data.mode ?? "custom_plus_bank",
+      questions: [],
+    };
+    const existingTexts = new Set(
+      existing.questions.map((q) => q.question_text.trim().toLowerCase()),
+    );
+
+    let aiQuestions: CustomChapterQuestion[] = [];
+    let usedProvider: "gemini" | "smart-synthesizer" = "smart-synthesizer";
+
+    // Try Gemini API first if a key is configured in env or private_settings
+    let geminiKey = process.env.GEMINI_API_KEY || "";
+    if (!geminiKey) {
+      const keyRow = await projectContent
+        .from("private_settings")
+        .select("value")
+        .eq("key", "ai_gemini_api_key")
+        .maybeSingle();
+      geminiKey = keyRow.data?.value || "";
+    }
+
+    if (geminiKey) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text: `Generate exactly ${data.count} high-yield exam multiple-choice questions (MCQs) in JSON array format for Subject: "${data.subject}", Chapter/Topic: "${data.chapter}", Difficulty: "${data.difficulty}". ${data.prompt ? `Focus / Notes: ${data.prompt}` : ""}\nReturn ONLY a JSON array of objects with keys: "question_text" (string), "options" (array of 4 distinct strings), "correct_index" (integer 0-3), "explanation" (string), "difficulty" ("Easy" | "Moderate" | "Difficult").`,
+                    },
+                  ],
+                },
+              ],
+              generationConfig: {
+                temperature: 0.3,
+                responseMimeType: "application/json",
+              },
+            }),
+          },
+        );
+        if (res.ok) {
+          const json = (await res.json()) as {
+            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          };
+          const rawText =
+            json.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("\n") || "[]";
+          const cleaned = rawText.replace(/^```json\s*|\s*```$/g, "").trim();
+          const parsed = JSON.parse(cleaned) as Array<{
+            question_text?: string;
+            options?: string[];
+            correct_index?: number;
+            explanation?: string;
+            difficulty?: "Easy" | "Moderate" | "Difficult";
+          }>;
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (
+                item.question_text &&
+                Array.isArray(item.options) &&
+                item.options.length === 4 &&
+                typeof item.correct_index === "number" &&
+                item.correct_index >= 0 &&
+                item.correct_index < 4
+              ) {
+                const norm = item.question_text.trim().toLowerCase();
+                if (!existingTexts.has(norm) && aiQuestions.length < data.count) {
+                  existingTexts.add(norm);
+                  aiQuestions.push({
+                    id: `ai-${Date.now()}-${aiQuestions.length + 1}-${Math.random().toString(36).slice(2, 6)}`,
+                    question_text: item.question_text.trim(),
+                    options: item.options.map((o) => String(o).trim()),
+                    correct_index: item.correct_index,
+                    explanation:
+                      item.explanation?.trim() ||
+                      `Verified answer: ${item.options[item.correct_index]}`,
+                    difficulty: item.difficulty || "Moderate",
+                    marks: data.marks ?? 1,
+                    negative_marks: data.negative_marks ?? 0,
+                    source: "ai",
+                  });
+                }
+              }
+            }
+            if (aiQuestions.length > 0) usedProvider = "gemini";
+          }
+        }
+      } catch {
+        // Fallback to smart synthesizer below
+      }
+    }
+
+    if (aiQuestions.length < data.count) {
+      const synthesized = synthesizeQuestionsFromPromptAndBank({
+        subject: data.subject,
+        chapter: data.chapter,
+        prompt: data.prompt || "",
+        difficulty: data.difficulty,
+        count: data.count - aiQuestions.length,
+        marks: data.marks ?? 1,
+        negative_marks: data.negative_marks ?? 0,
+        existingTexts,
+      });
+      aiQuestions = [...aiQuestions, ...synthesized];
+    }
+
+    const nextQuestions = [...existing.questions, ...aiQuestions];
+    const nextMap: Record<string, CustomChapterConfig> = {
+      ...(current.customQuestionsByChapter ?? {}),
+      [key]: {
+        ...existing,
+        mode: data.mode ?? existing.mode,
+        questions: nextQuestions,
+      },
+    };
+
+    await writeCustomSeriesCatalog({
+      ...current,
+      customQuestionsByChapter: nextMap,
+    });
+
+    return {
+      ok: true,
+      key,
+      provider: usedProvider,
+      generatedCount: aiQuestions.length,
+      totalCount: nextQuestions.length,
+      questions: aiQuestions,
     };
   });

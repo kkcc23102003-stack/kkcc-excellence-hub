@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
+import { listSyllabus, syllabusNodesToRows } from "@/lib/syllabus.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  bulkAddTestQuestions,
   deleteTest,
   deleteTestQuestion,
   listAdminTests,
@@ -46,7 +48,11 @@ import {
   saveTestQuestion,
   pullQuestionsFromBank,
 } from "@/lib/admin.functions";
-import { ACTIVE_TEMPLATES } from "@/lib/exam-bank";
+import {
+  CATALOG_EXAMS_LIST,
+  CATALOG_SUBJECTS_BY_EXAM,
+  getCatalogTopicsForExam,
+} from "@/lib/test-series-catalog-meta";
 import { cn } from "@/lib/utils";
 import {
   adminGrantTestAccess,
@@ -56,7 +62,7 @@ import {
 } from "@/lib/test-access.functions";
 
 /** Exam tracks the bank actually carries, plus an everything option. */
-const BANK_EXAMS = ["All Exams", ...[...new Set(ACTIVE_TEMPLATES.flatMap((t) => t.exams))].sort()];
+const BANK_EXAMS = CATALOG_EXAMS_LIST;
 
 /** One price across the whole app, in rupees and in coins alike. */
 const DEFAULT_TEST_PRICE = 999;
@@ -77,7 +83,9 @@ export const Route = createFileRoute("/_authenticated/admin/tests")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button asChild className="rounded-full">
             <Link to="/dashboard">Back to dashboard</Link>
@@ -121,6 +129,9 @@ type TestPayload = {
   generation_topic: string;
   generation_difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
   generation_count: number;
+  syllabus_subject: string;
+  syllabus_chapter: string;
+  syllabus_topic: string;
 };
 
 /** Narrow a DB row to the exact shape saveTest validates. */
@@ -151,6 +162,9 @@ function toTestPayload(
     generation_topic?: string | null;
     generation_difficulty?: "Easy" | "Moderate" | "Difficult" | "Mixed" | null;
     generation_count?: number | null;
+    syllabus_subject?: string | null;
+    syllabus_chapter?: string | null;
+    syllabus_topic?: string | null;
   },
   patch: Partial<TestPayload> = {},
 ): TestPayload {
@@ -162,7 +176,11 @@ function toTestPayload(
     lecture_id: test.lecture_id,
     title: test.title,
     instructions: test.instructions ?? "",
-    subject: test.subject ?? "",
+    subject:
+      patch.subject ??
+      (patch.syllabus_subject && (!test.subject || test.subject === "General")
+        ? patch.syllabus_subject
+        : (test.subject ?? "")),
     duration_minutes: test.duration_minutes,
     question_timer_seconds: test.question_timer_seconds ?? 0,
     timer_mode: mode,
@@ -182,16 +200,35 @@ function toTestPayload(
     price_inr: test.price_inr ?? DEFAULT_TEST_PRICE,
     price_coins: test.price_coins ?? DEFAULT_TEST_PRICE,
     question_source: test.question_source === "deterministic" ? "deterministic" : "manual",
-    generation_exam: test.generation_exam ?? "All Exams",
-    generation_subject: test.generation_subject ?? test.subject ?? "",
-    generation_topic: test.generation_topic ?? "Mixed",
+    generation_exam: patch.exam_track || test.generation_exam || test.exam_track || "All Exams",
+    generation_subject:
+      patch.syllabus_subject ||
+      patch.subject ||
+      test.syllabus_subject ||
+      (test.subject && test.subject !== "General" ? test.subject : "") ||
+      (test.generation_subject && test.generation_subject !== "General"
+        ? test.generation_subject
+        : "") ||
+      test.subject ||
+      "",
+    generation_topic:
+      patch.syllabus_chapter !== undefined
+        ? patch.syllabus_chapter || "Mixed"
+        : test.syllabus_chapter || test.generation_topic || "Mixed",
     generation_difficulty:
       test.generation_difficulty === "Easy" ||
       test.generation_difficulty === "Moderate" ||
       test.generation_difficulty === "Difficult"
         ? test.generation_difficulty
         : "Mixed",
-    generation_count: test.generation_count ?? test.questions_count ?? 0,
+    generation_count: test.generation_count || test.questions_count || 60,
+    syllabus_subject:
+      patch.syllabus_subject ??
+      patch.subject ??
+      (test.syllabus_subject ||
+        (test.subject && test.subject !== "General" ? test.subject : "")),
+    syllabus_chapter: test.syllabus_chapter ?? "",
+    syllabus_topic: test.syllabus_topic ?? "",
     ...patch,
   };
 }
@@ -222,15 +259,21 @@ function emptyDraft(subject: string): QuestionDraft {
 function TestQuestionWriter() {
   const queryClient = useQueryClient();
   const fetchTests = useServerFn(listAdminTests);
+  const fetchSyllabus = useServerFn(listSyllabus);
   const fetchQuestions = useServerFn(listTestQuestions);
   const putTest = useServerFn(saveTest);
   const dropTest = useServerFn(deleteTest);
   const putQuestion = useServerFn(saveTestQuestion);
   const dropQuestion = useServerFn(deleteTestQuestion);
   const reorder = useServerFn(reorderTestQuestions);
+  const bulkAddFn = useServerFn(bulkAddTestQuestions);
 
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
+  const [showBulkPaste, setShowBulkPaste] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkMarks, setBulkMarks] = useState("4");
+  const [bulkNegativeMarks, setBulkNegativeMarks] = useState("1");
   const [confirmDeleteQuestion, setConfirmDeleteQuestion] = useState<string | null>(null);
   const [confirmDeleteTest, setConfirmDeleteTest] = useState<string | null>(null);
 
@@ -242,6 +285,35 @@ function TestQuestionWriter() {
   const tests = useMemo(() => testsQuery.data ?? [], [testsQuery.data]);
   const activeTest = tests.find((t) => t.id === activeTestId) ?? null;
 
+  const syllabusQuery = useQuery({
+    queryKey: ["admin", "syllabus"],
+    queryFn: () => fetchSyllabus(),
+    retry: false,
+  });
+
+  const syllabusRows = useMemo(
+    () => syllabusNodesToRows(syllabusQuery.data ?? []),
+    [syllabusQuery.data],
+  );
+  const syllabusSubjects = useMemo(
+    () => [...new Set(syllabusRows.map((r) => r.subject))],
+    [syllabusRows],
+  );
+  const syllabusChapters = useMemo(() => {
+    const subj = activeTest?.syllabus_subject || activeTest?.subject || "";
+    const matching = subj
+      ? syllabusRows.filter((r) => r.subject.toLowerCase() === subj.toLowerCase())
+      : syllabusRows;
+    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.chapter))];
+  }, [syllabusRows, activeTest?.syllabus_subject, activeTest?.subject]);
+  const syllabusTopics = useMemo(() => {
+    const ch = activeTest?.syllabus_chapter || "";
+    const matching = ch
+      ? syllabusRows.filter((r) => r.chapter.toLowerCase() === ch.toLowerCase())
+      : syllabusRows;
+    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.topic))];
+  }, [syllabusRows, activeTest?.syllabus_chapter]);
+
   // Pulling straight from the question bank. The lists come from the bank
   // itself, so a chapter can never be offered that has nothing behind it.
   const [pullExam, setPullExam] = useState<string>("All Exams");
@@ -252,24 +324,14 @@ function TestQuestionWriter() {
     "Difficult",
   );
 
-  const pullSubjects = useMemo(() => {
-    const out = new Set<string>();
-    for (const t of ACTIVE_TEMPLATES) {
-      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
-      out.add(t.subject);
-    }
-    return [...out].sort();
-  }, [pullExam]);
+  const pullSubjects = useMemo(
+    () => CATALOG_SUBJECTS_BY_EXAM[pullExam] ?? CATALOG_SUBJECTS_BY_EXAM["All Exams"] ?? [],
+    [pullExam],
+  );
 
   const pullTopics = useMemo(() => {
     if (!pullSubject) return [];
-    const out = new Set<string>();
-    for (const t of ACTIVE_TEMPLATES) {
-      if (t.subject !== pullSubject) continue;
-      if (pullExam !== "All Exams" && !t.exams.includes(pullExam)) continue;
-      out.add(t.topic);
-    }
-    return [...out].sort();
+    return getCatalogTopicsForExam(pullSubject, pullExam);
   }, [pullExam, pullSubject]);
 
   const pullFromBank = useServerFn(pullQuestionsFromBank);
@@ -278,6 +340,7 @@ function TestQuestionWriter() {
     onSuccess: (r) => {
       void invalidateLearningQueries(queryClient);
       toast.success(`${r.added} fresh questions configured — 0 question rows saved`);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "tests"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "test-questions", activeTestId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -326,6 +389,9 @@ function TestQuestionWriter() {
           generation_topic: "Mixed",
           generation_difficulty: "Difficult" as const,
           generation_count: 0,
+          syllabus_subject: "",
+          syllabus_chapter: "",
+          syllabus_topic: "",
         },
       }),
     onSuccess: (row) => {
@@ -403,6 +469,28 @@ function TestQuestionWriter() {
     onSuccess: () => {
       void invalidateLearningQueries(queryClient);
       toast.success("Question deleted");
+      invalidateAll();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const bulkAdd = useMutation({
+    mutationFn: (switchToManual: boolean) =>
+      bulkAddFn({
+        data: {
+          test_id: activeTestId as string,
+          subject: activeTest?.syllabus_subject || activeTest?.subject || "General",
+          marks: Number(bulkMarks || 4),
+          negative_marks: Number(bulkNegativeMarks || 1),
+          text: bulkText,
+          switchToManual,
+        },
+      }),
+    onSuccess: (res) => {
+      void invalidateLearningQueries(queryClient);
+      toast.success(`Added ${res.addedCount} custom questions to this test!`);
+      setBulkText("");
+      setShowBulkPaste(false);
       invalidateAll();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -581,6 +669,73 @@ function TestQuestionWriter() {
                       />
                     </div>
                     <div>
+                      <div className="flex items-center justify-between">
+                        <Label>Syllabus subject</Label>
+                        <Link
+                          to="/admin/syllabus"
+                          className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                          Syllabus Builder →
+                        </Link>
+                      </div>
+                      <Input
+                        list="kkcc-syllabus-subjects"
+                        className="mt-1.5"
+                        key={`subj-${activeTest.id}-${activeTest.syllabus_subject ?? ""}`}
+                        defaultValue={activeTest.syllabus_subject ?? activeTest.subject ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_subject = event.target.value.trim();
+                          if (syllabus_subject !== (activeTest.syllabus_subject ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_subject }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-subjects">
+                        {syllabusSubjects.map((s) => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label>Syllabus chapter</Label>
+                      <Input
+                        list="kkcc-syllabus-chapters"
+                        className="mt-1.5"
+                        placeholder="e.g. Life Processes"
+                        key={`chap-${activeTest.id}-${activeTest.syllabus_chapter ?? ""}`}
+                        defaultValue={activeTest.syllabus_chapter ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_chapter = event.target.value.trim();
+                          if (syllabus_chapter !== (activeTest.syllabus_chapter ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_chapter }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-chapters">
+                        {syllabusChapters.map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label>Syllabus topic</Label>
+                      <Input
+                        list="kkcc-syllabus-topics"
+                        className="mt-1.5"
+                        placeholder="e.g. Nutrition"
+                        key={`top-${activeTest.id}-${activeTest.syllabus_topic ?? ""}`}
+                        defaultValue={activeTest.syllabus_topic ?? ""}
+                        onBlur={(event) => {
+                          const syllabus_topic = event.target.value.trim();
+                          if (syllabus_topic !== (activeTest.syllabus_topic ?? ""))
+                            updateTest.mutate(toTestPayload(activeTest, { syllabus_topic }));
+                        }}
+                      />
+                      <datalist id="kkcc-syllabus-topics">
+                        {syllabusTopics.map((t) => (
+                          <option key={t} value={t} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
                       <Label>Duration (minutes)</Label>
                       <Input
                         type="number"
@@ -735,12 +890,24 @@ function TestQuestionWriter() {
                 {/* Fill the paper from the question bank instead of typing
                     every question by hand. Everything pulled stays editable. */}
                 <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4">
-                  <h3 className="text-sm font-semibold">Generate fresh questions on demand</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Choose the exam, subject, chapter, level and count. Only this small recipe is
-                    saved. The actual questions are generated fresh when a student opens the test
-                    and are never saved in Supabase.
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        Pull from Question Bank (Priority #1 to Your Added &amp; AI Questions)
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Choose the exam, subject, chapter, level, and any question count (e.g. 10,
+                        20, 30, 60, 100). Questions you added or generated with AI in the Question
+                        Bank always get <strong>First Preference</strong>, and the rest fill from the
+                        template bank.
+                      </p>
+                    </div>
+                    <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
+                      <Link to="/admin/exam-bank">
+                        Open Question Bank (Templates + My Questions + AI)
+                      </Link>
+                    </Button>
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-semibold">
                       Exam
@@ -793,15 +960,34 @@ function TestQuestionWriter() {
                         ))}
                       </select>
                     </label>
-                    <label className="text-xs font-semibold">
-                      How many
+                    <div className="text-xs font-semibold">
+                      <span>How many questions (1–200)</span>
                       <Input
                         className="mt-1"
-                        inputMode="numeric"
+                        type="number"
+                        min={1}
+                        max={200}
                         value={pullCount}
                         onChange={(e) => setPullCount(e.target.value)}
                       />
-                    </label>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {[10, 15, 20, 25, 30, 50, 60, 100].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setPullCount(String(num))}
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[10px] font-bold transition",
+                              Number(pullCount) === num
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "bg-background hover:border-primary/50",
+                            )}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <label className="text-xs font-semibold">
                       Level
                       <select
@@ -831,43 +1017,148 @@ function TestQuestionWriter() {
                               subject: pullSubject,
                               topic: pullTopic,
                               difficulty: pullLevel,
-                              count: Number(pullCount || 20),
+                              count: Math.max(1, Math.min(200, Number(pullCount || 20))),
                               marks: 1,
                               negative_marks: 0,
                             },
                           })
                         }
                       >
-                        {pull.isPending ? "Configuring…" : "Set up fresh generation"}
+                        {pull.isPending
+                          ? "Configuring…"
+                          : `Set Up (${Math.max(1, Math.min(200, Number(pullCount || 20)))} Questions)`}
                       </Button>
                     </div>
                   </div>
                 </div>
-                {/* write / edit a question */}
+                {/* write / edit a question + bulk paste */}
                 <div className="rounded-3xl border bg-background/60 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">
-                      {draft?.id ? "Edit question" : "Write a new question"}
-                    </h3>
-                    {draft ? (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        {draft?.id ? "Edit question" : "Write or Paste Your Own Questions"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Mode:{" "}
+                        <strong>
+                          {activeTest.question_source === "manual"
+                            ? "Only Your Custom Questions (Manual)"
+                            : "Your Custom Questions First + Auto Bank Fill"}
+                        </strong>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         size="sm"
-                        variant="ghost"
-                        className="rounded-full"
-                        onClick={() => setDraft(null)}
+                        variant={activeTest.question_source === "manual" ? "default" : "outline"}
+                        className="rounded-full text-xs"
+                        onClick={() =>
+                          updateTest.mutate(
+                            toTestPayload(activeTest, {
+                              question_source:
+                                activeTest.question_source === "manual"
+                                  ? "deterministic"
+                                  : "manual",
+                            }),
+                          )
+                        }
                       >
-                        <X className="mr-1.5 h-4 w-4" /> Cancel
+                        {activeTest.question_source === "manual"
+                          ? "Mode: Only My Questions"
+                          : "Switch to Only My Questions"}
                       </Button>
-                    ) : (
                       <Button
                         size="sm"
+                        variant={showBulkPaste ? "secondary" : "outline"}
                         className="rounded-full"
-                        onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                        onClick={() => setShowBulkPaste((v) => !v)}
                       >
-                        <Plus className="mr-1.5 h-4 w-4" /> Add question
+                        <ClipboardList className="mr-1.5 h-4 w-4" />
+                        {showBulkPaste ? "Close Bulk Paste" : "Bulk Paste MCQs"}
                       </Button>
-                    )}
+                      {draft ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-full"
+                          onClick={() => setDraft(null)}
+                        >
+                          <X className="mr-1.5 h-4 w-4" /> Cancel
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                        >
+                          <Plus className="mr-1.5 h-4 w-4" /> Add question
+                        </Button>
+                      )}
+                    </div>
                   </div>
+
+                  {showBulkPaste ? (
+                    <div className="mb-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-bold">
+                          Paste Multiple MCQs at Once (Q1... A)... B)... C)... D)... Answer: A)
+                        </p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <label className="flex items-center gap-1">
+                            Marks:
+                            <input
+                              type="number"
+                              min={1}
+                              value={bulkMarks}
+                              onChange={(e) => setBulkMarks(e.target.value)}
+                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Negative:
+                            <input
+                              type="number"
+                              min={0}
+                              value={bulkNegativeMarks}
+                              onChange={(e) => setBulkNegativeMarks(e.target.value)}
+                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <Textarea
+                        rows={7}
+                        value={bulkText}
+                        onChange={(e) => setBulkText(e.target.value)}
+                        placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
+                        className="font-mono text-xs"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className="rounded-full font-bold"
+                          disabled={!bulkText.trim() || bulkAdd.isPending}
+                          onClick={() => bulkAdd.mutate(true)}
+                        >
+                          {bulkAdd.isPending ? (
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="mr-1.5 h-4 w-4" />
+                          )}
+                          Import Questions (Use Only My Questions)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full font-bold"
+                          disabled={!bulkText.trim() || bulkAdd.isPending}
+                          onClick={() => bulkAdd.mutate(false)}
+                        >
+                          Import Questions (Keep Auto Bank Fill)
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {draft ? (
                     <div className="space-y-4">

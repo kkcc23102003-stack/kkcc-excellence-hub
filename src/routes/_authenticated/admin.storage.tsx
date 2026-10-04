@@ -18,8 +18,8 @@ import { friendlyError } from "@/lib/storage";
 const PROVIDERS = [
   {
     value: "supabase",
-    label: "Legacy Supabase (read-only)",
-    hint: "Do not use for educational uploads. Select an external provider.",
+    label: "Supabase Storage",
+    hint: "Current storage. Upload PDFs, notes, thumbnails and other educational files here.",
   },
   {
     value: "cloudflare_r2",
@@ -59,7 +59,9 @@ export const Route = createFileRoute("/_authenticated/admin/storage")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <Button asChild className="mt-6 rounded-full">
           <Link to="/dashboard">Back to dashboard</Link>
         </Button>
@@ -138,7 +140,7 @@ function AdminStoragePage() {
       <PageHeader
         eyebrow="Admin panel"
         title="Storage provider"
-        description="Educational uploads go to external R2, AWS S3, Backblaze B2 or S3-compatible storage. Supabase stores only student/auth/access-related data."
+        description="Educational files use the selected provider. Supabase Storage is the current/default provider; S3/R2 can be enabled later without changing courses, tests or notes."
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">

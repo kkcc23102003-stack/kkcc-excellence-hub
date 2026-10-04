@@ -162,7 +162,13 @@ export function applySchoolGradeScope(templates: Template[]) {
     const pair = scopes[template.subject];
     template.exams = template.exams.filter((exam) => {
       let allowed = true;
-      if (pair && (exam === "CBSE Class 11" || exam === "CBSE Class 12" || exam === "ISC Class 11" || exam === "ISC Class 12"))
+      if (
+        pair &&
+        (exam === "CBSE Class 11" ||
+          exam === "CBSE Class 12" ||
+          exam === "ISC Class 11" ||
+          exam === "ISC Class 12")
+      )
         allowed = pair[exam.endsWith("11") ? 0 : 1].has(template.topic);
       if (exam === "ISC Class 11" && /Class 12$/i.test(template.subject)) allowed = false;
       if (exam === "ISC Class 12" && /Class 11$/i.test(template.subject)) allowed = false;

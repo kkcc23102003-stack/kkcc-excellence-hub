@@ -6,7 +6,7 @@ import { resolve } from "node:path";
  */
 import { createServer } from "node:http";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createFixtureDatabase, seedFixtureUsers, fixtureIds as ids } from "./database";
 import { getExamBankExams } from "../../src/lib/exam-bank/index";
@@ -200,38 +200,66 @@ const testBase = {
   created_at: now,
   updated_at: now,
 };
-doc.tables["tests"] = [
-  { ...testBase, id: ids.test },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000002",
-    title: "Fixture Course-Linked Test",
-    course_id: ids.course,
-    series_name: "",
-    sort_order: 2,
-  },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000003",
-    title: "Fixture Free Test",
-    is_paid: false,
-    series_name: "",
-    sort_order: 3,
-  },
-  ...getExamBankExams().map((exam, index) => ({
-    ...testBase,
-    id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-    title: `Fixture ${exam}`,
-    exam_track: exam,
-    generation_exam: exam,
-    generation_subject: "",
-    subject: exam,
-    series_name: "",
-    is_paid: false,
-    sort_order: index + 10,
-  })),
-];
+const isLivePreview = process.env["KKCC_LIVE_PREVIEW"] === "1";
+doc.tables["tests"] = isLivePreview
+  ? []
+  : [
+      { ...testBase, id: ids.test },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000002",
+        title: "Fixture Course-Linked Test",
+        course_id: ids.course,
+        series_name: "",
+        sort_order: 2,
+      },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000003",
+        title: "Fixture Free Test",
+        is_paid: false,
+        series_name: "",
+        sort_order: 3,
+      },
+      ...getExamBankExams().map((exam, index) => ({
+        ...testBase,
+        id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        title: `Fixture ${exam}`,
+        exam_track: exam,
+        generation_exam: exam,
+        generation_subject: "",
+        subject: exam,
+        series_name: "",
+        is_paid: false,
+        sort_order: index + 10,
+      })),
+    ];
 doc.tables["test_questions"] = [];
+doc.tables["test_series_overrides"] = [];
+if (!isLivePreview) {
+  doc.tables["site_settings"] = [
+    ...(doc.tables["site_settings"] || []).filter(
+      (row) => row["key"] !== "test_series_custom_catalog",
+    ),
+    {
+      id: "99000000-0000-4000-8000-000000000099",
+      key: "test_series_custom_catalog",
+      value: JSON.stringify({
+        includeBuiltIn: true,
+        removedSeriesIds: [],
+        addedSeries: [],
+        syllabusBySeriesId: {},
+      }),
+      category: "exam-bank",
+      label: "Custom Test Series & Text Syllabus Catalog",
+      updated_at: now,
+    },
+  ];
+} else {
+  doc.tables["site_settings"] = (doc.tables["site_settings"] || []).filter(
+    (row) => row["key"] !== "test_series_custom_catalog",
+  );
+}
 doc.tables["private_settings"] = [];
 mkdirSync("data", { recursive: true });
 writeFileSync(runtime, JSON.stringify(doc), { mode: 0o600 });
@@ -267,6 +295,9 @@ const types = new Map(
 );
 const scalar = (table: string, column: string, value: unknown) =>
   types.get(`${table}.${column}`) === "jsonb" ? JSON.stringify(value) : value;
+await database.exec(
+  "GRANT EXECUTE ON FUNCTION public.get_my_block_status() TO anon, authenticated;",
+);
 const server = createServer(async (req, res) => {
   const respond = (value: unknown, status = 200) => {
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -275,6 +306,79 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://fixture.invalid");
     if (url.pathname === "/health") return respond({ fixture: true });
+    if (url.pathname === "/zip") {
+      const zipPath = "full fledge kkcc excellence hub.zip";
+      if (!existsSync(zipPath)) return respond({ error: "ZIP file not found" }, 404);
+      const buf = readFileSync(zipPath);
+      res.writeHead(200, {
+        "content-type": "application/zip",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="full fledge kkcc excellence hub.zip"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/production.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-PRODUCTION-SQL.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/cleaner.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-SQL-CLEANER.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SQL-CLEANER.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/sql") {
+      const cleanerSql = existsSync("KKCC-Excellence-Hub-SQL-CLEANER.sql")
+        ? readFileSync("KKCC-Excellence-Hub-SQL-CLEANER.sql", "utf8")
+        : "";
+      const productionSql = existsSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql")
+        ? readFileSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql", "utf8")
+        : "";
+      return respond({ ok: true, cleanerSql, productionSql });
+    }
+    if (url.pathname === "/clean") {
+      await database.exec("RESET ROLE");
+      const abandoned = await database.query(
+        "DELETE FROM public.learning_attempts WHERE status = 'started' RETURNING id",
+      );
+      const expiredGrants = await database.query(
+        "DELETE FROM public.test_access_grants WHERE revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < now()) RETURNING id",
+      );
+      await database.query(
+        "DELETE FROM public.series_access_grants WHERE revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < now())",
+      );
+      const counts = await database.query<{
+        profiles: number;
+        enrollments: number;
+        attempts: number;
+      }>(
+        "SELECT (SELECT count(*)::int FROM public.profiles) AS profiles, (SELECT count(*)::int FROM public.course_enrollments) AS enrollments, (SELECT count(*)::int FROM public.learning_attempts) AS attempts",
+      );
+      return respond({
+        ok: true,
+        cleanedAbandonedAttempts: abandoned.rows.length,
+        cleanedExpiredGrants: expiredGrants.rows.length,
+        ettSeriesFree: true,
+        stats: counts.rows[0] ?? { profiles: 0, enrollments: 0, attempts: 0 },
+        cleanedAt: new Date().toISOString(),
+      });
+    }
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const text = Buffer.concat(chunks).toString();
@@ -504,13 +608,12 @@ const server = createServer(async (req, res) => {
     );
   }
 });
-server.listen(4601, "0.0.0.0", () =>
-  console.log("LOCAL fixture backend ready on 4601; no production connection."),
-);
+const appPort = Number(process.env["PORT"]) || 3000;
 const env = {
   ...process.env,
+  VITE_KKCC_SANDBOX_PREVIEW: "1",
   VITE_SUPABASE_URL: "/__fixture__/supabase",
-  SUPABASE_URL: "http://127.0.0.1:4601",
+  SUPABASE_URL: `http://127.0.0.1:${appPort}/__fixture__/supabase`,
   VITE_SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
@@ -519,38 +622,53 @@ const env = {
   KKCC_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
 };
 Object.assign(process.env, env);
-const build = spawn(
-  process.execPath,
-  ["node_modules/vite/bin/vite.js", "build", "--mode", "fixture"],
-  { env, stdio: "inherit" },
-);
 let appServer: ReturnType<typeof createProductionServer> | undefined;
+let build: ReturnType<typeof spawn> | undefined;
 const stop = () => {
-  build.kill("SIGTERM");
+  build?.kill("SIGTERM");
   appServer?.close();
   server.close();
   void database.close().finally(() => process.exit(0));
 };
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
-build.on("exit", async (code) => {
-  if (code) {
-    server.close();
-    await database.close();
-    process.exit(code);
-  }
+
+async function startAppServer() {
   try {
     const module = await import(pathToFileURL(resolve("dist/server/server.js")).href);
-    appServer = createProductionServer(module.default || module, {
-      proxy: { prefix: "/__fixture__/supabase", target: "http://127.0.0.1:4601" },
+    const baseAppServer = createProductionServer(module.default || module);
+    appServer = createServer((req, res) => {
+      if (req.url && req.url.startsWith("/__fixture__/supabase")) {
+        req.url = req.url.slice("/__fixture__/supabase".length) || "/";
+        server.emit("request", req, res);
+        return;
+      }
+      baseAppServer.emit("request", req, res);
     });
-    appServer.listen(4600, "0.0.0.0", () =>
+    appServer.listen(appPort, "0.0.0.0", () =>
       console.log(
-        "LOCAL PRODUCTION-BUILD fixture ready on 4600; GoTrue/PostgREST emulated, actual SQL/RLS/app handlers.",
+        `LOCAL PRODUCTION-BUILD fixture ready on 0.0.0.0:${appPort}; GoTrue/PostgREST emulated, actual SQL/RLS/app handlers.`,
       ),
     );
   } catch (error) {
     console.error(error);
     stop();
   }
-});
+}
+
+if (process.env["SKIP_BUILD"] === "1" && existsSync(resolve("dist/server/server.js"))) {
+  await startAppServer();
+} else {
+  build = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "build", "--mode", "fixture"], {
+    env,
+    stdio: "inherit",
+  });
+  build.on("exit", async (code) => {
+    if (code) {
+      server.close();
+      await database.close();
+      process.exit(code);
+    }
+    await startAppServer();
+  });
+}

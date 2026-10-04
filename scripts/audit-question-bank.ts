@@ -199,7 +199,10 @@ const report = {
   templates,
   exams,
 };
-writeFileSync(`${directory}/${full ? "question-bank-audit.json" : "question-bank-sample.json"}`, JSON.stringify(report, null, 2));
+writeFileSync(
+  `${directory}/${full ? "question-bank-audit.json" : "question-bank-sample.json"}`,
+  JSON.stringify(report, null, 2),
+);
 const csv = [
   "Exam,Subjects,Mapped chapters,Templates,Parameter positions,Empty chapters,Underfilled 60-question chapters,Chapters with missing difficulty,Original syllabus rule",
 ];
@@ -219,7 +222,10 @@ for (const exam of exams)
       .map((item) => `"${String(item).replaceAll('"', '""')}"`)
       .join(","),
   );
-writeFileSync(`${directory}/${full ? "exam-coverage.csv" : "exam-coverage-sample.csv"}`, csv.join("\n") + "\n");
+writeFileSync(
+  `${directory}/${full ? "exam-coverage.csv" : "exam-coverage-sample.csv"}`,
+  csv.join("\n") + "\n",
+);
 const md = [
   "# Full existing-bank coverage audit",
   "",
@@ -248,7 +254,10 @@ md.push(
   "",
   "See question-bank-audit.json for EVERY subject/chapter, template ID, difficulty count and question type. Browser-flow evidence is recorded separately; controller wiring is not mislabeled as a live production test. All official-current syllabuses still require source-by-source academic sign-off, especially dated laws/current affairs and notification-dependent exam families.",
 );
-writeFileSync(`${directory}/${full ? "QUESTION_BANK_COVERAGE.md" : "QUESTION_BANK_SAMPLE.md"}`, md.join("\n") + "\n");
+writeFileSync(
+  `${directory}/${full ? "QUESTION_BANK_COVERAGE.md" : "QUESTION_BANK_SAMPLE.md"}`,
+  md.join("\n") + "\n",
+);
 console.log(
   JSON.stringify(
     {

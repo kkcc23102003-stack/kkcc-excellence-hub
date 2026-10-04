@@ -2,6 +2,7 @@ import { decodeSecureVideoToken } from "@/lib/video";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { projectContent } from "@/lib/project-content.server";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export async function contentStorageSettings() {
   const [publicRows, privateRows] = await Promise.all([
@@ -26,7 +27,7 @@ export async function contentStorageSettings() {
     );
   const map = new Map([...publicRows.data, ...privateRows.data].map((row) => [row.key, row.value]));
   return {
-    provider: map.get("storage_provider") || "external_url",
+    provider: map.get("storage_provider") || "supabase",
     bucket: map.get("storage_bucket") || "",
     region: map.get("storage_region") || "auto",
     endpoint: map.get("storage_endpoint") || "",
@@ -36,9 +37,10 @@ export async function contentStorageSettings() {
   };
 }
 export function contentStorageClient(settings: Awaited<ReturnType<typeof contentStorageSettings>>) {
+  if (settings.provider === "supabase") return null;
   if (!["aws_s3", "cloudflare_r2", "backblaze_b2", "wasabi", "minio"].includes(settings.provider))
     throw new Error(
-      "Educational uploads require external S3-compatible storage. Supabase is only for student/auth/access data; existing Supabase URLs need a verified asset migration.",
+      "This storage provider does not support direct uploads. Paste an external URL instead.",
     );
   if (!settings.access_key_id || !settings.secret_access_key || !settings.bucket)
     throw new Error(
@@ -70,15 +72,36 @@ export async function resolveContentUrl(value: string | null | undefined) {
     const settings = await contentStorageSettings();
     if (bucket !== settings.bucket || !path || path.includes(".."))
       throw new Error("Private file is not in the configured educational bucket.");
-    return getSignedUrl(
-      contentStorageClient(settings),
-      new GetObjectCommand({ Bucket: bucket, Key: path }),
-      { expiresIn: 3600 },
-    );
+    if (settings.provider === "supabase") {
+      const { data, error } = await supabaseAdmin.storage.from(bucket).createSignedUrl(path, 3600);
+      if (error || !data?.signedUrl)
+        throw new Error(error?.message || "Unable to create a Supabase Storage URL.");
+      return data.signedUrl;
+    }
+    const client = contentStorageClient(settings);
+    if (!client) throw new Error("Storage provider is not configured.");
+    return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: path }), {
+      expiresIn: 3600,
+    });
   }
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
-  const url = new URL(value);
-  if (url.protocol !== "https:" && url.protocol !== "http:")
-    throw new Error("Only HTTPS/HTTP hosted educational resources are supported.");
-  return url.href;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "#") return null;
+  if (
+    trimmed.startsWith("data:application/pdf") ||
+    trimmed.startsWith("data:text/html") ||
+    trimmed.startsWith("data:text/plain") ||
+    trimmed.startsWith("data:image/")
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
 }
