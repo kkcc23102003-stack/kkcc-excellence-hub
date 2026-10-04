@@ -314,3 +314,13 @@ test("all bundled teaching diagram templates produce a visual", async () => {
     assert.ok(analyzeNotes(template.body).visuals.length > 0, template.title);
   }
 });
+
+test("explicit diagram fences keep short headings and numbered branches together", () => {
+  const note =
+    "# My chapter\n:::tree Classification\nAccounts\n1. Personal\n2. Real\n3. Nominal\n:::\n# Next section\nText only.";
+  const analyzed = analyzeNotes(note);
+  assert.equal(analyzed.visuals[0]?.spec.kind, "tree");
+  const spec = analyzed.visuals[0]!.spec;
+  if (spec.kind === "tree") assert.equal(spec.branches.length, 3);
+  assert.ok(renderNotesBody(note).includes("Nominal"));
+});

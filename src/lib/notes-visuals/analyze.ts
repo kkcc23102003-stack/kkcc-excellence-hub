@@ -468,7 +468,24 @@ function toSections(lines: string[]): Section[] {
   }
 
   let current: Section = { heading: null, lines: [] };
+  let insideFence = false;
   for (const [index, line] of lines.entries()) {
+    // Explicit diagram bodies are atomic: short labels and numbered nodes
+    // must not be mistaken for new section headings inside the fence.
+    if (/^\s*:::\s*[a-zA-Z]+/.test(line)) {
+      insideFence = true;
+      current.lines.push(line);
+      continue;
+    }
+    if (/^\s*:::\s*$/.test(line)) {
+      insideFence = false;
+      current.lines.push(line);
+      continue;
+    }
+    if (insideFence) {
+      current.lines.push(line);
+      continue;
+    }
     if (isTitleLine(line, nextContentAfter[index])) {
       if (current.heading || current.lines.some((entry) => entry.trim())) sections.push(current);
       current = { heading: cleanHeading(line), lines: [] };

@@ -1,4 +1,4 @@
-import { NOTE_DIAGRAM_TEMPLATES } from "@/lib/notes-visuals/templates";
+import { DiagramTemplateLibrary } from "@/components/kkcc/diagram-template-library";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -651,34 +651,21 @@ function MaterialForm({
               Changing mode preserves existing pages. Text mode hides the handwriting editor.
               Diagrams are controlled separately below.
             </p>
-            <Label>Subject diagram templates</Label>
-            <select
-              aria-label="Insert diagram template"
-              className="block w-full rounded border bg-background p-2"
-              value=""
-              onChange={(event) => {
-                const template = NOTE_DIAGRAM_TEMPLATES[Number(event.target.value)];
-                if (!template || event.target.value === "") return;
-                setV((current) => ({
-                  ...current,
-                  description: updateNoteWithDirectives(
-                    parseVisualDirectives(current.description).text + "\n\n" + template.body,
-                    { ...noteDirectives, mode: "auto" },
-                  ),
-                }));
-              }}
-            >
-              <option value="">Choose an editable template…</option>
-              {NOTE_DIAGRAM_TEMPLATES.map((template, index) => (
-                <option key={template.title} value={index}>
-                  {template.subject} — {template.title}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              Template inserts into the text above: edit labels/content before saving. Templates are
-              simplified teaching aids, not an accuracy guarantee for every syllabus.
-            </p>
+            <DiagramTemplateLibrary
+              diagramsDisabled={noteDirectives.mode === "none"}
+              onInsert={(body) =>
+                setV((current) => {
+                  const parsed = parseVisualDirectives(current.description);
+                  return {
+                    ...current,
+                    description: updateNoteWithDirectives(
+                      parsed.text + "\n\n" + body,
+                      parsed.directives,
+                    ),
+                  };
+                })
+              }
+            />
           </div>
           {/* ---------------------------------------- diagram controls */}
           <div className="mt-3 rounded-2xl border bg-card/60 p-3">

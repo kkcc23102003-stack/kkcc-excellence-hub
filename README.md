@@ -1543,3 +1543,38 @@ Admin → Tests → select test → pencil edits generated as well as manual que
 including options, correct answer and explanation. This update preserves the
 question's existing sort order when correcting it. Editing a published question
 is not a retroactive regrade of historical attempts or a patch to its source template.
+
+### Full syllabus diagram library
+
+Admin → Materials → edit/add a note → **Open full syllabus diagram library**.
+The library has **1,002 entries**: **30 teaching diagrams** plus **972 revision maps**
+(one for every unique subject/topic in the current active question bank), spanning
+**78 subjects** and **66 exam tracks**. Filter maps by exam/board and subject,
+search by topic, preview the actual note output, then insert into the unsaved
+note draft. Existing text, write/text mode and the no-diagram switch are preserved.
+Repeated clicks on the same preview do not duplicate an insertion. Edit the
+inserted text and save through the existing material form to publish.
+
+Revision maps group selected worked examples. They are not a claim that every
+syllabus diagram is now an anatomical drawing, circuit schematic or map, nor that
+every fact has been independently verified. Full questions/answers/explanations
+appear below the compact map so short/truncated labels retain context. Teacher
+review is required. The separately curated diagrams include digestion, reflex arc,
+cell cycle, chemical reactions, series/parallel comparisons, electromagnetic
+spectrum, energy conversion, management, grammar and other teaching structures.
+
+The generated data is dynamically imported only when the admin opens the library;
+no question bank or diagram templates are uploaded to Supabase. Only inserted
+note content is saved through the existing note system. **No new SQL required.**
+Live custom syllabus additions are not automatically reflected in this snapshot.
+After changing source syllabus templates, regenerate with:
+
+```sh
+npx tsx scripts/build-diagram-library.ts
+```
+
+See `docs/diagram-library-coverage.md` for per-subject counts. The generator fails
+if any active topic lacks a usable source; provenance IDs/indices are retained in
+`src/lib/notes-visuals/syllabus-library.json`. Coverage tests compare every topic
+with the active bank and render every map. The large bank itself is not imported
+by the new admin component.
