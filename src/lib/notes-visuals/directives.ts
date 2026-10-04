@@ -23,9 +23,18 @@ export type NoteImage = {
   caption: string;
 };
 
+/**
+ * The two note types the admin picks between:
+ *  - "text"  → typing / paste only (PDF-ready, no handwriting pages)
+ *  - "write" → handwriting pages + typed text together (notes-app style)
+ */
+export type NoteKind = "text" | "write";
+
 export type VisualDirectives = {
   /** "none" = never generate diagrams for this note (text only). */
   mode: "auto" | "none";
+  /** Note type: plain text note, or a write + text note. */
+  kind: NoteKind;
   /** 1-based numbers of generated visuals to drop. */
   hide: number[];
   /** 1-based numbers → new title. */
@@ -38,6 +47,7 @@ export type VisualDirectives = {
 
 export const EMPTY_DIRECTIVES: VisualDirectives = {
   mode: "auto",
+  kind: "text",
   hide: [],
   rename: {},
   replace: {},
@@ -83,6 +93,7 @@ function parseRaw(raw: string): VisualDirectives {
   const input = parsed as Record<string, unknown>;
 
   if (input["mode"] === "none") directives.mode = "none";
+  if (input["kind"] === "write") directives.kind = "write";
   if (Array.isArray(input["hide"])) {
     directives.hide = input["hide"].map(toPositiveInt).filter((n): n is number => n !== null);
   }
@@ -172,6 +183,7 @@ export function parseVisualDirectives(text: string): {
 /** The directive block as it is stored in the note text ("" when nothing set). */
 export function serialiseDirectives(directives: VisualDirectives): string {
   const payload: Record<string, unknown> = {};
+  if (directives.kind === "write") payload["kind"] = "write";
   if (directives.mode === "none") payload["mode"] = "none";
   if (directives.hide.length) payload["hide"] = [...new Set(directives.hide)].sort((a, b) => a - b);
   if (Object.keys(directives.rename).length) payload["rename"] = directives.rename;

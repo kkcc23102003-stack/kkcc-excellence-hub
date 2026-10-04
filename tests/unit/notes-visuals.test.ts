@@ -293,3 +293,24 @@ test("settings round-trip through the note text and never print", () => {
   assert.equal(parsed.rename[1], "Steps");
   assert.ok(!renderNotesBody(stored).includes(":::visuals"));
 });
+
+test("write/text mode round trips without losing existing images", () => {
+  const original = {
+    ...EMPTY_DIRECTIVES,
+    kind: "write" as const,
+    images: [{ url: "https://example.com/page.jpg", caption: "Page" }],
+  };
+  const stored = updateNoteWithDirectives("Chapter", original);
+  assert.equal(parseVisualDirectives(stored).directives.kind, "write");
+  const switched = updateNoteWithDirectives(stored, { ...original, kind: "text" });
+  assert.equal(parseVisualDirectives(switched).directives.kind, "text");
+  assert.equal(parseVisualDirectives(switched).directives.images.length, 1);
+  assert.equal(parseVisualDirectives("Old note").directives.kind, "text");
+});
+
+test("all bundled teaching diagram templates produce a visual", async () => {
+  const { NOTE_DIAGRAM_TEMPLATES } = await import("../../src/lib/notes-visuals/templates");
+  for (const template of NOTE_DIAGRAM_TEMPLATES) {
+    assert.ok(analyzeNotes(template.body).visuals.length > 0, template.title);
+  }
+});

@@ -52,6 +52,10 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
   const [saving, setSaving] = useState(false);
   const [hasInk, setHasInk] = useState(false);
   const undoStack = useRef<string[]>([]);
+  const redoStack = useRef<string[]>([]);
+  const [stylusOnly, setStylusOnly] = useState(false);
+  const [textToPlace, setTextToPlace] = useState("");
+  const [placingText, setPlacingText] = useState(false);
 
   const context = useCallback(() => {
     const canvas = canvasRef.current;
@@ -66,7 +70,8 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
   const snapshot = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (undoStack.current.length > 12) undoStack.current.shift();
+    redoStack.current = [];
+    if (undoStack.current.length >= 12) undoStack.current.shift();
     undoStack.current.push(canvas.toDataURL("image/png"));
   }, []);
 
@@ -104,14 +109,31 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
   };
 
   const startStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (stylusOnly && event.pointerType === "touch") return;
     const ctx = context();
     if (!ctx) return;
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
     snapshot();
+    if (placingText && textToPlace.trim()) {
+      const point = pointFromEvent(event);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.font = `${Math.max(20, size * 6)}px sans-serif`;
+      textToPlace
+        .split("\n")
+        .forEach((line, index) =>
+          ctx.fillText(line, point.x, point.y + index * Math.max(26, size * 7)),
+        );
+      setHasInk(true);
+      setPlacingText(false);
+      return;
+    }
     drawing.current = true;
     lastPoint.current = pointFromEvent(event);
-    ctx.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
-    ctx.strokeStyle = color;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = tool === "eraser" ? "#ffffff" : color;
     ctx.globalAlpha = tool === "highlighter" ? 0.32 : 1;
     ctx.lineWidth = tool === "highlighter" ? size * 3.4 : tool === "eraser" ? size * 6 : size * 1.6;
     ctx.beginPath();
@@ -215,11 +237,9 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
     const ctx = context();
     if (!canvas || !ctx) return;
     const previous = undoStack.current.pop();
-    if (!previous) {
-      paintBackground();
-      setHasInk(false);
-      return;
-    }
+    if (!previous) return;
+    redoStack.current.push(canvas.toDataURL("image/png"));
+    setHasInk(true);
     const image = new Image();
     image.onload = () => {
       ctx.globalCompositeOperation = "source-over";
@@ -230,7 +250,25 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
     image.src = previous;
   };
 
+  const redo = () => {
+    const canvas = canvasRef.current;
+    const ctx = context();
+    const next = redoStack.current.pop();
+    if (!canvas || !ctx || !next) return;
+    undoStack.current.push(canvas.toDataURL("image/png"));
+    const image = new Image();
+    image.onload = () => {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+      setHasInk(true);
+    };
+    image.src = next;
+  };
+
   const clearAll = () => {
+    if (!window.confirm("Clear this page? Undo can restore it.")) return;
     snapshot();
     paintBackground();
     setHasInk(false);
@@ -363,6 +401,47 @@ export function NotesCanvasEditor({ onInsert, onClose }: NotesCanvasEditorProps)
           />
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 border-b p-3">
+          <Button size="sm" variant="outline" onClick={redo}>
+            Redo
+          </Button>
+          <label className="text-xs">
+            <input
+              type="checkbox"
+              checked={stylusOnly}
+              onChange={(e) => setStylusOnly(e.target.checked)}
+            />{" "}
+            Pen/mouse only (ignore finger)
+          </label>
+          <Input
+            aria-label="Text to place on page"
+            value={textToPlace}
+            onChange={(e) => setTextToPlace(e.target.value)}
+            placeholder="Type or paste text for this page"
+          />
+          <Button
+            size="sm"
+            variant={placingText ? "default" : "outline"}
+            disabled={!textToPlace.trim()}
+            onClick={() => setPlacingText(!placingText)}
+          >
+            Text → tap page to place
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              const link = document.createElement("a");
+              link.download = "kkcc-note-page.jpg";
+              link.href = canvas.toDataURL("image/jpeg", 0.85);
+              link.click();
+            }}
+          >
+            Download page backup
+          </Button>
+        </div>
         <div className="flex-1 overflow-auto bg-muted/30 p-3">
           <canvas
             ref={canvasRef}

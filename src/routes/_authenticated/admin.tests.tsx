@@ -493,7 +493,9 @@ function TestQuestionWriter() {
           marks: payload.marks,
           negative_marks: payload.negative_marks,
           explanation: payload.explanation,
-          sort_order: payload.id ? 0 : questions.length,
+          sort_order: payload.id
+            ? (questions.find((q) => q.id === payload.id)?.sort_order ?? 0)
+            : questions.length,
         },
       }),
     onSuccess: () => {
@@ -1623,6 +1625,7 @@ function TestQuestionWriter() {
                               <Button
                                 size="icon"
                                 variant="ghost"
+                                title="Correct question, options, answer and explanation (including generated questions)"
                                 aria-label="Edit question"
                                 onClick={() => startEdit(question)}
                               >

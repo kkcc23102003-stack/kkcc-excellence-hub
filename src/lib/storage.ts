@@ -1,3 +1,4 @@
+import { compressImageFile } from "@/lib/image-compress";
 import { supabase } from "@/integrations/supabase/client";
 import {
   createStorageUploadTarget,
@@ -181,6 +182,9 @@ export async function uploadContentFile(
       `File too large (${humanSize(file.size)}). Keep each upload below ${humanSize(MAX_UPLOAD_BYTES)}; for scanned notes, compress to 300–450 DPI or split the PDF by chapter.`,
     );
 
+  if (folder === "notes-images" && file.type.startsWith("image/")) {
+    file = (await compressImageFile(file)).file;
+  }
   const ext = extensionOf(file.name);
   if (ext && !ALLOWED_EXTENSIONS.includes(ext))
     throw new Error(

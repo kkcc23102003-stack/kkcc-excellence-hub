@@ -1512,3 +1512,34 @@ Browser/PWA content protection is intentionally implemented as the strongest pra
 copy/context/right-click/print/selection/drag guards, protected-key interception, screenshot shortcut blocking,
 identity watermarks, screen focus/visibility isolation, and inspection-tool blocking. Normal web apps cannot
 guarantee device-level DRM against external capture.
+
+### Note workspace: text / write modes and storage
+
+Admin → Materials now has separate **Text only** and **Write + Text** modes,
+recorded inside the existing note directives (no new SQL). Switching mode does
+not delete existing photos/pages. Diagram generation remains an independent toggle.
+Write mode includes pen, marker, eraser, undo/redo, paste/photo insertion, typed
+text placement, pen/mouse-only input, clear confirmation, and JPEG page backup.
+Save each page into the note and reopen the canvas for another page. Pages are
+flattened images, not editable vector ink. OCR, lasso selection, audio recording,
+Samsung sync and full Samsung Notes parity are not implemented.
+
+Ten editable teaching templates cover selected science, math, accounting, tax,
+computing, polity, history, economics and teaching topics. They are bundled source
+files, not a database template bank; they do not cover every syllabus topic.
+Review simplified labels for the intended lesson before publishing.
+
+Note image uploads are resized on-device (longest side 1600 px, JPEG quality 0.82)
+when appropriate. Small files stay unchanged; unsupported image decoding falls
+back to the original. PDFs are unchanged. Compression is NOT a storage quota
+promise: original-format fallbacks, PDFs, student records and accumulating images
+can still fill the configured provider. Check actual usage in the provider's
+dashboard. Removing a note image reference does not automatically delete its
+stored object (it may be shared). Use Admin Storage to review files before deleting.
+The question-template bank remains in project files. Actual published test rows
+and student records still use the database.
+
+Admin → Tests → select test → pencil edits generated as well as manual questions,
+including options, correct answer and explanation. This update preserves the
+question's existing sort order when correcting it. Editing a published question
+is not a retroactive regrade of historical attempts or a patch to its source template.

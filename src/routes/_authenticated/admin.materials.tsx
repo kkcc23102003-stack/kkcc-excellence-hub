@@ -1,3 +1,4 @@
+import { NOTE_DIAGRAM_TEMPLATES } from "@/lib/notes-visuals/templates";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -630,6 +631,55 @@ function MaterialForm({
             <code>{"2H_2 + O_2 -> 2H_2O"}</code>.
           </p>
 
+          <div className="my-3 space-y-2 rounded-xl border p-3">
+            <Label>Note type</Label>
+            <select
+              aria-label="Note type"
+              className="block w-full rounded border bg-background p-2"
+              value={noteDirectives.kind}
+              onChange={(event) =>
+                setDirectives({
+                  ...noteDirectives,
+                  kind: event.target.value === "write" ? "write" : "text",
+                })
+              }
+            >
+              <option value="text">Text only — type / paste</option>
+              <option value="write">Write + Text — handwriting pages and typed notes</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Changing mode preserves existing pages. Text mode hides the handwriting editor.
+              Diagrams are controlled separately below.
+            </p>
+            <Label>Subject diagram templates</Label>
+            <select
+              aria-label="Insert diagram template"
+              className="block w-full rounded border bg-background p-2"
+              value=""
+              onChange={(event) => {
+                const template = NOTE_DIAGRAM_TEMPLATES[Number(event.target.value)];
+                if (!template || event.target.value === "") return;
+                setV((current) => ({
+                  ...current,
+                  description: updateNoteWithDirectives(
+                    parseVisualDirectives(current.description).text + "\n\n" + template.body,
+                    { ...noteDirectives, mode: "auto" },
+                  ),
+                }));
+              }}
+            >
+              <option value="">Choose an editable template…</option>
+              {NOTE_DIAGRAM_TEMPLATES.map((template, index) => (
+                <option key={template.title} value={index}>
+                  {template.subject} — {template.title}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Template inserts into the text above: edit labels/content before saving. Templates are
+              simplified teaching aids, not an accuracy guarantee for every syllabus.
+            </p>
+          </div>
           {/* ---------------------------------------- diagram controls */}
           <div className="mt-3 rounded-2xl border bg-card/60 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -660,6 +710,7 @@ function MaterialForm({
                   size="sm"
                   variant="outline"
                   className="h-8 rounded-full text-xs"
+                  disabled={noteDirectives.kind !== "write"}
                   onClick={() => setCanvasOpen(true)}
                 >
                   <PenLine className="mr-1 h-3.5 w-3.5" />
