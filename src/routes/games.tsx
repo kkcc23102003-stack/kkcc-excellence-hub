@@ -55,7 +55,10 @@ import {
   type KittuPracticeMode,
 } from "@/lib/kittu-batch-catalog";
 import { getBankItems, getSubjectBankItems } from "@/lib/quiz-question-bank";
-import { getExamBankTopics, sampleQuestion as sampleExamBankQuestion } from "@/lib/exam-bank";
+// The 1.7 MB exam bank is code-split: it is fetched in the background as soon
+// as the quiz page opens and is cached for every later visit, instead of
+// blocking the first paint of the page on a slow phone connection.
+import { examBankSync, useExamBankModule, type ExamBankModule } from "@/lib/exam-bank/lazy";
 import {
   ADVANCED_BANK_DIFFICULTY,
   ADVANCED_SEARCH_PARAM,
@@ -771,6 +774,9 @@ function GamesContent({
 }) {
   const wallet = useLocalKittuWallet(rewards);
   const [launch, setLaunch] = useState<PracticeTarget | null>(null);
+  // Fetching the bank here means it is usually ready before the student has
+  // finished choosing a paper, and never blocks the page from rendering.
+  useExamBankModule();
 
   return (
     <>
@@ -934,10 +940,13 @@ function QuizLauncher({ onStart }: { onStart: (target: PracticeTarget) => void }
   const [mode, setMode] = useState<PracticeMode>("NCERT-based");
   const [query, setQuery] = useState("");
 
+  const { bank } = useExamBankModule();
   const subjects = useMemo(() => (exam ? getSubjectsForExam(exam) : []), [exam]);
+  // `bank` is passed in and listed as a dependency so the full chapter list
+  // appears the moment the background download finishes, on its own.
   const chapters = useMemo(
-    () => (exam && subject ? getTopicsForSubject(exam, subject) : []),
-    [exam, subject],
+    () => (exam && subject ? getTopicsForSubject(exam, subject, bank) : []),
+    [exam, subject, bank],
   );
   const options = useMemo<readonly string[]>(
     () => (step === 0 ? EXAM_TRACKS : step === 1 ? subjects : step === 2 ? chapters : []),
@@ -1581,26 +1590,42 @@ function EndlessQuizQuest({
       if (/[\u0900-\u097F]/.test(s) || lower.includes("hindi")) {
         return lower.includes("literature") ? "Hindi Literature" : "Hindi Grammar";
       }
-      if (lower.includes("pedagog") || lower.includes("child") || lower.includes("cdp") || lower.includes("teaching")) {
+      if (
+        lower.includes("pedagog") ||
+        lower.includes("child") ||
+        lower.includes("cdp") ||
+        lower.includes("teaching")
+      ) {
         return "Teaching Aptitude";
       }
       if (lower.includes("punjab") && lower.includes("hist")) return "Punjab History";
       if (lower.includes("punjab") && lower.includes("geog")) return "Punjab Geography";
       if (lower.includes("punjab") && lower.includes("econ")) return "Punjab Economics";
       if (lower.includes("punjab")) return "Punjab GK";
-      if (lower.includes("english")) return lower.includes("language") ? "English Language" : "English Grammar";
-      if (lower.includes("math") || lower.includes("quant") || lower.includes("arithmetic")) return "Quantitative Aptitude";
-      if (lower.includes("reason") || lower.includes("mental") || lower.includes("logical")) return "Reasoning";
+      if (lower.includes("english"))
+        return lower.includes("language") ? "English Language" : "English Grammar";
+      if (lower.includes("math") || lower.includes("quant") || lower.includes("arithmetic"))
+        return "Quantitative Aptitude";
+      if (lower.includes("reason") || lower.includes("mental") || lower.includes("logical"))
+        return "Reasoning";
       if (lower.includes("comp") || lower.includes("ict")) return "Computer Awareness";
-      if (lower.includes("evs") || lower.includes("environment") || lower.includes("ecolog")) return "Environment and Ecology";
-      if (lower.includes("polity") || lower.includes("civic") || lower.includes("constitution")) return "Polity";
+      if (lower.includes("evs") || lower.includes("environment") || lower.includes("ecolog"))
+        return "Environment and Ecology";
+      if (lower.includes("polity") || lower.includes("civic") || lower.includes("constitution"))
+        return "Polity";
       if (lower.includes("history")) return "Modern History";
       if (lower.includes("geog")) return "Indian Geography";
       if (lower.includes("econ") || lower.includes("banking")) return "Indian Economy";
       if (lower.includes("account")) return "Accounting";
       if (lower.includes("commerce") || lower.includes("business")) return "Commerce";
-      if (lower.includes("science") && !lower.includes("social") && !lower.includes("political")) return "General Science";
-      if (lower.includes("gk") || lower.includes("general knowledge") || lower.includes("general awareness")) return "General Awareness";
+      if (lower.includes("science") && !lower.includes("social") && !lower.includes("political"))
+        return "General Science";
+      if (
+        lower.includes("gk") ||
+        lower.includes("general knowledge") ||
+        lower.includes("general awareness")
+      )
+        return "General Awareness";
       return null;
     };
 
@@ -2233,14 +2258,18 @@ function getSubjectsForExam(exam: ExamTrack): Subject[] {
   return SUBJECTS;
 }
 
-function getTopicsForSubject(_exam: ExamTrack, subject: SubjectFilter): string[] {
+function getTopicsForSubject(
+  _exam: ExamTrack,
+  subject: SubjectFilter,
+  bank: ExamBankModule | null = examBankSync(),
+): string[] {
   if (subject === "Mixed") return [];
   /*
    * The chapter list is read straight from the question bank, so every chapter
    * added to a syllabus shows up here without a second edit. The older curated
    * list is merged in afterwards to keep the hand written questions reachable.
    */
-  const fromBank = getExamBankTopics(subject);
+  const fromBank = bank?.getExamBankTopics(subject) ?? [];
   const curated = SUBJECT_TOPICS[subject] ?? [];
   const merged = Array.from(new Set([...fromBank, ...curated]));
   return merged.length > 0 ? merged : SUBJECT_TOPICS.SST;
@@ -3176,6 +3205,9 @@ function makeExamBankQuestion(
   topic: string,
   topicLabel: string,
 ): QuizQuestion | null {
+  const bank = examBankSync();
+  if (!bank) return null;
+  const sampleExamBankQuestion = bank.sampleQuestion;
   const examFilter = exam === "All Exams" ? undefined : exam;
   // Chapter routing is strict: never serve another chapter's question here.
   // When a chapter has no bank coverage the caller falls through to its own

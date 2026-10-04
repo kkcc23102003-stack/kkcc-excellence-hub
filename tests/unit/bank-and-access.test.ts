@@ -236,11 +236,7 @@ test("Punjab ETT Cadre test series default to free (0 INR and 0 coins) and switc
     assert.ok(series, id);
     assert.equal(series.priceInr, 0, id);
     assert.equal(series.priceCoins, 0, id);
-    assert.deepEqual(
-      resolveSeriesPrice(series, null),
-      { priceInr: 0, priceCoins: 0 },
-      id,
-    );
+    assert.deepEqual(resolveSeriesPrice(series, null), { priceInr: 0, priceCoins: 0 }, id);
     assert.deepEqual(
       resolveSeriesPrice(series, { price_inr: 999, price_coins: 999 }),
       { priceInr: 999, priceCoins: 999 },
@@ -351,9 +347,15 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
           {
             id: "cq-ai-1",
             question_text: "Which amendment added Socialist and Secular to the Preamble?",
-            options: ["42nd Amendment, 1976", "44th Amendment, 1978", "1st Amendment, 1951", "86th Amendment, 2002"],
+            options: [
+              "42nd Amendment, 1976",
+              "44th Amendment, 1978",
+              "1st Amendment, 1951",
+              "86th Amendment, 2002",
+            ],
             correct_index: 0,
-            explanation: "The 42nd Constitutional Amendment Act, 1976 added Socialist, Secular and Integrity.",
+            explanation:
+              "The 42nd Constitutional Amendment Act, 1976 added Socialist, Secular and Integrity.",
             source: "ai" as const,
           },
         ],
@@ -367,7 +369,10 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   assert.equal(resolvedCustom?.questions[1]?.source, "ai");
   assert.equal(getChapterQuestionCount("my-series", "SST", "Preamble", catalogWithCustom), 15);
   assert.equal(getChapterQuestionCount("my-series", "SST", "Other Chapter", catalogWithCustom), 25);
-  assert.equal(getChapterQuestionCount("other-series", "SST", "Other Chapter", catalogWithCustom), 30);
+  assert.equal(
+    getChapterQuestionCount("other-series", "SST", "Other Chapter", catalogWithCustom),
+    30,
+  );
 
   const builtInNotes = getAllBuiltInStudyNotes();
   assert.ok(builtInNotes.length >= 10, "Expected built-in study notes library to be populated");
@@ -443,10 +448,7 @@ test("Admin text syllabus parser, custom series catalogue, and auto question gen
   );
   assert.equal(multiFormatPlan.length, 2);
   assert.equal(multiFormatPlan[0]?.subject, "Punjabi");
-  assert.deepEqual(multiFormatPlan[0]?.chapters, [
-    "ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ",
-    "ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ",
-  ]);
+  assert.deepEqual(multiFormatPlan[0]?.chapters, ["ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ", "ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ"]);
   assert.equal(multiFormatPlan[1]?.subject, "Polity");
   assert.deepEqual(multiFormatPlan[1]?.chapters, ["Preamble"]);
 });

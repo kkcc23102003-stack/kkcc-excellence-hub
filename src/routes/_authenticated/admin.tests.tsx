@@ -225,8 +225,7 @@ function toTestPayload(
     syllabus_subject:
       patch.syllabus_subject ??
       patch.subject ??
-      (test.syllabus_subject ||
-        (test.subject && test.subject !== "General" ? test.subject : "")),
+      (test.syllabus_subject || (test.subject && test.subject !== "General" ? test.subject : "")),
     syllabus_chapter: test.syllabus_chapter ?? "",
     syllabus_topic: test.syllabus_topic ?? "",
     ...patch,
@@ -898,8 +897,8 @@ function TestQuestionWriter() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         Choose the exam, subject, chapter, level, and any question count (e.g. 10,
                         20, 30, 60, 100). Questions you added or generated with AI in the Question
-                        Bank always get <strong>First Preference</strong>, and the rest fill from the
-                        template bank.
+                        Bank always get <strong>First Preference</strong>, and the rest fill from
+                        the template bank.
                       </p>
                     </div>
                     <Button asChild size="sm" variant="outline" className="rounded-full font-bold">

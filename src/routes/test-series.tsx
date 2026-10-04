@@ -189,8 +189,7 @@ function TestSeries() {
   });
   const paymentQuery = useQuery({
     queryKey: ["public", "payment-settings"],
-    queryFn: () =>
-      safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
+    queryFn: () => safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
     staleTime: 30_000,
   });
   const paymentConfigured = Boolean(
@@ -671,14 +670,10 @@ function SeriesCard({
                     className="flex items-baseline justify-between gap-3 rounded-lg px-2 py-1 text-xs odd:bg-muted/40"
                   >
                     <span className="min-w-0">
-                      <span className="mr-1.5 font-black text-muted-foreground">
-                        {index + 1}.
-                      </span>
+                      <span className="mr-1.5 font-black text-muted-foreground">{index + 1}.</span>
                       {chapter}
                     </span>
-                    <span className="shrink-0 font-bold text-primary">
-                      {qPerChapter}Q
-                    </span>
+                    <span className="shrink-0 font-bold text-primary">{qPerChapter}Q</span>
                   </li>
                 ))}
               </ol>
@@ -781,11 +776,7 @@ function SeriesCard({
             </Link>
           </Button>
         ) : (
-          <EnrolButton
-            series={series}
-            totals={totals}
-            paymentConfigured={paymentConfigured}
-          />
+          <EnrolButton series={series} totals={totals} paymentConfigured={paymentConfigured} />
         )}
       </div>
     </article>

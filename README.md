@@ -1310,6 +1310,49 @@ Start by building the complete design system and homepage first, then build all 
 
 Make every major interaction functional rather than creating only visual placeholders.
 
+## Online payments, coupons and payment recovery
+
+Razorpay is wired once, from `/admin/payments`: paste the **Key ID** and Razorpay
+connects automatically across paid Batches (`/courses/$slug` → `/checkout`), Test
+Series (`/test-series` → `/checkout`), individual paid Tests and 23KAAT coin packs
+(`/coins`). Until a key is saved, every one of those surfaces shows the English
+**Paid (Offline) — Please Contact Admin** flow instead.
+
+Saving the **Key Secret** as well upgrades checkout to fully server-side verified
+payments:
+
+1. the price (coupon included) is recomputed on the server and a Razorpay **order**
+   is created with `kkcc_user`, `kkcc_kind`, `kkcc_item` and `kkcc_coupon` notes;
+2. the completion call verifies the `order_id|payment_id` signature, asks Razorpay
+   for the payment, and checks the captured amount before anything is unlocked;
+3. a retried or duplicated callback is idempotent, so nobody is enrolled twice.
+
+Because the student, item and amount live on the order, a payment whose browser
+callback never arrived can still be recovered:
+
+- students: **Payment Recovery** card on `/checkout`, `/coins` and `/support`
+  ("Payment ho gaya lekin access nahi mila?") — paste the `pay_…` id, or tap the
+  payment the app remembered in the browser, and access is granted immediately;
+- admin: **Payment Recovery & Access Grant** tool at `/admin/payments` — look up a
+  payment, then grant it to the student from the order notes or from an email.
+
+Coupons (`/admin/coupons`) apply 1%–100% off to the rupee price and to the 23KAAT
+coin price, across Batches, Test Series and Tests. A 100% coupon claims the item
+with no payment at all. No schema change is needed for any of this: the tables
+already exist in `KKCC-Excellence-Hub-PRODUCTION-SQL.sql`.
+
+## Performance notes
+
+- The ~1.7 MB exam bank is code-split (`src/lib/exam-bank/lazy.ts`): the quiz page
+  and `/admin/exam-bank` paint immediately and pull the bank in the background,
+  with their own chapter-correct generators covering the gap. Nothing about the
+  question quality depends on the download finishing first.
+- React, the router, the query client and the Supabase client build into separate
+  `vendor-*` chunks, so content updates do not invalidate ~550 kB of cached
+  vendor code on a student's phone.
+- React Query defaults (2 min stale time, no refetch on window focus, preload on
+  intent) keep navigation instant and stop background request storms.
+
 ## Development
 
 Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).

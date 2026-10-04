@@ -832,4 +832,3 @@ export function formatTheoryChapterAsNote(chapter: TheoryChapter): BuiltInStudyN
 export function getAllBuiltInStudyNotes(): BuiltInStudyNote[] {
   return [...COMPETITIVE_STUDY_NOTES, ...THEORY_CHAPTERS.map(formatTheoryChapterAsNote)];
 }
-

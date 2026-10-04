@@ -239,9 +239,7 @@ export async function individualTestPlan(test: TestRow) {
         : availableSubjects;
     const explicitTopic =
       test.syllabus_chapter ||
-      (test.generation_topic && test.generation_topic !== "Mixed"
-        ? test.generation_topic
-        : "");
+      (test.generation_topic && test.generation_topic !== "Mixed" ? test.generation_topic : "");
     const mapped = subjects
       .map((subject) => {
         let topics = getExamBankTopicsForExam(subject, exam);
@@ -272,7 +270,12 @@ export async function individualTestPlan(test: TestRow) {
     if (explicitSubject) {
       return [{ subject: explicitSubject, chapters: [explicitTopic || "Complete Test"] }];
     }
-    return [{ subject: test.subject || "General Awareness", chapters: [explicitTopic || "Complete Test"] }];
+    return [
+      {
+        subject: test.subject || "General Awareness",
+        chapters: [explicitTopic || "Complete Test"],
+      },
+    ];
   };
 
   if (test.question_source === "deterministic") {
@@ -545,7 +548,9 @@ export async function buildSelectedPaper(
       subject: selection.subject!,
     }));
     const combined =
-      remainingCount > 0 ? [...priorityCustom, ...generated.slice(0, remainingCount)] : priorityCustom;
+      remainingCount > 0
+        ? [...priorityCustom, ...generated.slice(0, remainingCount)]
+        : priorityCustom;
     questions = (combined.length > 0 ? combined : generated).map((q, idx) => ({
       ...q,
       sort_order: idx,
@@ -603,8 +608,7 @@ export function allExamSubjects(exam: string) {
   return [
     ...new Set(
       ACTIVE_TEMPLATES.filter(
-        (template) =>
-          template.count > 0 && (exam === "All Exams" || template.exams.includes(exam)),
+        (template) => template.count > 0 && (exam === "All Exams" || template.exams.includes(exam)),
       ).map((template) => template.subject),
     ),
   ].sort();

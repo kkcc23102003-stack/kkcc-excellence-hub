@@ -188,7 +188,9 @@ function CourseDetail() {
                         : "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300"
                     }
                   >
-                    {paymentConfigured ? "Paid · Online / Offline" : "Paid · Offline (Contact Admin)"}
+                    {paymentConfigured
+                      ? "Paid · Online / Offline"
+                      : "Paid · Offline (Contact Admin)"}
                   </Badge>
                 )}
               </div>

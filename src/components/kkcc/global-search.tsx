@@ -89,7 +89,7 @@ export function GlobalSearch({
     let cancelled = false;
     void Promise.all([listPublishedCourses(), listPublicLectures(), listPublicMaterials()])
       .then(([courses, lectures, materials]) => {
-        if (!cancelled) setData({ courses, lectures, materials });
+        if (!cancelled) setData({ courses, lectures, materials: materials as Material[] });
       })
       .catch((error) => {
         console.error("[search] content request failed", error);

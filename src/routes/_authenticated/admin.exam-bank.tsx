@@ -1,5 +1,5 @@
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -22,9 +22,7 @@ import {
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ACTIVE_TEMPLATES, EXAM_BANK_TOTAL, OFFICIAL_SYLLABUS_TAGS_REMOVED } from "@/lib/exam-bank";
-import { OFFICIAL_SYLLABUS_RULES } from "@/lib/exam-bank/official-syllabus";
-import { auditQuestionBank } from "@/lib/exam-bank/quality-audit";
+import type { OfficialSyllabusRule } from "@/lib/exam-bank/official-syllabus";
 import {
   adminBulkImportCustomChapterQuestions,
   adminClearAllTestSeries,
@@ -557,19 +555,66 @@ function AdminExamBankPage() {
     });
   }
 
-  /** Everything below is computed from the live bank, not from a stored copy. */
-  const bank = useMemo(() => {
-    const subjects = new Map<string, Set<string>>();
-    const examTags = new Set<string>();
-    for (const t of ACTIVE_TEMPLATES) {
-      if (!subjects.has(t.subject)) subjects.set(t.subject, new Set());
-      subjects.get(t.subject)!.add(t.topic);
-      for (const e of t.exams) examTags.add(e);
-    }
-    let chapters = 0;
-    for (const v of subjects.values()) chapters += v.size;
-    return { subjects, chapters, examTags };
+  /**
+   * Everything below is computed from the live bank, not from a stored copy.
+   * The bank is ~1.7 MB, so it is imported in the background: the page paints
+   * instantly and the tables fill in a moment later.
+   */
+  const [bankData, setBankData] = useState<{
+    subjects: Map<string, Set<string>>;
+    chapters: number;
+    examTags: Set<string>;
+    total: number;
+    tagsRemoved: number;
+    rules: OfficialSyllabusRule[];
+  } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const [bankModule, rulesModule] = await Promise.all([
+          import("@/lib/exam-bank"),
+          import("@/lib/exam-bank/official-syllabus"),
+        ]);
+        const subjects = new Map<string, Set<string>>();
+        const examTags = new Set<string>();
+        for (const t of bankModule.ACTIVE_TEMPLATES) {
+          if (!subjects.has(t.subject)) subjects.set(t.subject, new Set());
+          subjects.get(t.subject)!.add(t.topic);
+          for (const e of t.exams) examTags.add(e);
+        }
+        let chapters = 0;
+        for (const v of subjects.values()) chapters += v.size;
+        if (!alive) return;
+        setBankData({
+          subjects,
+          chapters,
+          examTags,
+          total: bankModule.EXAM_BANK_TOTAL,
+          tagsRemoved: bankModule.OFFICIAL_SYLLABUS_TAGS_REMOVED,
+          rules: [...rulesModule.OFFICIAL_SYLLABUS_RULES],
+        });
+      } catch (error) {
+        console.error("[admin] exam bank could not be loaded", error);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  const bankReady = bankData !== null;
+  const bank = useMemo(
+    () =>
+      bankData ?? {
+        subjects: new Map<string, Set<string>>(),
+        chapters: 0,
+        examTags: new Set<string>(),
+      },
+    [bankData],
+  );
+  const bankRules = useMemo(() => bankData?.rules ?? [], [bankData]);
 
   const activePaidSeries = useMemo(
     () => getEffectivePaidTestSeries(customCatalog),
@@ -591,7 +636,8 @@ function AdminExamBankPage() {
         );
         const totals = seriesTotals(s, customPlan);
         const plan = seriesPlan(s, customPlan);
-        const missing = hasCustomSyllabus ? [] : s.subjects.filter((x) => !bank.subjects.has(x));
+        const missing =
+          hasCustomSyllabus || !bankReady ? [] : s.subjects.filter((x) => !bank.subjects.has(x));
         const empty = plan
           .filter((p) => !p.chapters || p.chapters.length === 0)
           .map((p) => p.subject);
@@ -605,7 +651,7 @@ function AdminExamBankPage() {
         if (totals.pool > 250000) problems.push(`pool ${inr(totals.pool)} above 250,000`);
         return { s, totals, problems, hasCustomSyllabus, isAddedByAdmin };
       }),
-    [activePaidSeries, customCatalog, bank.subjects],
+    [activePaidSeries, customCatalog, bank.subjects, bankReady],
   );
 
   const parsedDraftPlan = useMemo(
@@ -637,8 +683,22 @@ function AdminExamBankPage() {
   }, [series]);
 
   const problemCount = series.reduce((n, r) => n + r.problems.length, 0);
-  const qualityReport = useMemo(() => (tab === "quality" ? auditQuestionBank() : null), [tab]);
-  const recordedRules = useMemo(() => new Set(OFFICIAL_SYLLABUS_RULES.map((r) => r.exam)), []);
+  const [qualityReport, setQualityReport] = useState<Awaited<
+    ReturnType<(typeof import("@/lib/exam-bank/quality-audit"))["auditQuestionBank"]>
+  > | null>(null);
+  useEffect(() => {
+    if (tab !== "quality" || qualityReport) return;
+    let alive = true;
+    void import("@/lib/exam-bank/quality-audit")
+      .then((module) => {
+        if (alive) setQualityReport(module.auditQuestionBank());
+      })
+      .catch((error) => console.error("[admin] quality audit failed", error));
+    return () => {
+      alive = false;
+    };
+  }, [tab, qualityReport]);
+  const recordedRules = useMemo(() => new Set(bankRules.map((r) => r.exam)), [bankRules]);
   const term = query.trim().toLowerCase();
   const hit = (s: string) => !term || s.toLowerCase().includes(term);
 
@@ -652,7 +712,11 @@ function AdminExamBankPage() {
 
       <section className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat icon={Database} label="Questions in the bank" value={inr(EXAM_BANK_TOTAL)} />
+          <Stat
+            icon={Database}
+            label="Questions in the bank"
+            value={bankData ? inr(bankData.total) : "…"}
+          />
           <Stat
             icon={Layers}
             label="Subjects / chapters"
@@ -674,8 +738,9 @@ function AdminExamBankPage() {
         <div className="surface-panel mt-4 flex flex-wrap items-center gap-3 p-4 text-sm">
           <ShieldCheck className="h-4 w-4 text-primary" />
           <span>
-            <strong>{OFFICIAL_SYLLABUS_RULES.length}</strong> official syllabus rules applied,
-            removing <strong>{inr(OFFICIAL_SYLLABUS_TAGS_REMOVED)}</strong> wrong exam tags.
+            <strong>{bankData ? bankData.rules.length : "…"}</strong> official syllabus rules
+            applied, removing <strong>{bankData ? inr(bankData.tagsRemoved) : "…"}</strong> wrong
+            exam tags.
           </span>
           <span className="text-muted-foreground">
             {totals.tests} tests · {inr(totals.questions)} paper questions · pool {inr(totals.pool)}
@@ -770,18 +835,23 @@ function AdminExamBankPage() {
                         <Badge className="rounded-full bg-primary text-primary-foreground">
                           Question Bank Hub
                         </Badge>
-                        <Badge variant="outline" className="rounded-full border-emerald-500/40 text-emerald-500">
+                        <Badge
+                          variant="outline"
+                          className="rounded-full border-emerald-500/40 text-emerald-500"
+                        >
                           ★ Priority #1 to Your Added &amp; AI Questions
                         </Badge>
                       </div>
                       <p className="mt-1.5 text-base font-black">
-                        Question Bank — All Template Questions + Add Your Own + AI Question Generator
+                        Question Bank — All Template Questions + Add Your Own + AI Question
+                        Generator
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Browse all built-in template questions for any Subject &amp; Chapter, add your
-                        own questions (1-by-1 or Bulk), or generate questions with AI. Your added &amp;
-                        AI questions always get <strong>First Preference (Priority #1)</strong> when
-                        creating tests, and you can set any question count per test (not just 60).
+                        Browse all built-in template questions for any Subject &amp; Chapter, add
+                        your own questions (1-by-1 or Bulk), or generate questions with AI. Your
+                        added &amp; AI questions always get{" "}
+                        <strong>First Preference (Priority #1)</strong> when creating tests, and you
+                        can set any question count per test (not just 60).
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1055,8 +1125,8 @@ function AdminExamBankPage() {
                       Bulk Paste MCQs
                     </Button>
                     <span className="ml-auto text-xs font-bold text-primary">
-                      ★ {customChapterQuestions.length} Priority Questions · {effectiveChapterQCount}{" "}
-                      Qs/Test in {cqSubject || "—"} → {cqChapter || "—"}
+                      ★ {customChapterQuestions.length} Priority Questions ·{" "}
+                      {effectiveChapterQCount} Qs/Test in {cqSubject || "—"} → {cqChapter || "—"}
                     </span>
                   </div>
 
@@ -1138,7 +1208,8 @@ function AdminExamBankPage() {
                       </div>
 
                       <label className="block text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        Optional Topic Focus / Study Notes / Key Facts (AI will frame MCQs from this)
+                        Optional Topic Focus / Study Notes / Key Facts (AI will frame MCQs from
+                        this)
                         <textarea
                           rows={4}
                           value={cqAiPrompt}
@@ -1476,8 +1547,8 @@ function AdminExamBankPage() {
 
                       {previewBankQuery.isPending ? (
                         <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" /> Loading template questions for{" "}
-                          {cqSubject} → {cqChapter}…
+                          <Loader2 className="h-4 w-4 animate-spin" /> Loading template questions
+                          for {cqSubject} → {cqChapter}…
                         </p>
                       ) : (
                         <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
@@ -1726,9 +1797,7 @@ function AdminExamBankPage() {
                           setNewSeriesDraft({
                             ...newSeriesDraft,
                             priceInr:
-                              Number(newSeriesDraft.priceInr) > 0
-                                ? newSeriesDraft.priceInr
-                                : "999",
+                              Number(newSeriesDraft.priceInr) > 0 ? newSeriesDraft.priceInr : "999",
                             priceCoins:
                               Number(newSeriesDraft.priceCoins) > 0
                                 ? newSeriesDraft.priceCoins
@@ -2465,31 +2534,33 @@ function AdminExamBankPage() {
 
         {tab === "syllabus" ? (
           <div className="mt-4 space-y-3">
-            {OFFICIAL_SYLLABUS_RULES.filter((r) => hit(r.exam) || hit(r.body)).map((r) => (
-              <div key={r.exam} className="surface-panel p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-black">{r.exam}</p>
-                  <Badge variant="secondary" className="rounded-full text-[11px]">
-                    Rule date {r.verified} · academic review required
-                  </Badge>
+            {bankRules
+              .filter((r) => hit(r.exam) || hit(r.body))
+              .map((r) => (
+                <div key={r.exam} className="surface-panel p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-black">{r.exam}</p>
+                    <Badge variant="secondary" className="rounded-full text-[11px]">
+                      Rule date {r.verified} · academic review required
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{r.body}</p>
+                  <p className="mt-2 break-words text-xs text-primary">{r.source}</p>
+                  {r.excludeSubjects?.length ? (
+                    <p className="mt-2 text-xs">
+                      <span className="font-bold">Subjects excluded:</span>{" "}
+                      {r.excludeSubjects.join(", ")}
+                    </p>
+                  ) : null}
+                  {r.excludeTopics?.length ? (
+                    <p className="mt-1 text-xs">
+                      <span className="font-bold">Chapters excluded:</span>{" "}
+                      {r.excludeTopics.join(", ")}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{r.note}</p>
                 </div>
-                <p className="mt-1 text-xs font-semibold text-muted-foreground">{r.body}</p>
-                <p className="mt-2 break-words text-xs text-primary">{r.source}</p>
-                {r.excludeSubjects?.length ? (
-                  <p className="mt-2 text-xs">
-                    <span className="font-bold">Subjects excluded:</span>{" "}
-                    {r.excludeSubjects.join(", ")}
-                  </p>
-                ) : null}
-                {r.excludeTopics?.length ? (
-                  <p className="mt-1 text-xs">
-                    <span className="font-bold">Chapters excluded:</span>{" "}
-                    {r.excludeTopics.join(", ")}
-                  </p>
-                ) : null}
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{r.note}</p>
-              </div>
-            ))}
+              ))}
           </div>
         ) : null}
 

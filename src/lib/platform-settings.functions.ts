@@ -226,10 +226,8 @@ export const saveAdminPaymentSettings = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const prevSettings = await readPublicSettings(context.supabase);
     const keyId = data.razorpay_key_id.trim();
-    const keyJustAddedOrChanged =
-      keyId.length > 0 && prevSettings.razorpay_key_id.trim() !== keyId;
-    const effectiveEnabled =
-      keyId.length > 0 && (data.enabled || keyJustAddedOrChanged);
+    const keyJustAddedOrChanged = keyId.length > 0 && prevSettings.razorpay_key_id.trim() !== keyId;
+    const effectiveEnabled = keyId.length > 0 && (data.enabled || keyJustAddedOrChanged);
     const effectiveMode: "test" | "live" = keyId.startsWith("rzp_live_")
       ? "live"
       : keyId.startsWith("rzp_test_")
@@ -238,11 +236,7 @@ export const saveAdminPaymentSettings = createServerFn({ method: "POST" })
 
     await upsertPublicSettings(context.supabase, {
       payment_provider: data.provider,
-      payment_enabled: !keyId
-        ? "false"
-        : effectiveEnabled
-          ? "true"
-          : "disabled_manual",
+      payment_enabled: !keyId ? "false" : effectiveEnabled ? "true" : "disabled_manual",
       payment_mode: effectiveMode,
       razorpay_key_id: keyId,
       offline_payment_instructions: data.offline_payment_instructions,

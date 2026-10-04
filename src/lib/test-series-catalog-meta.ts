@@ -4887,25 +4887,41 @@ function resolveCatalogSubjectAlias(subject: string): string {
   if (/[\u0900-\u097F]/.test(subject) || norm.includes("hindi")) {
     return norm.includes("literature") ? "Hindi Literature" : "Hindi Grammar";
   }
-  if (norm.includes("pedagog") || norm.includes("child") || norm.includes("cdp") || norm.includes("teaching")) {
+  if (
+    norm.includes("pedagog") ||
+    norm.includes("child") ||
+    norm.includes("cdp") ||
+    norm.includes("teaching")
+  ) {
     return "Teaching Aptitude";
   }
   if (norm.includes("punjab") && norm.includes("hist")) return "Punjab History";
   if (norm.includes("punjab") && norm.includes("geog")) return "Punjab Geography";
   if (norm.includes("punjab") && norm.includes("econ")) return "Punjab Economics";
   if (norm.includes("punjab")) return "Punjab GK";
-  if (norm.includes("english")) return norm.includes("language") ? "English Language" : "English Grammar";
-  if (norm.includes("math") || norm.includes("quant") || norm.includes("arithmetic")) return "Quantitative Aptitude";
-  if (norm.includes("reason") || norm.includes("mental") || norm.includes("logical")) return "Reasoning";
+  if (norm.includes("english"))
+    return norm.includes("language") ? "English Language" : "English Grammar";
+  if (norm.includes("math") || norm.includes("quant") || norm.includes("arithmetic"))
+    return "Quantitative Aptitude";
+  if (norm.includes("reason") || norm.includes("mental") || norm.includes("logical"))
+    return "Reasoning";
   if (norm.includes("comp") || norm.includes("ict") || norm === "it") return "Computer Awareness";
-  if (norm.includes("evs") || norm.includes("environment") || norm.includes("ecolog")) return "Environment and Ecology";
-  if (norm.includes("polity") || norm.includes("civic") || norm.includes("constitution")) return "Polity";
+  if (norm.includes("evs") || norm.includes("environment") || norm.includes("ecolog"))
+    return "Environment and Ecology";
+  if (norm.includes("polity") || norm.includes("civic") || norm.includes("constitution"))
+    return "Polity";
   if (norm.includes("history")) return "Modern History";
   if (norm.includes("geog")) return "Indian Geography";
   if (norm.includes("econ") || norm.includes("banking")) return "Indian Economy";
   if (norm.includes("account") || norm.includes("commerce")) return "Accounting";
-  if (norm.includes("science") && !norm.includes("social") && !norm.includes("political")) return "General Science";
-  if (norm.includes("gk") || norm.includes("general knowledge") || norm.includes("general awareness")) return "General Awareness";
+  if (norm.includes("science") && !norm.includes("social") && !norm.includes("political"))
+    return "General Science";
+  if (
+    norm.includes("gk") ||
+    norm.includes("general knowledge") ||
+    norm.includes("general awareness")
+  )
+    return "General Awareness";
   return subject;
 }
 

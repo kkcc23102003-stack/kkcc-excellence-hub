@@ -14,6 +14,7 @@ import {
   getAdminPaymentSettings,
   saveAdminPaymentSettings,
 } from "@/lib/platform-settings.functions";
+import { AdminPaymentRecoveryTool } from "@/components/kkcc/admin-payment-recovery-tool";
 import { friendlyError } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/admin/payments")({
@@ -297,6 +298,9 @@ function AdminPaymentsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Support tool: verify a Razorpay payment and unlock the student. */}
+        <AdminPaymentRecoveryTool />
       </div>
     </SiteLayout>
   );

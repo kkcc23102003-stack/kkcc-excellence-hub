@@ -8,6 +8,7 @@ import { Loader2, Mail, MapPin, MessageSquare, Phone } from "lucide-react";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
 import { useWebsiteContent } from "@/components/kkcc/website-content-provider";
 import { CustomPageSections } from "@/components/kkcc/custom-page-sections";
+import { RazorpayPaymentRecovery } from "@/components/kkcc/razorpay-payment-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,6 +100,11 @@ function SupportPage() {
       />
 
       <CustomPageSections page="support" position="top" />
+
+      {/* Online payment made but access missing: recover it here, no waiting. */}
+      <div className="mx-auto w-full max-w-7xl px-4 pt-10 sm:px-6">
+        <RazorpayPaymentRecovery />
+      </div>
 
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_1fr]">
         <section>

@@ -64,9 +64,7 @@ async function publicMaterials(materials: Row<"materials">[]) {
         ...material,
         access_type: effectiveAccessType,
         file_url:
-          effectiveAccessType === "free"
-            ? resolved || buildPublicNoteDataUrl(material)
-            : null,
+          effectiveAccessType === "free" ? resolved || buildPublicNoteDataUrl(material) : null,
       };
     }),
   );

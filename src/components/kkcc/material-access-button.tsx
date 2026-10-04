@@ -42,14 +42,13 @@ function toEmbeddedMobilePreviewUrl(url: string | null | undefined): string | nu
 
 function openPrintableNoteWindow(input: {
   title: string;
-  subject?: string | null;
-  chapter?: string | null;
-  materialType?: string | null;
-  description?: string | null;
+  subject?: string | null | undefined;
+  chapter?: string | null | undefined;
+  materialType?: string | null | undefined;
+  description?: string | null | undefined;
 }) {
   const escapedBody = (
-    input.description ||
-    `${input.title} — Complete Study Notes & Key Exam Revision Points.`
+    input.description || `${input.title} — Complete Study Notes & Key Exam Revision Points.`
   )
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -76,17 +75,17 @@ export function MaterialAccessButton({
   className = "mt-5 w-full",
 }: {
   fileUrl: string | null;
-  materialId?: string;
-  accessType?: string | null;
-  price?: number | null;
-  coinPrice?: number | null;
-  courseId?: string | null;
-  title?: string | null;
-  subject?: string | null;
-  chapter?: string | null;
-  description?: string | null;
-  materialType?: string | null;
-  className?: string;
+  materialId?: string | undefined;
+  accessType?: string | null | undefined;
+  price?: number | null | undefined;
+  coinPrice?: number | null | undefined;
+  courseId?: string | null | undefined;
+  title?: string | null | undefined;
+  subject?: string | null | undefined;
+  chapter?: string | null | undefined;
+  description?: string | null | undefined;
+  materialType?: string | null | undefined;
+  className?: string | undefined;
 }) {
   const { user, loading: authLoading } = useAuthUser();
   const client = useQueryClient();

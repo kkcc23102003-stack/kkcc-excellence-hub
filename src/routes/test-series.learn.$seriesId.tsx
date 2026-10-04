@@ -45,25 +45,32 @@ import {
 } from "@/lib/test-series-catalog";
 
 export const Route = createFileRoute("/test-series/learn/$seriesId")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    level: typeof search["level"] === "string" ? search["level"] : "",
-    subject: typeof search["subject"] === "string" ? search["subject"] : "",
-    chapter:
-      typeof search["chapter"] === "string"
-        ? search["chapter"]
-        : typeof search["topic"] === "string"
-          ? search["topic"]
-          : "",
-    topic: typeof search["topic"] === "string" ? search["topic"] : "",
-    test: typeof search["test"] === "string" ? search["test"] : "",
-    view: typeof search["view"] === "string" ? search["view"] : "",
-  }),
+  // Every parameter is optional so a link can deep link into one view without
+  // spelling out the other five, e.g. `/test-series/learn/x?view=tests`.
+  validateSearch: (search: Record<string, unknown>): SeriesLearningSearch => {
+    const out: SeriesLearningSearch = {};
+    for (const key of ["level", "subject", "chapter", "topic", "test", "view"] as const) {
+      const value = search[key];
+      if (typeof value === "string" && value) out[key] = value;
+    }
+    if (!out["chapter"] && out["topic"]) out["chapter"] = out["topic"];
+    return out;
+  },
   component: SeriesLearningPage,
 });
 
+type SeriesLearningSearch = {
+  level?: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  test?: string;
+  view?: string;
+};
+
 function SeriesLearningPage() {
   const { seriesId } = Route.useParams();
-  const { subject, chapter, view } = Route.useSearch();
+  const { subject = "", chapter = "", view = "" } = Route.useSearch();
   const navigate = Route.useNavigate();
   const { user, loading } = useAuthUser();
   const learningAccess = useLearningAccess();
@@ -80,8 +87,7 @@ function SeriesLearningPage() {
   });
   const paymentQuery = useQuery({
     queryKey: ["public", "payment-settings"],
-    queryFn: () =>
-      safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
+    queryFn: () => safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
     staleTime: 30_000,
   });
   const publicTestsQuery = useQuery({
@@ -253,10 +259,7 @@ function SeriesLearningPage() {
             {/* Series Test Layers Summary */}
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               {layers.map((layer) => (
-                <div
-                  key={layer.kind}
-                  className="rounded-2xl border bg-background/70 p-4"
-                >
+                <div key={layer.kind} className="rounded-2xl border bg-background/70 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-black uppercase tracking-wider text-primary">
                       {layer.label}
@@ -283,9 +286,9 @@ function SeriesLearningPage() {
                   Complete Test Series Syllabus &amp; Chapterwise Tests
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Every subject includes chapterwise tests ({qPerChapter} MCQs per chapter:{" "}
-                  {easyQ} Easy, {modQ} Moderate, {diffQ} Difficult) plus a{" "}
-                  {QUESTIONS_PER_SUBJECT_TEST}-question Subjectwise Master Test.
+                  Every subject includes chapterwise tests ({qPerChapter} MCQs per chapter: {easyQ}{" "}
+                  Easy, {modQ} Moderate, {diffQ} Difficult) plus a {QUESTIONS_PER_SUBJECT_TEST}
+                  -question Subjectwise Master Test.
                 </p>
               </div>
               <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-bold">
@@ -295,10 +298,7 @@ function SeriesLearningPage() {
 
             <div className="mt-5 space-y-5">
               {plan.map((item, subjectIndex) => (
-                <section
-                  key={item.subject}
-                  className="surface-panel overflow-hidden p-5 sm:p-6"
-                >
+                <section key={item.subject} className="surface-panel overflow-hidden p-5 sm:p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
                     <div>
                       <span className="text-[11px] font-black uppercase tracking-[0.14em] text-primary">
@@ -417,9 +417,7 @@ function SeriesLearningPage() {
           {/* Additional Custom Tests attached to this Series (if any) */}
           {seriesTests.length > 0 && (
             <div className="mt-8">
-              <h3 className="text-lg font-black">
-                Additional Scheduled Papers in {series.name}
-              </h3>
+              <h3 className="text-lg font-black">Additional Scheduled Papers in {series.name}</h3>
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {seriesTests.map((test) => (
                   <TestCard key={test.id} test={test} enrolled={allowed} allowed={allowed} />

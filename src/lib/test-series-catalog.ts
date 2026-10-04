@@ -1309,7 +1309,9 @@ export function parseSeriesSyllabusText(text: string): SubjectPlan[] {
         .filter(Boolean);
       if (parts.length >= 2) {
         const subj = parts[0]!.replace(/^subject\s*:\s*/i, "").trim();
-        const ch = parts[1]!.replace(/^(?:chapter|ch\.?|unit|topic)\s*(?:\d+\s*[-:.]\s*)?/i, "").trim();
+        const ch = parts[1]!
+          .replace(/^(?:chapter|ch\.?|unit|topic)\s*(?:\d+\s*[-:.]\s*)?/i, "")
+          .trim();
         currentSubject = subj;
         if (ch) addChapters(subj, [ch]);
         continue;

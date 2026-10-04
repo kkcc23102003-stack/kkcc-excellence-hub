@@ -49,6 +49,9 @@ import { submitAdmissionEnquiry } from "@/lib/enquiries.functions";
 import { ensureFreeCourseAccess } from "@/lib/enrollments.functions";
 import { getPublicPaymentSettings } from "@/lib/platform-settings.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
+import { createLearningRazorpayOrder } from "@/lib/razorpay.functions";
+import { rememberPendingPayment, forgetPendingPayment } from "@/lib/pending-payments";
+import { RazorpayPaymentRecovery } from "@/components/kkcc/razorpay-payment-recovery";
 import {
   QUESTIONS_PER_CHAPTER,
   getEffectiveLearningSeries,
@@ -202,6 +205,9 @@ function Checkout() {
   const [payingOnline, setPayingOnline] = useState(false);
   const [sendingOfflineRequest, setSendingOfflineRequest] = useState(false);
   const [offlineRequestSent, setOfflineRequestSent] = useState(false);
+  // Shown after a payment that could not be confirmed, so the student can
+  // recover the access themselves instead of waiting for the admin.
+  const [showRecovery, setShowRecovery] = useState(false);
 
   const paymentConfigured = Boolean(payment.enabled && payment.razorpay_key_id);
   const navigate = useNavigate();
@@ -238,7 +244,9 @@ function Checkout() {
       return selectedSeries.priceInr <= 0 && selectedSeries.priceCoins <= 0;
     }
     if (checkoutMode === "test" && selectedTest) {
-      return !selectedTest.is_paid || (selectedTest.price_inr <= 0 && selectedTest.price_coins <= 0);
+      return (
+        !selectedTest.is_paid || (selectedTest.price_inr <= 0 && selectedTest.price_coins <= 0)
+      );
     }
     return course ? isFreeCourse(course) : false;
   }, [checkoutMode, selectedSeries, selectedTest, course]);
@@ -277,7 +285,7 @@ function Checkout() {
   }, [free, baseCoinCost, appliedCoupon]);
 
   const discount = !free ? (appliedCoupon?.discount_amount ?? 0) : 0;
-  const total = free ? 0 : Math.max(0, (appliedCoupon?.final_amount ?? basePriceInr));
+  const total = free ? 0 : Math.max(0, appliedCoupon?.final_amount ?? basePriceInr);
 
   const itemTitle =
     checkoutMode === "series"
@@ -401,9 +409,38 @@ function Checkout() {
         );
       }
 
+      // The price and the Razorpay order are created on the server, so the
+      // amount cannot be edited from the browser and every payment carries the
+      // student + item in its notes (that is what powers payment recovery).
+      const order = await createLearningRazorpayOrder({
+        data: {
+          kind: checkoutMode,
+          item_id: itemId,
+          coupon_code: appliedCoupon?.code ?? "",
+        },
+      });
+
+      if (order.already_unlocked) {
+        await invalidateLearningQueries(queryClient);
+        toast.success("Already active on your account", {
+          description: `${order.item_title} is already unlocked — no payment needed.`,
+        });
+        openAfterUnlock();
+        return;
+      }
+
+      const payableInr = Math.max(0, order.amount_inr || total);
+      if (payableInr <= 0) {
+        toast.info("This coupon makes the item free", {
+          description: "Use the free claim button — no payment is required.",
+        });
+        return;
+      }
+
       const rzp = new window.Razorpay({
-        key: payment.razorpay_key_id,
-        amount: Math.round(total * 100),
+        key: order.key_id || payment.razorpay_key_id,
+        ...(order.order_id ? { order_id: order.order_id } : {}),
+        amount: order.amount_paise || Math.round(payableInr * 100),
         currency: "INR",
         name: "KKCC Excellence Hub",
         description: `${checkoutMode === "series" ? "Test Series" : checkoutMode === "test" ? "Mock Test" : "Batch"}: ${itemTitle}`,
@@ -412,32 +449,61 @@ function Checkout() {
           email: user.email || "",
         },
         theme: { color: "#dc2626" },
+        modal: {
+          ondismiss: () => {
+            setPayingOnline(false);
+          },
+        },
         handler: async (response: {
           razorpay_payment_id?: string;
           razorpay_order_id?: string;
           razorpay_signature?: string;
         }) => {
+          const paymentId = response.razorpay_payment_id || "";
+          if (!paymentId) {
+            setShowRecovery(true);
+            toast.error("Razorpay did not return a Payment ID", {
+              description:
+                "Please check your UPI app statement and contact Admin if money was cut.",
+            });
+            return;
+          }
+          // Remember the id first: if this call fails, the student can recover
+          // the access with one tap, even after closing the app.
+          rememberPendingPayment({
+            payment_id: paymentId,
+            kind: checkoutMode,
+            item_id: itemId,
+            title: itemTitle,
+            amount_inr: payableInr,
+          });
           try {
             await finishRazorpayPurchase({
               data: {
                 kind: checkoutMode,
                 item_id: itemId,
                 coupon_code: appliedCoupon?.code ?? "",
-                razorpay_payment_id: response.razorpay_payment_id || `pay_${Date.now()}`,
-                razorpay_order_id: response.razorpay_order_id || "",
+                razorpay_payment_id: paymentId,
+                razorpay_order_id: response.razorpay_order_id || order.order_id || "",
                 razorpay_signature: response.razorpay_signature || "",
               },
             });
+            forgetPendingPayment(paymentId);
             await invalidateLearningQueries(queryClient);
             toast.success("Payment Successful — Access Unlocked!", {
               description: `${itemTitle} is now active on your student account.`,
             });
             openAfterUnlock();
           } catch (err) {
+            setShowRecovery(true);
             toast.error(
               err instanceof Error
                 ? err.message
-                : "Payment verification failed. Please contact Admin with your Payment ID.",
+                : "Payment verification failed. Please use Payment Recovery below.",
+              {
+                description:
+                  "Aapka Payment ID save kar liya gaya hai — neeche 'Verify & unlock' dabaayein.",
+              },
             );
           }
         },
@@ -527,7 +593,7 @@ function Checkout() {
         discount_percent: result.discount_percent,
         discount_amount: result.discount_amount,
         final_amount: result.final_amount,
-        final_coins: result.final_coins,
+        ...(typeof result.final_coins === "number" ? { final_coins: result.final_coins } : {}),
         remaining_uses: result.remaining_uses,
       });
       toast.success(result.message || `Coupon applied — ${result.discount_percent}% off`);
@@ -574,7 +640,9 @@ function Checkout() {
       if (result.final_amount <= 0 && result.enrolled) {
         await invalidateLearningQueries(queryClient);
         toast.success(
-          result.already_redeemed ? "Coupon already claimed" : "100% Coupon claimed — access unlocked!",
+          result.already_redeemed
+            ? "Coupon already claimed"
+            : "100% Coupon claimed — access unlocked!",
         );
         openAfterUnlock();
         return;
@@ -751,6 +819,11 @@ function Checkout() {
             ) : null}
           </div>
 
+          {/* Money deducted but no access? Verify the payment right here. */}
+          {(paymentConfigured || showRecovery) && !free && (
+            <RazorpayPaymentRecovery className="mt-5" />
+          )}
+
           {/* When Razorpay is OFF, show prominent English Contact Admin Notice Card */}
           {!free && !paymentConfigured && (
             <div className="mt-5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
@@ -785,9 +858,7 @@ function Checkout() {
                   <Layers className="h-4 w-4 text-primary" />
                   Complete Series Syllabus ({seriesSubjects.length} Subjects)
                 </h2>
-                <span className="text-xs font-bold text-primary">
-                  {qPerChapter}Q per chapter
-                </span>
+                <span className="text-xs font-bold text-primary">{qPerChapter}Q per chapter</span>
               </div>
               <div className="mt-3 space-y-3">
                 {seriesSubjects.map((item) => (

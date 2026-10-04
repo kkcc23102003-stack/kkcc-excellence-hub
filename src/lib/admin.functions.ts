@@ -1170,7 +1170,8 @@ export const adminSaveSeriesSyllabus = createServerFn({ method: "POST" })
       );
     }
     const current = await readCustomSeriesCatalog();
-    const qPerTest = data.questions_per_test ?? current.questionsPerSeriesId?.[data.series_id] ?? 60;
+    const qPerTest =
+      data.questions_per_test ?? current.questionsPerSeriesId?.[data.series_id] ?? 60;
     const syllabusBySeriesId = {
       ...(current.syllabusBySeriesId ?? {}),
       [data.series_id]: plan,
@@ -1717,10 +1718,7 @@ export const adminPreviewQuestionBank = createServerFn({ method: "POST" })
         exam: z.string().trim().max(120).optional().default("All Exams"),
         subject: z.string().trim().min(1).max(120),
         chapter: z.string().trim().min(1).max(200),
-        difficulty: z
-          .enum(["Easy", "Moderate", "Difficult", "Mixed"])
-          .optional()
-          .default("Mixed"),
+        difficulty: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).optional().default("Mixed"),
         count: z.number().int().min(1).max(200).optional().default(30),
       })
       .parse(input),
@@ -1754,7 +1752,8 @@ export const adminPreviewQuestionBank = createServerFn({ method: "POST" })
 
     const templateQuestions = generateCustomSyllabusPaper(recipe);
     const cleanCustomQuestions = (customConfig?.questions ?? []).filter(
-      (q) => !isLegacyScienceFallbackForNonScienceSubject(q.question_text, data.subject, data.chapter),
+      (q) =>
+        !isLegacyScienceFallbackForNonScienceSubject(q.question_text, data.subject, data.chapter),
     );
 
     return {
@@ -1819,7 +1818,9 @@ function synthesizeQuestionsFromPromptAndBank(input: {
 
       const kvPairs: Array<{ left: string; right: string; raw: string }> = [];
       for (const line of lines) {
-        const kvMatch = line.match(/^([^:—–-]{3,80})\s*(?::|—|–|-|\bis\b|\bwas\b|\bare\b)\s*(.{3,140})$/i);
+        const kvMatch = line.match(
+          /^([^:—–-]{3,80})\s*(?::|—|–|-|\bis\b|\bwas\b|\bare\b)\s*(.{3,140})$/i,
+        );
         if (kvMatch) {
           kvPairs.push({
             left: kvMatch[1]!.trim(),
@@ -1924,10 +1925,7 @@ export const adminGenerateAiChapterQuestions = createServerFn({ method: "POST" }
         chapter: z.string().trim().min(1).max(200),
         prompt: z.string().trim().max(20000).optional().default(""),
         count: z.number().int().min(1).max(60).optional().default(10),
-        difficulty: z
-          .enum(["Easy", "Moderate", "Difficult", "Mixed"])
-          .optional()
-          .default("Mixed"),
+        difficulty: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).optional().default("Mixed"),
         marks: z.number().int().min(0).max(100).optional().default(1),
         negative_marks: z.number().int().min(0).max(100).optional().default(0),
         mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
@@ -1950,7 +1948,7 @@ export const adminGenerateAiChapterQuestions = createServerFn({ method: "POST" }
     let usedProvider: "gemini" | "smart-synthesizer" = "smart-synthesizer";
 
     // Try Gemini API first if a key is configured in env or private_settings
-    let geminiKey = process.env.GEMINI_API_KEY || "";
+    let geminiKey = process.env["GEMINI_API_KEY"] || "";
     if (!geminiKey) {
       const keyRow = await projectContent
         .from("private_settings")

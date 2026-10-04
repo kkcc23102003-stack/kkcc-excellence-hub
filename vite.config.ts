@@ -39,6 +39,26 @@ export default defineConfig(({ mode }) => {
     resolve: {
       tsconfigPaths: true,
     },
+    build: {
+      /**
+       * Split the shared vendor code away from application code. A student who
+       * already opened the app keeps React, the router, the query client and the
+       * Supabase client in the browser cache, so a content update only downloads
+       * the small application chunk instead of the whole ~480 kB bundle.
+       */
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              { name: "vendor-react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+              { name: "vendor-router", test: /node_modules[\\/]@tanstack[\\/]router/ },
+              { name: "vendor-query", test: /node_modules[\\/]@tanstack[\\/]react-query/ },
+              { name: "vendor-supabase", test: /node_modules[\\/]@supabase[\\/]/ },
+            ],
+          },
+        },
+      },
+    },
     server: {
       host: "0.0.0.0",
       allowedHosts: true,

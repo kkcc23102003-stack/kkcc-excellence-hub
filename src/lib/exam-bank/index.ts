@@ -428,7 +428,12 @@ function resolveSubjectTemplates(subject: string): Template[] {
   }
   const aliasSubjects: string[] = [];
   if (/[\u0A00-\u0A7F]/.test(subject) || norm.includes("punjabi") || norm.includes("gurmukhi")) {
-    aliasSubjects.push("Punjabi Grammar", "Punjabi Paper A", "Punjabi Paper B", "Punjabi Literature");
+    aliasSubjects.push(
+      "Punjabi Grammar",
+      "Punjabi Paper A",
+      "Punjabi Paper B",
+      "Punjabi Literature",
+    );
   } else if (/[\u0900-\u097F]/.test(subject) || norm.includes("hindi")) {
     aliasSubjects.push("Hindi Grammar", "Hindi Literature");
   } else if (norm.includes("punjab") && norm.includes("hist")) {

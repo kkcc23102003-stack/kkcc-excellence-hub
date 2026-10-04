@@ -1,8 +1,16 @@
-import { createHmac } from "node:crypto";
 import { projectContent } from "@/lib/project-content.server";
 import { effectiveSeries, readStudentAccess, unwrap } from "@/lib/learning.server";
 import { coinPriceOf } from "@/lib/cms";
 import { resolveServerCouponDiscount } from "@/lib/coupons.functions";
+import {
+  grantCoinPackPurchase,
+  grantLearningPurchase,
+  hasLearningAccess,
+  loadCoinPack,
+  resolveLearningPrice,
+  type LearningKind,
+} from "@/lib/learning-purchase.server";
+import { readRazorpayCredentials, verifyRazorpayPayment } from "@/lib/razorpay.server";
 import { materialForStudent } from "@/lib/material-access.server";
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
@@ -357,184 +365,169 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => razorpayCompleteSchema.parse(input))
   .handler(async ({ context, data }) => {
-    const { data: publicRows } = await projectContent
-      .from("site_settings")
-      .select("key, value")
-      .in("key", ["payment_enabled", "razorpay_key_id"]);
-    const settingMap = new Map((publicRows ?? []).map((r) => [r.key, r.value]));
-    const keyId = (settingMap.get("razorpay_key_id") ?? "").trim();
-    const isEnabled = Boolean(keyId) && settingMap.get("payment_enabled") !== "disabled_manual";
-    if (!isEnabled || !keyId) {
+    const credentials = await readRazorpayCredentials();
+    if (!credentials.enabled || !credentials.keyId) {
       throw new Error(
         "Online payment (Razorpay) is currently off. Please contact Admin for offline payment.",
       );
     }
 
-    const { data: secretRow } = await projectContent
-      .from("private_settings")
-      .select("value")
-      .eq("key", "razorpay_key_secret")
-      .maybeSingle();
-    const keySecret = (secretRow?.value ?? "").trim();
-    if (keySecret && data.razorpay_order_id && data.razorpay_signature) {
-      const expectedSig = createHmac("sha256", keySecret)
-        .update(`${data.razorpay_order_id}|${data.razorpay_payment_id}`)
-        .digest("hex");
-      if (expectedSig !== data.razorpay_signature) {
-        throw new Error("Razorpay payment signature verification failed.");
+    const kind = data.kind as LearningKind;
+    const alreadyUnlocked = await hasLearningAccess(context.userId, kind, data.item_id);
+
+    // 1. Quote the item on the server. A retry must never burn a coupon twice,
+    //    so the coupon is skipped entirely when access already exists.
+    const quote = await resolveLearningPrice({
+      kind,
+      itemId: data.item_id,
+      couponCode: alreadyUnlocked ? "" : data.coupon_code,
+      userId: context.userId,
+      recordRedemption: false,
+    });
+
+    // 2. Confirm the payment with Razorpay *before* anything is unlocked:
+    //    signature, captured status, amount and the student on the order notes.
+    const verification = await verifyRazorpayPayment({
+      credentials,
+      paymentId: data.razorpay_payment_id,
+      orderId: data.razorpay_order_id,
+      signature: data.razorpay_signature,
+      userId: context.userId,
+      expectedAmountInr: quote.finalInr,
+    });
+
+    if (
+      verification.notes.kind &&
+      (verification.notes.kind !== kind || verification.notes.item_id !== quote.item.id)
+    ) {
+      throw new Error(
+        `This payment was made for a different item (${verification.notes.item_id ?? "unknown"}). Please contact Admin with Payment ID ${verification.paymentId}.`,
+      );
+    }
+
+    // 3. Record the coupon exactly once, after the money is confirmed.
+    let amountInr = quote.finalInr;
+    let couponNote = quote.note;
+    if (quote.coupon && !alreadyUnlocked) {
+      try {
+        const recorded = await resolveServerCouponDiscount({
+          code: quote.coupon.code,
+          targetCourseId: kind === "course" ? quote.item.id : null,
+          originalAmountInr: quote.baseInr,
+          originalCoins: quote.baseCoins,
+          userId: context.userId,
+          recordRedemption: true,
+        });
+        amountInr = recorded.finalAmount;
+        couponNote = recorded.coupon
+          ? ` · Coupon ${recorded.coupon.code} (${recorded.discountPercent}% OFF)`
+          : "";
+      } catch (error) {
+        // The student has already paid — never block access because the coupon
+        // bookkeeping failed. Access is granted at the quoted price.
+        console.error("Coupon redemption could not be recorded after payment", error);
       }
     }
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // 4. Grant access. Amount recorded is what Razorpay actually captured when
+    //    it differs from the quote (an extra rupee can never lose access).
+    const paidAmount =
+      verification.verified && verification.amountInr > 0 ? verification.amountInr : amountInr;
 
-    let amountInr = 0;
-
-    if (data.kind === "course") {
-      const course = unwrap(
-        await projectContent
-          .from("courses")
-          .select("*")
-          .eq("id", data.item_id)
-          .eq("status", "published")
-          .single(),
-      );
-      const baseInr = Math.max(0, course.price ?? 0);
-      const couponInfo = data.coupon_code
-        ? await resolveServerCouponDiscount({
-            code: data.coupon_code,
-            targetCourseId: course.id,
-            originalAmountInr: baseInr,
-            originalCoins: coinPriceOf(course),
-            userId: context.userId,
-            recordRedemption: true,
-          })
-        : null;
-      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
-      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
-      const { error } = await supabaseAdmin.from("course_enrollments").upsert(
-        {
-          user_id: context.userId,
-          course_id: course.id,
-          status: "active",
-          source: "razorpay",
-          payment_method: "razorpay",
-          amount_paid: amountInr,
-          currency: "INR",
-          admin_note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
-          created_by: context.userId,
-        } as never,
-        { onConflict: "user_id,course_id" },
-      );
-      if (error) throw new Error(error.message);
-    } else if (data.kind === "series") {
-      const series = await effectiveSeries(data.item_id);
-      const baseInr = Math.max(0, series.priceInr ?? 0);
-      const couponInfo = data.coupon_code
-        ? await resolveServerCouponDiscount({
-            code: data.coupon_code,
-            targetCourseId: null,
-            originalAmountInr: baseInr,
-            originalCoins: Math.max(0, series.priceCoins ?? baseInr),
-            userId: context.userId,
-            recordRedemption: true,
-          })
-        : null;
-      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
-      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
-      const { error } = await supabaseAdmin.from("series_access_grants").upsert(
-        {
-          user_id: context.userId,
-          series_id: series.id,
-          granted_by: context.userId,
-          method: "razorpay",
-          amount_inr: amountInr,
-          note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
-          expires_at: null,
-          revoked_at: null,
-        } as never,
-        { onConflict: "series_id,user_id" },
-      );
-      if (error) {
-        await supabaseAdmin.from("series_access_grants").insert({
-          user_id: context.userId,
-          series_id: series.id,
-          granted_by: context.userId,
-          method: "razorpay",
-          amount_inr: amountInr,
-          note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
-        } as never);
+    const granted = await grantLearningPurchase({
+      userId: context.userId,
+      kind,
+      itemId: quote.item.id,
+      amountInr: paidAmount,
+      couponCode: "",
+      reference: `Razorpay payment ${data.razorpay_payment_id}`,
+      method: "razorpay",
+    });
+    if (couponNote && verification.verified) {
+      // Keep the coupon trail on the enrollment note for the admin ledger.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      if (kind === "course") {
+        await supabaseAdmin
+          .from("course_enrollments")
+          .update({
+            admin_note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
+          } as never)
+          .eq("user_id", context.userId)
+          .eq("course_id", quote.item.id);
       }
-    } else if (data.kind === "test") {
-      const test = unwrap(
-        await projectContent
-          .from("tests")
-          .select("*")
-          .eq("id", data.item_id)
-          .eq("is_published", true)
-          .single(),
-      );
-      const baseInr = Math.max(0, test.price_inr ?? 0);
-      const couponInfo = data.coupon_code
-        ? await resolveServerCouponDiscount({
-            code: data.coupon_code,
-            targetCourseId: null,
-            originalAmountInr: baseInr,
-            originalCoins: Math.max(0, test.price_coins ?? baseInr),
-            userId: context.userId,
-            recordRedemption: true,
-          })
-        : null;
-      amountInr = couponInfo ? couponInfo.finalAmount : baseInr;
-      const couponNote = couponInfo?.coupon ? ` · Coupon ${couponInfo.coupon.code} (${couponInfo.discountPercent}% OFF)` : "";
-      await supabaseAdmin.from("test_access_grants").insert({
-        user_id: context.userId,
-        test_id: test.id,
-        granted_by: context.userId,
-        method: "razorpay",
-        amount_inr: amountInr,
-        note: `Razorpay payment ${data.razorpay_payment_id}${couponNote}`,
-      } as never);
     }
 
-    return { ok: true, kind: data.kind, item_id: data.item_id, amountInr };
+    console.info(
+      `[razorpay] ${kind}:${quote.item.id} ${alreadyUnlocked ? "re-confirmed" : "granted"} for ${context.userId} (${verification.verified ? "API verified" : "legacy flow"})`,
+    );
+
+    return {
+      ok: true,
+      kind: granted.kind,
+      item_id: granted.itemId,
+      amountInr: granted.amountInr,
+      title: granted.title,
+      already_unlocked: alreadyUnlocked,
+      verified: verification.verified,
+      warning: verification.warning,
+    };
   });
 
 export const completeRazorpayCoinPackPurchase = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => razorpayCoinPackSchema.parse(input))
   .handler(async ({ context, data }) => {
-    const { data: publicRows } = await projectContent
-      .from("site_settings")
-      .select("key, value")
-      .in("key", ["payment_enabled", "razorpay_key_id"]);
-    const settingMap = new Map((publicRows ?? []).map((r) => [r.key, r.value]));
-    const keyId = (settingMap.get("razorpay_key_id") ?? "").trim();
-    const isEnabled = Boolean(keyId) && settingMap.get("payment_enabled") !== "disabled_manual";
-    if (!isEnabled || !keyId) {
+    const credentials = await readRazorpayCredentials();
+    if (!credentials.enabled || !credentials.keyId) {
       throw new Error(
         "Online payment (Razorpay) is currently off. Please contact Admin for offline payment.",
       );
     }
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: pack, error: packError } = await supabaseAdmin
-      .from("coin_packages")
-      .select("*")
-      .eq("id", data.package_id)
-      .eq("is_active", true)
-      .single();
-    if (packError || !pack) throw new Error("Coin pack not found.");
-
-    const totalCoins = Math.max(1, (pack.coins ?? 0) + (pack.bonus_coins ?? 0));
-    const { data: result, error } = await supabaseAdmin.rpc("grant_23kaat_to_user", {
-      _user_id: context.userId,
-      _amount: totalCoins,
-      _reason: `Razorpay coin pack purchase (${pack.title} · ${data.razorpay_payment_id})`,
-      _related_type: "coin_package",
-      _related_id: pack.id,
+    const pack = await loadCoinPack(data.package_id);
+    const verification = await verifyRazorpayPayment({
+      credentials,
+      paymentId: data.razorpay_payment_id,
+      orderId: data.razorpay_order_id,
+      signature: data.razorpay_signature,
+      userId: context.userId,
+      expectedAmountInr: pack.priceInr,
     });
-    if (error) throw new Error(error.message);
-    return { ...jsonResult(result), credited: totalCoins, title: pack.title };
+
+    // A retried callback must not credit the same pack twice.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { count: alreadyCredited } = await supabaseAdmin
+      .from("coin_transactions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", context.userId)
+      .eq("related_id", pack.id)
+      .ilike("reason", `%${data.razorpay_payment_id}%`);
+
+    if ((alreadyCredited ?? 0) > 0) {
+      return {
+        ok: true,
+        already_credited: true,
+        credited: pack.totalCoins,
+        title: pack.title,
+        balance: null,
+        verified: verification.verified,
+      };
+    }
+
+    const result = await grantCoinPackPurchase({
+      userId: context.userId,
+      packageId: pack.id,
+      reference: data.razorpay_payment_id,
+    });
+
+    return {
+      ok: true,
+      already_credited: false,
+      credited: result.credited,
+      title: result.title,
+      balance: result.balance,
+      verified: verification.verified,
+    };
   });
 
 export const getMyMaterialAccessUrl = createServerFn({ method: "POST" })

@@ -23,6 +23,9 @@ import {
   getPublicPaymentSettings,
 } from "@/lib/platform-settings.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
+import { createCoinPackRazorpayOrder } from "@/lib/razorpay.functions";
+import { rememberPendingPayment, forgetPendingPayment } from "@/lib/pending-payments";
+import { RazorpayPaymentRecovery } from "@/components/kkcc/razorpay-payment-recovery";
 import { friendlyError } from "@/lib/storage";
 
 export const Route = createFileRoute("/coins")({
@@ -68,6 +71,7 @@ function CoinsPageContent() {
   const finishPackPurchase = useServerFn(completeRazorpayCoinPackPurchase);
   const paymentConfigured = Boolean(payment.enabled && payment.razorpay_key_id);
   const [payingPackId, setPayingPackId] = useState<string | null>(null);
+  const [recoveryNeeded, setRecoveryNeeded] = useState(false);
 
   const handleRazorpayPackPurchase = async (pack: (typeof packages)[number]) => {
     if (!user?.email) {
@@ -91,10 +95,16 @@ function CoinsPageContent() {
       if (!hasRzp || !window.Razorpay) {
         throw new Error("Could not load Razorpay checkout. Please try again.");
       }
+
+      // Server priced order: the amount cannot be edited from the browser and
+      // the pack id travels in the order notes for one-tap recovery.
+      const order = await createCoinPackRazorpayOrder({ data: { package_id: pack.id } });
       const totalCoins = pack.coins + pack.bonus_coins;
+
       const rzp = new window.Razorpay({
-        key: payment.razorpay_key_id,
-        amount: Math.round(pack.price * 100),
+        key: order.key_id || payment.razorpay_key_id,
+        ...(order.order_id ? { order_id: order.order_id } : {}),
+        amount: order.amount_paise || Math.round(pack.price * 100),
         currency: "INR",
         name: "KKCC Excellence Hub",
         description: `${pack.title} — ${totalCoins} 23KAAT Coins`,
@@ -108,23 +118,46 @@ function CoinsPageContent() {
           razorpay_order_id?: string;
           razorpay_signature?: string;
         }) => {
+          const paymentId = response.razorpay_payment_id || "";
+          if (!paymentId) {
+            setRecoveryNeeded(true);
+            toast.error("Razorpay did not return a Payment ID", {
+              description: "If money was deducted, recover it below with your Payment ID.",
+            });
+            return;
+          }
+          rememberPendingPayment({
+            payment_id: paymentId,
+            kind: "coin_pack",
+            item_id: pack.id,
+            title: `${pack.title} — ${totalCoins} coins`,
+            amount_inr: order.amount_inr || pack.price,
+          });
           try {
             const res = await finishPackPurchase({
               data: {
                 package_id: pack.id,
-                razorpay_payment_id: response.razorpay_payment_id || `pay_${Date.now()}`,
-                razorpay_order_id: response.razorpay_order_id || "",
+                razorpay_payment_id: paymentId,
+                razorpay_order_id: response.razorpay_order_id || order.order_id || "",
                 razorpay_signature: response.razorpay_signature || "",
               },
             });
+            forgetPendingPayment(paymentId);
             window.dispatchEvent(new Event("kkcc:23kaat-refresh"));
             void qc.invalidateQueries({ queryKey: ["student", user.id, "wallet"] });
             toast.success(`+${res.credited} 23KAAT coins credited!`, {
-              description: `New wallet balance: ${res.balance} coins.`,
+              description:
+                res.balance != null
+                  ? `New wallet balance: ${res.balance} coins.`
+                  : "Wallet updated.",
             });
             window.location.reload();
           } catch (err) {
-            toast.error(friendlyError(err));
+            setRecoveryNeeded(true);
+            toast.error(friendlyError(err), {
+              description:
+                "Aapka Payment ID save kar liya gaya hai — neeche 'Verify & unlock' dabaakar coins turant paayein.",
+            });
           }
         },
       });
@@ -217,6 +250,12 @@ function CoinsPageContent() {
         </div>
       </section>
 
+      {(paymentConfigured || recoveryNeeded) && (
+        <section className="mx-auto w-full max-w-7xl px-4 pt-10 sm:px-6">
+          <RazorpayPaymentRecovery />
+        </section>
+      )}
+
       <section className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
@@ -262,7 +301,9 @@ function CoinsPageContent() {
                 <p className="relative mt-1 text-sm text-muted-foreground">
                   coins for ₹{pack.price} ·{" "}
                   <span className="font-semibold">
-                    {paymentConfigured ? "Online Razorpay Active" : "Paid · Offline (Contact Admin)"}
+                    {paymentConfigured
+                      ? "Online Razorpay Active"
+                      : "Paid · Offline (Contact Admin)"}
                   </span>
                 </p>
                 {user ? (

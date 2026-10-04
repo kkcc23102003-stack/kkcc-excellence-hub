@@ -210,7 +210,9 @@ function StudyMaterialPage() {
                 </p>
                 <MaterialAccessButton
                   fileUrl={m.file_url}
-                  materialId={m.id.startsWith("note:") || m.id.startsWith("theory:") ? undefined : m.id}
+                  materialId={
+                    m.id.startsWith("note:") || m.id.startsWith("theory:") ? undefined : m.id
+                  }
                   accessType={m.access_type}
                   price={m.price}
                   coinPrice={m.coin_price}

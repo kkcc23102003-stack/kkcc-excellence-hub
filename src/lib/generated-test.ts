@@ -162,7 +162,20 @@ const BILINGUAL_KEYWORD_EXPANSIONS: Array<{ pattern: RegExp; tokens: string[] }>
   },
   {
     pattern: /ਮੁਹਾਵਰੇ|ਅਖਾਣ|idiom|proverb|ਸਮਾਨਾਰਥਕ|ਵਿਰੋਧੀ|ਸ਼ਬਦਾਵਲੀ/i,
-    tokens: ["ਮੁਹਾਵਰੇ", "ਅਖਾਣ", "ਸ਼ਬਦ", "ਜੋੜ", "ਸ਼ੁੱਧ", "ਅਸ਼ੁੱਧ", "ਸਮਾਨਾਰਥੀ", "ਵਿਰੋਧੀ", "idioms", "phrases", "synonyms", "antonyms"],
+    tokens: [
+      "ਮੁਹਾਵਰੇ",
+      "ਅਖਾਣ",
+      "ਸ਼ਬਦ",
+      "ਜੋੜ",
+      "ਸ਼ੁੱਧ",
+      "ਅਸ਼ੁੱਧ",
+      "ਸਮਾਨਾਰਥੀ",
+      "ਵਿਰੋਧੀ",
+      "idioms",
+      "phrases",
+      "synonyms",
+      "antonyms",
+    ],
   },
   {
     pattern: /ਸਾਹਿਤ|ਸੱਭਿਆਚਾਰ|ਕਵਿਤਾ|ਨਾਵਲ|ਕਹਾਣੀ|ਲੋਕ|ਵਾਰਤਕ/i,
@@ -194,15 +207,54 @@ const BILINGUAL_KEYWORD_EXPANSIONS: Array<{ pattern: RegExp; tokens: string[] }>
   },
   {
     pattern: /वर्ण|संज्ञा|सर्वनाम|विशेषण|क्रिया|व्याकरण|संधि|समास|मुहावरे|अलंकार|रस|छंद|साहित्य/i,
-    tokens: ["वर्ण", "संज्ञा", "सर्वनाम", "विशेषण", "क्रिया", "लिंग", "वचन", "कारक", "काल", "वाच्य", "संधि", "समास", "रस", "छंद", "अलंकार", "काव्य", "गद्य"],
+    tokens: [
+      "वर्ण",
+      "संज्ञा",
+      "सर्वनाम",
+      "विशेषण",
+      "क्रिया",
+      "लिंग",
+      "वचन",
+      "कारक",
+      "काल",
+      "वाच्य",
+      "संधि",
+      "समास",
+      "रस",
+      "छंद",
+      "अलंकार",
+      "काव्य",
+      "गद्य",
+    ],
   },
   {
     pattern: /sikh|guru|misl|ranjit|khalsa|martyr|ghadar|jallianwala/i,
-    tokens: ["sikh", "gurus", "misls", "ancient", "medieval", "sufi", "jallianwala", "national", "movement", "personalities", "reform"],
+    tokens: [
+      "sikh",
+      "gurus",
+      "misls",
+      "ancient",
+      "medieval",
+      "sufi",
+      "jallianwala",
+      "national",
+      "movement",
+      "personalities",
+      "reform",
+    ],
   },
   {
-    pattern: /piaget|vygotsky|kohlberg|erikson|constructiv|theories of learning|growth.*development/i,
-    tokens: ["child", "development", "theories", "learning", "motivation", "cognition", "psychology"],
+    pattern:
+      /piaget|vygotsky|kohlberg|erikson|constructiv|theories of learning|growth.*development/i,
+    tokens: [
+      "child",
+      "development",
+      "theories",
+      "learning",
+      "motivation",
+      "cognition",
+      "psychology",
+    ],
   },
   {
     pattern: /tense|parts of speech/i,
@@ -301,11 +353,20 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
       normSubj.includes("gurmukhi") ||
       normSubj.includes("ਪੰਜਾਬੀ")
     ) {
-      if (normChap.includes("ਅਲੰਕਾਰ") || normChap.includes("ਰਸ") || normChap.includes("ਛੰਦ") || normSubj.includes("paper b")) {
+      if (
+        normChap.includes("ਅਲੰਕਾਰ") ||
+        normChap.includes("ਰਸ") ||
+        normChap.includes("ਛੰਦ") ||
+        normSubj.includes("paper b")
+      ) {
         ["Punjabi Paper B", "Punjabi Literature", "Punjabi Grammar", "Punjabi Paper A"].forEach(
           addCandidate,
         );
-      } else if (normSubj.includes("literature") || normSubj.includes("ਸਾਹਿਤ") || normChap.includes("ਸਾਹਿਤ")) {
+      } else if (
+        normSubj.includes("literature") ||
+        normSubj.includes("ਸਾਹਿਤ") ||
+        normChap.includes("ਸਾਹਿਤ")
+      ) {
         ["Punjabi Literature", "Punjabi Paper B", "Punjabi Paper A", "Punjabi Grammar"].forEach(
           addCandidate,
         );
@@ -318,11 +379,7 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
           addCandidate,
         );
       }
-    } else if (
-      hasDevanagari ||
-      normSubj.includes("hindi") ||
-      normSubj.includes("हिंदी")
-    ) {
+    } else if (hasDevanagari || normSubj.includes("hindi") || normSubj.includes("हिंदी")) {
       if (normSubj.includes("literature") || normSubj.includes("साहित्य")) {
         ["Hindi Literature", "Hindi Grammar"].forEach(addCandidate);
       } else {
@@ -341,11 +398,20 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
         ["Punjab Geography", "Punjab GK", "Punjab History", "Punjab Economics"].forEach(
           addCandidate,
         );
-      } else if (normChap.includes("econ") || normChap.includes("agricult") || normChap.includes("industry")) {
+      } else if (
+        normChap.includes("econ") ||
+        normChap.includes("agricult") ||
+        normChap.includes("industry")
+      ) {
         ["Punjab Economics", "Punjab GK", "Punjab Geography", "Punjab History"].forEach(
           addCandidate,
         );
-      } else if (normChap.includes("hist") || normChap.includes("guru") || normChap.includes("misl") || normChap.includes("ranjit")) {
+      } else if (
+        normChap.includes("hist") ||
+        normChap.includes("guru") ||
+        normChap.includes("misl") ||
+        normChap.includes("ranjit")
+      ) {
         ["Punjab History", "Punjab GK", "Punjab Geography", "Punjab Economics"].forEach(
           addCandidate,
         );
@@ -364,7 +430,12 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
     ) {
       ["Teaching Aptitude", "Psychology"].forEach(addCandidate);
     } else if (normSubj.includes("english")) {
-      if (normSubj.includes("language") || normChap.includes("comprehension") || normChap.includes("vocab") || normChap.includes("idiom")) {
+      if (
+        normSubj.includes("language") ||
+        normChap.includes("comprehension") ||
+        normChap.includes("vocab") ||
+        normChap.includes("idiom")
+      ) {
         ["English Language", "English Grammar", "English Core"].forEach(addCandidate);
       } else {
         ["English Grammar", "English Language", "English Core"].forEach(addCandidate);
@@ -376,13 +447,9 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
       normSubj.includes("arithmetic") ||
       normSubj.includes("ganit")
     ) {
-      [
-        "Quantitative Aptitude",
-        "Math Class 10",
-        "Math Class 9",
-        "Mathematics",
-        "CSAT",
-      ].forEach(addCandidate);
+      ["Quantitative Aptitude", "Math Class 10", "Math Class 9", "Mathematics", "CSAT"].forEach(
+        addCandidate,
+      );
     } else if (
       normSubj.includes("reason") ||
       normSubj.includes("mental") ||
@@ -441,10 +508,18 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
     } else if (normSubj.includes("art") && normSubj.includes("craft")) {
       ["Art and Craft", "Art and Culture"].forEach(addCandidate);
     } else if (normSubj.includes("art") || normSubj.includes("cultur")) {
-      ["Art and Culture", "Art and Craft", "Modern History", "Ancient History", "Medieval History"].forEach(
-        addCandidate,
-      );
-    } else if (normSubj.includes("physical ed") || normSubj.includes("sports") || normSubj.includes("yoga")) {
+      [
+        "Art and Culture",
+        "Art and Craft",
+        "Modern History",
+        "Ancient History",
+        "Medieval History",
+      ].forEach(addCandidate);
+    } else if (
+      normSubj.includes("physical ed") ||
+      normSubj.includes("sports") ||
+      normSubj.includes("yoga")
+    ) {
       ["Physical Education"].forEach(addCandidate);
     } else if (normSubj.includes("sociolog")) {
       ["Sociology", "SST"].forEach(addCandidate);
@@ -511,7 +586,11 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
         "SST Class 10",
         "SST Class 9",
       ].forEach(addCandidate);
-    } else if (normSubj.includes("econ") || normSubj.includes("arth") || normSubj.includes("banking")) {
+    } else if (
+      normSubj.includes("econ") ||
+      normSubj.includes("arth") ||
+      normSubj.includes("banking")
+    ) {
       [
         "Indian Economy",
         "Banking Awareness",
@@ -521,9 +600,14 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
         "SST Class 9",
       ].forEach(addCandidate);
     } else if (normSubj.includes("physic")) {
-      ["Physics", "Physics Class 10", "Physics Class 9", "General Science", "Science Class 10", "Science Class 9"].forEach(
-        addCandidate,
-      );
+      [
+        "Physics",
+        "Physics Class 10",
+        "Physics Class 9",
+        "General Science",
+        "Science Class 10",
+        "Science Class 9",
+      ].forEach(addCandidate);
     } else if (normSubj.includes("chemis")) {
       [
         "Chemistry",
@@ -538,9 +622,14 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
       normSubj.includes("botan") ||
       normSubj.includes("zoolog")
     ) {
-      ["Biology", "Biology Class 10", "Biology Class 9", "General Science", "Science Class 10", "Science Class 9"].forEach(
-        addCandidate,
-      );
+      [
+        "Biology",
+        "Biology Class 10",
+        "Biology Class 9",
+        "General Science",
+        "Science Class 10",
+        "Science Class 9",
+      ].forEach(addCandidate);
     } else if (normSubj.includes("science") || normSubj.includes("vigyan")) {
       [
         "General Science",
@@ -566,7 +655,9 @@ export function resolveCandidateBankSubjects(subject: string, chapter = ""): str
       } else if (normChap.includes("punjab") && normChap.includes("hist")) {
         ["Punjab History", "Punjab GK", "Modern History"].forEach(addCandidate);
       } else if (normChap.includes("punjab")) {
-        ["Punjab GK", "Punjab History", "Punjab Geography", "Punjab Economics"].forEach(addCandidate);
+        ["Punjab GK", "Punjab History", "Punjab Geography", "Punjab Economics"].forEach(
+          addCandidate,
+        );
       } else if (normChap.includes("polity") || normChap.includes("constitution")) {
         ["Polity", "SST", "General Awareness"].forEach(addCandidate);
       } else {
@@ -1296,7 +1387,11 @@ const CURATED_SUBJECT_FACTS: Record<CuratedSubjectCategory, CuratedFactItem[]> =
     {
       q: "Between which two rivers does the 'Bist Doab' (Doaba region) of Punjab lie?",
       a: "Beas and Sutlej rivers",
-      d: ["Ravi and Beas rivers (Bari Doab)", "Ravi and Chenab rivers (Rechna Doab)", "Chenab and Jhelum rivers (Chaj Doab)"],
+      d: [
+        "Ravi and Beas rivers (Bari Doab)",
+        "Ravi and Chenab rivers (Rechna Doab)",
+        "Chenab and Jhelum rivers (Chaj Doab)",
+      ],
       exp: "Bist Jalandhar Doab (Doaba) is the fertile region between the Beas and Sutlej rivers covering Jalandhar, Hoshiarpur, Kapurthala, and Shaheed Bhagat Singh Nagar.",
     },
     {
@@ -1562,11 +1657,7 @@ const CURATED_SUBJECT_FACTS: Record<CuratedSubjectCategory, CuratedFactItem[]> =
     {
       q: "Under Goods and Services Tax (GST) in India, which tax is levied on an 'Inter-State' supply of goods and services?",
       a: "IGST (Integrated Goods and Services Tax)",
-      d: [
-        "CGST + SGST only",
-        "Value Added Tax (VAT) only",
-        "Central Excise Duty only",
-      ],
+      d: ["CGST + SGST only", "Value Added Tax (VAT) only", "Central Excise Duty only"],
       exp: "Inter-state supplies attract IGST collected by the Centre under Article 269A, whereas intra-state supplies attract CGST + SGST/UTGST.",
     },
     {
@@ -1753,7 +1844,12 @@ function selectCuratedFactsForChapter(subject: string, chapter: string): Curated
   }
 
   // 9. Punjab GK, Punjab History, Punjab Geography, Punjab Economy
-  if (normSubj.includes("punjab") || normChap.includes("punjab") || normChap.includes("sikh guru") || normChap.includes("misl")) {
+  if (
+    normSubj.includes("punjab") ||
+    normChap.includes("punjab") ||
+    normChap.includes("sikh guru") ||
+    normChap.includes("misl")
+  ) {
     return CURATED_SUBJECT_FACTS.punjab_gk;
   }
 
@@ -1806,7 +1902,9 @@ function selectCuratedFactsForChapter(subject: string, chapter: string): Curated
 
   // 13. Science, Physics, Chemistry, Biology (ONLY when explicitly Science/Physics/Chemistry/Biology!)
   if (
-    (normSubj.includes("science") && !normSubj.includes("social") && !normSubj.includes("political")) ||
+    (normSubj.includes("science") &&
+      !normSubj.includes("social") &&
+      !normSubj.includes("political")) ||
     normSubj.includes("physic") ||
     normSubj.includes("chemis") ||
     normSubj.includes("biolog") ||
@@ -2162,9 +2260,9 @@ export function generateCustomSyllabusPaper(input: {
     // Tier 2: If the exact chapter had fewer templates at `level` (e.g. only 10 Easy items),
     // pull from the SAME matched chapter across sibling difficulties before leaving the chapter
     if (levelQuestions.length < wanted) {
-      const fallbackDiffs: Difficulty[] = (["Moderate", "Easy", "Difficult"] as Difficulty[]).filter(
-        (d) => d !== level,
-      );
+      const fallbackDiffs: Difficulty[] = (
+        ["Moderate", "Easy", "Difficult"] as Difficulty[]
+      ).filter((d) => d !== level);
       for (const fallbackDiff of fallbackDiffs) {
         if (levelQuestions.length >= wanted) break;
         for (const pair of matchedPairs) {
