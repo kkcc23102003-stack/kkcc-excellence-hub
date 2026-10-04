@@ -11,6 +11,7 @@ import {
   type LearningKind,
 } from "@/lib/learning-purchase.server";
 import { readRazorpayCredentials, verifyRazorpayPayment } from "@/lib/razorpay.server";
+import { markPaymentPaid } from "@/lib/payment-ledger.server";
 import { materialForStudent } from "@/lib/material-access.server";
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
@@ -457,6 +458,19 @@ export const completeRazorpayLearningPurchase = createServerFn({ method: "POST" 
       }
     }
 
+    // Ledger: the confirmed payment with the amount Razorpay actually captured.
+    await markPaymentPaid({
+      userId: context.userId,
+      kind,
+      itemId: quote.item.id,
+      itemTitle: granted.title,
+      amountInr: granted.amountInr,
+      orderId: verification.orderId || data.razorpay_order_id,
+      paymentId: data.razorpay_payment_id,
+      couponCode: quote.coupon?.code ?? "",
+      note: couponNote ? `Coupon applied${couponNote}` : "",
+    });
+
     console.info(
       `[razorpay] ${kind}:${quote.item.id} ${alreadyUnlocked ? "re-confirmed" : "granted"} for ${context.userId} (${verification.verified ? "API verified" : "legacy flow"})`,
     );
@@ -518,6 +532,19 @@ export const completeRazorpayCoinPackPurchase = createServerFn({ method: "POST" 
       userId: context.userId,
       packageId: pack.id,
       reference: data.razorpay_payment_id,
+    });
+
+    await markPaymentPaid({
+      userId: context.userId,
+      kind: "coin_pack",
+      itemId: pack.id,
+      itemTitle: result.title,
+      amountInr:
+        verification.verified && verification.amountInr > 0
+          ? verification.amountInr
+          : pack.priceInr,
+      orderId: verification.orderId || data.razorpay_order_id,
+      paymentId: data.razorpay_payment_id,
     });
 
     return {

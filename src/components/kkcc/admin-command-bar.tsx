@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   BookOpen,
+  BarChart3,
   Sparkles,
   ClipboardList,
   FileText,
@@ -63,6 +64,14 @@ type AdminToolItem = {
 };
 
 export const ADMIN_TOOLS: AdminToolItem[] = [
+  {
+    to: "/admin/analytics",
+    label: "Business Dashboard",
+    hint: "Revenue, sales, students, coupons and the pending admin queue",
+    category: "Payments & Rewards",
+    icon: BarChart3,
+    badge: "New",
+  },
   {
     to: "/admin",
     label: "Course Manager",

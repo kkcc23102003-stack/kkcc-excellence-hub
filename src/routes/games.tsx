@@ -54,7 +54,7 @@ import {
   type KittuPracticeBatch,
   type KittuPracticeMode,
 } from "@/lib/kittu-batch-catalog";
-import { getBankItems, getSubjectBankItems } from "@/lib/quiz-question-bank";
+import { getBankItems, getSubjectBankItems, QUIZ_BANK_SUBJECTS } from "@/lib/quiz-question-bank";
 // The 1.7 MB exam bank is code-split: it is fetched in the background as soon
 // as the quiz page opens and is cached for every later visit, instead of
 // blocking the first paint of the page on a slow phone connection.
@@ -2165,9 +2165,9 @@ function generateQuestion(
   if (exam === "CLAT/Law") return makeLawQuestionStrict(subject, mode);
   if (GOVT_EXAMS.has(exam)) return makeGovtQuestionStrict(exam, subject, mode);
   if (exam === "CUET")
-    return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
+    return makeTopicQuestion(exam, subject, pickTopicForSubject(exam, subject), mode);
 
-  return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
+  return makeTopicQuestion(exam, subject, pickTopicForSubject(exam, subject), mode);
 }
 
 /**
@@ -2272,7 +2272,24 @@ function getTopicsForSubject(
   const fromBank = bank?.getExamBankTopics(subject) ?? [];
   const curated = SUBJECT_TOPICS[subject] ?? [];
   const merged = Array.from(new Set([...fromBank, ...curated]));
-  return merged.length > 0 ? merged : SUBJECT_TOPICS.SST;
+  if (merged.length > 0) return merged;
+  /*
+   * A subject with no chapters of its own must never inherit another subject's
+   * list. That fallback is exactly how a Commerce subject once offered
+   * "Geography". SST keeps its curated list; anything else reports no chapters
+   * and the caller asks its own subject level question instead.
+   */
+  if (subject === "SST") return SUBJECT_TOPICS.SST;
+  return [];
+}
+
+/**
+ * A random chapter of a subject, or "Mixed" when the subject has none — the
+ * caller then asks a subject-level question rather than an invented chapter.
+ */
+function pickTopicForSubject(exam: ExamTrack, subject: SubjectFilter): string {
+  const topics = getTopicsForSubject(exam, subject);
+  return topics.length > 0 ? pick(topics) : "Mixed";
 }
 
 function normalizeTopic(exam: ExamTrack, subject: Subject, topic: TopicFilter): TopicFilter {
@@ -2631,7 +2648,7 @@ function makeSchoolBoardQuestion(
   mode: PracticeMode = "NCERT-based",
 ): QuizQuestion {
   const subject = preferredSubject === "Polity" ? "SST" : preferredSubject;
-  const strictTopic = pick(getTopicsForSubject(exam, subject));
+  const strictTopic = pickTopicForSubject(exam, subject);
   if (
     subject === "Math Class 9" ||
     subject === "Math Class 10" ||
@@ -3115,7 +3132,7 @@ function makeTeachingQuestionStrict(
   subject: Subject,
   mode: PracticeMode,
 ): QuizQuestion {
-  return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
+  return makeTopicQuestion(exam, subject, pickTopicForSubject(exam, subject), mode);
 }
 
 function makePunjabQuestionStrict(
@@ -3123,7 +3140,7 @@ function makePunjabQuestionStrict(
   subject: Subject,
   mode: PracticeMode,
 ): QuizQuestion {
-  return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
+  return makeTopicQuestion(exam, subject, pickTopicForSubject(exam, subject), mode);
 }
 
 function makeLawQuestionStrict(subject: Subject, mode: PracticeMode): QuizQuestion {
@@ -3131,7 +3148,7 @@ function makeLawQuestionStrict(subject: Subject, mode: PracticeMode): QuizQuesti
   return makeTopicQuestion(
     "CLAT/Law",
     resolvedSubject,
-    pick(getTopicsForSubject("CLAT/Law", resolvedSubject)),
+    pickTopicForSubject("CLAT/Law", resolvedSubject),
     mode,
   );
 }
@@ -3141,7 +3158,7 @@ function makeGovtQuestionStrict(
   subject: Subject,
   mode: PracticeMode,
 ): QuizQuestion {
-  return makeTopicQuestion(exam, subject, pick(getTopicsForSubject(exam, subject)), mode);
+  return makeTopicQuestion(exam, subject, pickTopicForSubject(exam, subject), mode);
 }
 
 /**
@@ -3284,6 +3301,37 @@ function makeFallbackQuestion(subject: Subject, topic: string, topicLabel: strin
     return makeConceptQuestion(
       subject,
       topicLabel,
+      item.prompt,
+      item.answer,
+      [item.answer, ...item.distractors],
+      item.explanation,
+    );
+  }
+
+  /*
+   * The requested chapter has no verified content at all. Crashing the whole
+   * quiz screen is not an option, and inventing a question is not allowed, so
+   * the student gets a genuine question from the bank — labelled with the
+   * subject it actually belongs to and marked as general revision, never
+   * passed off as the chapter they picked. The gap is logged so it can be
+   * filled from the admin panel.
+   */
+  const fallbackSubjects = QUIZ_BANK_SUBJECTS.filter(
+    (candidate) => getSubjectBankItems(candidate).length > 0,
+  );
+  const fallbackItems =
+    fallbackSubjects.length > 0 ? getSubjectBankItems(pick(fallbackSubjects)) : [];
+  if (fallbackItems.length > 0) {
+    const item = pick(fallbackItems);
+    const fallbackSubject = fallbackSubjects.find((candidate) =>
+      getSubjectBankItems(candidate).includes(item),
+    );
+    console.warn(
+      `[quiz] no verified question for "${subject} / ${topic}"; serving a general revision question from "${fallbackSubject ?? subject}".`,
+    );
+    return makeConceptQuestion(
+      (fallbackSubject ?? subject) as Subject,
+      `${topicLabel} · general revision`,
       item.prompt,
       item.answer,
       [item.answer, ...item.distractors],

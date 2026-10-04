@@ -30,6 +30,7 @@ import {
   type LearningKind,
 } from "@/lib/learning-purchase.server";
 import { resolveServerCouponDiscount } from "@/lib/coupons.functions";
+import { markPaymentPaid, recordPaymentEntry } from "@/lib/payment-ledger.server";
 import {
   createRazorpayOrder,
   paymentStatusLabel,
@@ -152,6 +153,18 @@ export const createLearningRazorpayOrder = createServerFn({ method: "POST" })
           coupon_code: data.coupon_code ?? "",
         },
       });
+      // Ledger row the moment checkout opens: this is what lets the owner
+      // reconcile a payment whose browser callback never arrived.
+      await recordPaymentEntry({
+        userId: context.userId,
+        kind,
+        itemId: price.item.id,
+        itemTitle: price.item.title,
+        amountInr: price.finalInr,
+        status: "pending",
+        orderId: order.id,
+        couponCode: data.coupon_code ?? "",
+      });
       return {
         already_unlocked: false,
         order_id: order.id,
@@ -221,6 +234,15 @@ export const createCoinPackRazorpayOrder = createServerFn({ method: "POST" })
           kind: "coin_pack",
           item_id: pack.id,
         },
+      });
+      await recordPaymentEntry({
+        userId: context.userId,
+        kind: "coin_pack",
+        itemId: pack.id,
+        itemTitle: pack.title,
+        amountInr: pack.priceInr,
+        status: "pending",
+        orderId: order.id,
       });
       return {
         order_id: order.id,
@@ -295,6 +317,16 @@ export const recoverRazorpayPurchase = createServerFn({ method: "POST" })
           packageId: notes.item_id,
           reference: `recovered ${verification.paymentId}`,
         });
+        await markPaymentPaid({
+          userId: context.userId,
+          kind: "coin_pack",
+          itemId: notes.item_id,
+          itemTitle: granted.title,
+          amountInr: verification.amountInr,
+          orderId: verification.orderId,
+          paymentId: verification.paymentId,
+          note: "Recovered by the student from the Payment Recovery card",
+        });
         return {
           ok: true,
           kind: "coin_pack" as const,
@@ -315,6 +347,17 @@ export const recoverRazorpayPurchase = createServerFn({ method: "POST" })
         couponCode: notes.coupon_code,
         reference: `Razorpay recovery ${verification.paymentId}`,
         method: "razorpay",
+      });
+      await markPaymentPaid({
+        userId: context.userId,
+        kind: notes.kind,
+        itemId: notes.item_id,
+        itemTitle: granted.title,
+        amountInr: verification.amountInr,
+        orderId: verification.orderId,
+        paymentId: verification.paymentId,
+        ...(notes.coupon_code ? { couponCode: notes.coupon_code } : {}),
+        note: "Recovered by the student from the Payment Recovery card",
       });
       return {
         ok: true,
@@ -407,6 +450,17 @@ export const adminRecoverRazorpayPurchase = createServerFn({ method: "POST" })
         couponCode: notes.coupon_code,
         reference: `Razorpay admin recovery ${verification.paymentId}`,
         method: "razorpay",
+      });
+      await markPaymentPaid({
+        userId: targetUserId,
+        kind,
+        itemId,
+        itemTitle: granted.title,
+        amountInr: verification.amountInr,
+        orderId: verification.orderId,
+        paymentId: verification.paymentId,
+        ...(notes.coupon_code ? { couponCode: notes.coupon_code } : {}),
+        note: `Unlocked by Admin from payment recovery (${data.payment_id})`,
       });
       return {
         ok: true,

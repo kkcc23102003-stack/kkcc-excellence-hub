@@ -1341,6 +1341,29 @@ coin price, across Batches, Test Series and Tests. A 100% coupon claims the item
 with no payment at all. No schema change is needed for any of this: the tables
 already exist in `KKCC-Excellence-Hub-PRODUCTION-SQL.sql`.
 
+## SEO sitemap
+
+The public pages can be published as a sitemap for Google in one command. The
+generator refuses to run without a real domain on purpose, because a sitemap
+that points at a guessed address hurts rankings instead of helping them:
+
+```bash
+SITE_URL="https://your-domain.com" npm run sitemap   # writes public/sitemap.xml
+```
+
+Re-run it whenever you add a batch, and point Google Search Console at
+`https://your-domain.com/sitemap.xml`.
+
+## Business dashboard, payment ledger and student reports
+
+- `/admin/analytics` (Admin Command Bar → **Business Dashboard**) shows revenue,
+  sales by item, coupon performance and a "waiting for you" queue. It only counts
+  `paid` rows as money; abandoned checkouts are reported separately, never hidden.
+- **Download payment ledger (CSV)** exports every payment row (date, status,
+  provider, item, amount, student, order id, payment id) ready for Excel or Tally.
+- `/dashboard/progress` (student sidebar → **My Progress**) shows subject strength,
+  weak chapters and the score trend of the last 10 papers.
+
 ## Performance notes
 
 - The ~1.7 MB exam bank is code-split (`src/lib/exam-bank/lazy.ts`): the quiz page

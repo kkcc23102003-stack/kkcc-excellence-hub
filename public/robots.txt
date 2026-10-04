@@ -12,3 +12,7 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# Sitemap: run `SITE_URL="https://your-domain.com" npm run sitemap` once your
+# live address is fixed, then allow the generated file here.
+# Sitemap: https://your-domain.com/sitemap.xml

@@ -37,6 +37,7 @@ import { Route as DashboardLiveRouteImport } from './routes/dashboard.live'
 import { Route as DashboardMaterialsRouteImport } from './routes/dashboard.materials'
 import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard.profile'
+import { Route as DashboardProgressRouteImport } from './routes/dashboard.progress'
 import { Route as DashboardStudentRouteImport } from './routes/dashboard.student'
 import { Route as DashboardTestsRouteImport } from './routes/dashboard.tests'
 import { Route as FacultyIndexRouteImport } from './routes/faculty.index'
@@ -44,6 +45,7 @@ import { Route as FacultySlugRouteImport } from './routes/faculty.$slug'
 import { Route as TestIdRouteImport } from './routes/test.$id'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
 import { Route as AuthenticatedAdminAiQuestionEngineRouteImport } from './routes/_authenticated/admin.ai-question-engine'
+import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin.analytics'
 import { Route as AuthenticatedAdminAppBuilderRouteImport } from './routes/_authenticated/admin.app-builder'
 import { Route as AuthenticatedAdminBrandingRouteImport } from './routes/_authenticated/admin.branding'
 import { Route as AuthenticatedAdminContentRouteImport } from './routes/_authenticated/admin.content'
@@ -207,6 +209,11 @@ const DashboardProfileRoute = DashboardProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardProgressRoute = DashboardProgressRouteImport.update({
+  id: '/progress',
+  path: '/progress',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardStudentRoute = DashboardStudentRouteImport.update({
   id: '/student',
   path: '/student',
@@ -241,6 +248,12 @@ const AuthenticatedAdminAiQuestionEngineRoute =
   AuthenticatedAdminAiQuestionEngineRouteImport.update({
     id: '/admin/ai-question-engine',
     path: '/admin/ai-question-engine',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAnalyticsRoute =
+  AuthenticatedAdminAnalyticsRouteImport.update({
+    id: '/admin/analytics',
+    path: '/admin/analytics',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminAppBuilderRoute =
@@ -404,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/materials': typeof DashboardMaterialsRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/progress': typeof DashboardProgressRoute
   '/dashboard/student': typeof DashboardStudentRoute
   '/dashboard/tests': typeof DashboardTestsRoute
   '/faculty/$slug': typeof FacultySlugRoute
@@ -412,6 +426,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/faculty/': typeof FacultyIndexRoute
   '/admin/ai-question-engine': typeof AuthenticatedAdminAiQuestionEngineRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/app-builder': typeof AuthenticatedAdminAppBuilderRoute
   '/admin/branding': typeof AuthenticatedAdminBrandingRoute
   '/admin/content': typeof AuthenticatedAdminContentRoute
@@ -462,6 +477,7 @@ export interface FileRoutesByTo {
   '/dashboard/materials': typeof DashboardMaterialsRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/progress': typeof DashboardProgressRoute
   '/dashboard/student': typeof DashboardStudentRoute
   '/dashboard/tests': typeof DashboardTestsRoute
   '/faculty/$slug': typeof FacultySlugRoute
@@ -470,6 +486,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/faculty': typeof FacultyIndexRoute
   '/admin/ai-question-engine': typeof AuthenticatedAdminAiQuestionEngineRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/app-builder': typeof AuthenticatedAdminAppBuilderRoute
   '/admin/branding': typeof AuthenticatedAdminBrandingRoute
   '/admin/content': typeof AuthenticatedAdminContentRoute
@@ -523,6 +540,7 @@ export interface FileRoutesById {
   '/dashboard/materials': typeof DashboardMaterialsRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/progress': typeof DashboardProgressRoute
   '/dashboard/student': typeof DashboardStudentRoute
   '/dashboard/tests': typeof DashboardTestsRoute
   '/faculty/$slug': typeof FacultySlugRoute
@@ -531,6 +549,7 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/faculty/': typeof FacultyIndexRoute
   '/_authenticated/admin/ai-question-engine': typeof AuthenticatedAdminAiQuestionEngineRoute
+  '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/_authenticated/admin/app-builder': typeof AuthenticatedAdminAppBuilderRoute
   '/_authenticated/admin/branding': typeof AuthenticatedAdminBrandingRoute
   '/_authenticated/admin/content': typeof AuthenticatedAdminContentRoute
@@ -584,6 +603,7 @@ export interface FileRouteTypes {
     | '/dashboard/materials'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/progress'
     | '/dashboard/student'
     | '/dashboard/tests'
     | '/faculty/$slug'
@@ -592,6 +612,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/faculty/'
     | '/admin/ai-question-engine'
+    | '/admin/analytics'
     | '/admin/app-builder'
     | '/admin/branding'
     | '/admin/content'
@@ -642,6 +663,7 @@ export interface FileRouteTypes {
     | '/dashboard/materials'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/progress'
     | '/dashboard/student'
     | '/dashboard/tests'
     | '/faculty/$slug'
@@ -650,6 +672,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/faculty'
     | '/admin/ai-question-engine'
+    | '/admin/analytics'
     | '/admin/app-builder'
     | '/admin/branding'
     | '/admin/content'
@@ -702,6 +725,7 @@ export interface FileRouteTypes {
     | '/dashboard/materials'
     | '/dashboard/notifications'
     | '/dashboard/profile'
+    | '/dashboard/progress'
     | '/dashboard/student'
     | '/dashboard/tests'
     | '/faculty/$slug'
@@ -710,6 +734,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/faculty/'
     | '/_authenticated/admin/ai-question-engine'
+    | '/_authenticated/admin/analytics'
     | '/_authenticated/admin/app-builder'
     | '/_authenticated/admin/branding'
     | '/_authenticated/admin/content'
@@ -962,6 +987,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardProfileRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/progress': {
+      id: '/dashboard/progress'
+      path: '/progress'
+      fullPath: '/dashboard/progress'
+      preLoaderRoute: typeof DashboardProgressRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/student': {
       id: '/dashboard/student'
       path: '/student'
@@ -1009,6 +1041,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/ai-question-engine'
       fullPath: '/admin/ai-question-engine'
       preLoaderRoute: typeof AuthenticatedAdminAiQuestionEngineRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/analytics': {
+      id: '/_authenticated/admin/analytics'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/app-builder': {
@@ -1177,6 +1216,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminAiQuestionEngineRoute: typeof AuthenticatedAdminAiQuestionEngineRoute
+  AuthenticatedAdminAnalyticsRoute: typeof AuthenticatedAdminAnalyticsRoute
   AuthenticatedAdminAppBuilderRoute: typeof AuthenticatedAdminAppBuilderRoute
   AuthenticatedAdminBrandingRoute: typeof AuthenticatedAdminBrandingRoute
   AuthenticatedAdminContentRoute: typeof AuthenticatedAdminContentRoute
@@ -1204,6 +1244,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminAiQuestionEngineRoute:
     AuthenticatedAdminAiQuestionEngineRoute,
+  AuthenticatedAdminAnalyticsRoute: AuthenticatedAdminAnalyticsRoute,
   AuthenticatedAdminAppBuilderRoute: AuthenticatedAdminAppBuilderRoute,
   AuthenticatedAdminBrandingRoute: AuthenticatedAdminBrandingRoute,
   AuthenticatedAdminContentRoute: AuthenticatedAdminContentRoute,
@@ -1238,6 +1279,7 @@ interface DashboardRouteChildren {
   DashboardMaterialsRoute: typeof DashboardMaterialsRoute
   DashboardNotificationsRoute: typeof DashboardNotificationsRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
+  DashboardProgressRoute: typeof DashboardProgressRoute
   DashboardStudentRoute: typeof DashboardStudentRoute
   DashboardTestsRoute: typeof DashboardTestsRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -1250,6 +1292,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardMaterialsRoute: DashboardMaterialsRoute,
   DashboardNotificationsRoute: DashboardNotificationsRoute,
   DashboardProfileRoute: DashboardProfileRoute,
+  DashboardProgressRoute: DashboardProgressRoute,
   DashboardStudentRoute: DashboardStudentRoute,
   DashboardTestsRoute: DashboardTestsRoute,
   DashboardIndexRoute: DashboardIndexRoute,

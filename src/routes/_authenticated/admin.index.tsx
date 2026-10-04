@@ -140,6 +140,9 @@ function AdminCourses() {
         <AdminCommandBar />
         <div className="mb-4 flex flex-wrap justify-end gap-2">
           <Button asChild size="sm" className="rounded-full">
+            <Link to="/admin/analytics">Business dashboard</Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="rounded-full">
             <Link to="/admin/tests">Test Builder & questions</Link>
           </Button>
           <Button asChild size="sm" className="rounded-full">
