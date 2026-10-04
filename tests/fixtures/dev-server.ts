@@ -72,6 +72,48 @@ const sessionFor = (user: NonNullable<ReturnType<typeof users.get>>) => ({
   },
 });
 
+/** Demo note used by the local preview to prove the auto diagrams work. */
+const DEMO_NOTES_WITH_DIAGRAMS = `Types of GST
+
+- CGST — collected by the Centre on intra-state supply
+- SGST — collected by the State on intra-state supply
+- IGST — collected by the Centre on inter-state supply
+- UTGST — collected by Union Territories
+
+Registration process
+
+- Applicant files the REG-01 form online
+- Aadhaar authentication is completed
+- Officer verifies the documents
+- GSTIN is issued within 7 working days
+
+Rate structure
+
+1. GST slabs
+- 5 percent essential goods
+- 12 percent standard goods
+- 18 percent most services
+- 28 percent luxury goods
+
+Advantages
+- One nation, one tax
+- Removes cascading of taxes
+
+Disadvantages
+- Compliance cost for small firms
+- Multiple return filings
+
+Important milestones
+
+2017 GST came into force on 1 July
+2019 E-invoicing started for large firms
+2023 GSTR-3B automation expanded
+
+:::cycle GST money flow
+Consumer -> Business -> Government -> Public services -> Consumer
+:::
+`;
+
 const runtime = "data/fixture-content.runtime.json";
 const doc = JSON.parse(readFileSync("data/project-content.json", "utf8")) as {
   version: number;
@@ -146,6 +188,54 @@ doc.tables["lectures"] = [
   },
 ];
 doc.tables["materials"] = [
+  {
+    // A note with no PDF at all: the reader shows the text plus the diagrams and
+    // charts that are generated from it, and printing carries the KKCC watermark.
+    id: "12000000-0000-4000-8000-000000000002",
+    course_id: null,
+    lecture_id: null,
+    title: "GST — Notes with auto diagrams (demo)",
+    description: DEMO_NOTES_WITH_DIAGRAMS,
+    subject: "Commerce",
+    class_level: "Class 12",
+    chapter: "GST",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 6,
+    module_title: "Indirect Tax",
+    batch: "",
+    material_type: "Notes",
+    access_type: "free",
+    price: 0,
+    coin_price: 0,
+    is_published: true,
+    sort_order: 0,
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: "12000000-0000-4000-8000-000000000003",
+    title: "Paid Notes — buy from checkout (demo)",
+    description: "Advanced GST revision notes. Paid hai, to student checkout se kharid sakta hai.",
+    course_id: null,
+    lecture_id: null,
+    subject: "Commerce",
+    class_level: "Class 12",
+    chapter: "GST revision",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 3,
+    module_title: "Indirect Tax",
+    batch: "",
+    material_type: "Notes",
+    access_type: "paid",
+    price: 99,
+    coin_price: 99,
+    is_published: true,
+    sort_order: 0,
+    created_at: now,
+    updated_at: now,
+  },
   {
     id: "12000000-0000-4000-8000-000000000001",
     course_id: ids.course,

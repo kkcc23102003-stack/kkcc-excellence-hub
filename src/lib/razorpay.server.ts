@@ -156,7 +156,9 @@ async function razorpayRequest<T>(
 
 export type RazorpayOrderNotes = {
   user_id: string;
-  kind: "course" | "series" | "test" | "coin_pack";
+  /** `material` = paid study notes; the notes travel with the order so a lost
+   *  callback can still be recovered. */
+  kind: "course" | "series" | "test" | "material" | "coin_pack";
   item_id: string;
   coupon_code?: string;
 };

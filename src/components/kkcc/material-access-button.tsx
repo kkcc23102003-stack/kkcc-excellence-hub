@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { BookOpen, Copy, Download, ExternalLink, Loader2, Lock, Printer, X } from "lucide-react";
+import {
+  BookOpen,
+  Copy,
+  Download,
+  ExternalLink,
+  Loader2,
+  Lock,
+  Printer,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { KaatCoin } from "@/components/kkcc/kaat-coin";
@@ -12,6 +22,14 @@ import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 import { getMyMaterialAccessUrl, spend23KaatForMaterial } from "@/lib/coins.functions";
 import { coinPriceOf } from "@/lib/cms";
 import { friendlyError } from "@/lib/storage";
+import {
+  KKCC_BRAND_PRIMARY,
+  KKCC_BRAND_SECONDARY,
+  describeVisuals,
+  notesPrintDocument,
+  renderNotesBody,
+} from "@/lib/notes-visuals";
+import { analyzeNotes } from "@/lib/notes-visuals/analyze";
 
 type MaterialAccessType = "course" | "free" | "paid";
 function normaliseAccessType(
@@ -45,16 +63,20 @@ function openPrintableNoteWindow(input: {
   subject?: string | null | undefined;
   chapter?: string | null | undefined;
   materialType?: string | null | undefined;
+  /** Plain text notes typed by the admin. Diagrams are generated from it. */
   description?: string | null | undefined;
+  fontScale?: number | undefined;
 }) {
-  const escapedBody = (
-    input.description || `${input.title} — Complete Study Notes & Key Exam Revision Points.`
-  )
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br/>");
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"/><title>${input.title}</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;width:100%;max-width:800px;margin:0 auto;padding:14px;line-height:1.75;color:#0f172a;background:#f8fafc;overflow-wrap:anywhere;word-break:break-word}h1{margin:0 0 10px;color:#0f172a;font-size:clamp(20px,4.8vw,28px);line-height:1.3}.meta{font-size:12px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:clamp(16px,4vw,28px);box-shadow:0 4px 20px rgba(15,23,42,.05);font-size:clamp(15px,3.8vw,16px)}.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}.btn{padding:10px 18px;border-radius:999px;background:#0284c7;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:14px}@media print{.toolbar{display:none}body{background:#fff;margin:0;padding:0}.card{border:none;box-shadow:none;padding:0}}</style></head><body><div class="toolbar"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div><div class="card"><div class="meta">KKCC Excellence Hub · ${[input.subject, input.chapter, input.materialType].filter(Boolean).join(" · ")}</div><h1>${input.title}</h1><div>${escapedBody}</div></div></body></html>`;
+  // One shared document builder, so screen and paper always match, and every
+  // printed page carries the KKCC / Kusum Kartik Coaching Centre watermark.
+  const html = notesPrintDocument({
+    title: input.title || "KKCC Study Note",
+    subject: input.subject,
+    chapter: input.chapter,
+    materialType: input.materialType,
+    text: input.description ?? "",
+    fontScale: input.fontScale ?? 16,
+  });
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const blobUrl = URL.createObjectURL(blob);
   window.open(blobUrl, "_blank", "noopener,noreferrer");
@@ -89,11 +111,21 @@ export function MaterialAccessButton({
 }) {
   const { user, loading: authLoading } = useAuthUser();
   const client = useQueryClient();
+  // Diagrams/charts are generated from the admin's plain text. Analysing twice
+  // is pointless, so both the reader and the toolbar share one result.
+  const notesAnalysis = useMemo(() => analyzeNotes(description ?? ""), [description]);
+  const generatedVisualCount = notesAnalysis.visuals.length;
   const fetchAccess = useServerFn(getMyMaterialAccessUrl);
   const spendCoins = useServerFn(spend23KaatForMaterial);
   const [loading, setLoading] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [fontScale, setFontScale] = useState<number>(15);
+  const noteBodyHtml = useMemo(
+    () => renderNotesBody(description ?? "", { fontScale }),
+    [description, fontScale],
+  );
+  const changeFont = (delta: number) =>
+    setFontScale((scale) => Math.min(22, Math.max(13, scale + delta)));
   const mode = normaliseAccessType(accessType, price, courseId);
   const free = mode === "free";
   const access = useQuery({
@@ -129,6 +161,30 @@ export function MaterialAccessButton({
         </Link>
       </Button>
     );
+
+  /*
+   * Paid notes, not unlocked yet: the student gets the exact same checkout as a
+   * Batch or Test Series — Razorpay online, 23KAAT coins, or "contact Admin for
+   * offline payment" when online payment is switched off.
+   */
+  const priceInr = Math.max(0, Number(price ?? 0));
+  const coins = Math.max(0, Number(coinPrice ?? price ?? 0));
+  if (!free && user && mode === "paid" && !resolvedUrl && materialId) {
+    return (
+      <div className={`flex flex-col gap-2 ${className}`}>
+        <Button asChild size="sm" className="w-full rounded-full font-semibold">
+          <Link to="/checkout" search={{ note: materialId }}>
+            <Lock className="mr-1.5 h-3.5 w-3.5" />
+            {priceInr > 0 ? `Buy Notes — ₹${priceInr}` : `Unlock with ${coins} 23KAAT`}
+          </Link>
+        </Button>
+        <p className="text-[11px] font-medium text-muted-foreground">
+          Online payment, 23KAAT coins or Admin se offline payment — jaise Batch/Test Series me hota
+          hai.
+        </p>
+      </div>
+    );
+  }
 
   if (free || resolvedUrl) {
     return (
@@ -171,6 +227,7 @@ export function MaterialAccessButton({
                   chapter,
                   materialType,
                   description,
+                  fontScale,
                 })
               }
             >
@@ -217,7 +274,7 @@ export function MaterialAccessButton({
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-full px-2.5 text-xs font-bold"
-                    onClick={() => setFontScale((s) => Math.max(13, s - 1))}
+                    onClick={() => changeFont(-1)}
                     title="Decrease text size"
                   >
                     A-
@@ -227,7 +284,7 @@ export function MaterialAccessButton({
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-full px-2.5 text-xs font-bold"
-                    onClick={() => setFontScale((s) => Math.min(22, s + 1))}
+                    onClick={() => changeFont(1)}
                     title="Increase text size"
                   >
                     A+
@@ -248,12 +305,20 @@ export function MaterialAccessButton({
               {/* Scrollable Mobile-Responsive Body */}
               <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
                 {description ? (
-                  <div
-                    style={{ fontSize: `${fontScale}px` }}
-                    className="whitespace-pre-wrap break-words rounded-2xl border bg-muted/20 p-4 leading-relaxed text-foreground sm:p-5"
-                  >
-                    {description}
-                  </div>
+                  <>
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      <span>
+                        {generatedVisualCount
+                          ? `${describeVisuals(notesAnalysis.visuals.map((entry) => entry.spec))} auto-generated from the text`
+                          : "Add steps, points or numbers in the notes to auto-generate diagrams"}
+                      </span>
+                    </div>
+                    <div
+                      className="kkcc-note-reader rounded-2xl border bg-card p-4 leading-relaxed text-foreground sm:p-5"
+                      dangerouslySetInnerHTML={{ __html: noteBodyHtml }}
+                    />
+                  </>
                 ) : null}
 
                 {embeddedPreviewUrl ? (
@@ -288,6 +353,7 @@ export function MaterialAccessButton({
                         chapter,
                         materialType,
                         description,
+                        fontScale,
                       })
                     }
                   >

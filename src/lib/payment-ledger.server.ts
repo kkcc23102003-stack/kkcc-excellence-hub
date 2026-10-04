@@ -14,7 +14,7 @@
  */
 import { projectContent } from "@/lib/project-content.server";
 
-export type LedgerKind = "course" | "series" | "test" | "coin_pack";
+export type LedgerKind = "course" | "series" | "test" | "material" | "coin_pack";
 
 export type LedgerEntry = {
   userId: string;
@@ -54,7 +54,9 @@ export async function recordPaymentEntry(entry: LedgerEntry): Promise<string | n
       .from("payment_transactions")
       .insert({
         user_id: entry.userId,
-        // `course_id` is uuid typed, so only a real purchase id goes here.
+        // `course_id` is uuid typed, so only a real batch id goes here; every
+        // other kind (test series, test, notes, coins) carries its item in
+        // metadata instead.
         course_id: entry.kind === "course" ? entry.itemId : null,
         provider: entry.provider ?? "razorpay",
         status: entry.status,

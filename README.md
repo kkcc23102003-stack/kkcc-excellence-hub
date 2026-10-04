@@ -1364,6 +1364,46 @@ Re-run it whenever you add a batch, and point Google Search Console at
 - `/dashboard/progress` (student sidebar → **My Progress**) shows subject strength,
   weak chapters and the score trend of the last 10 papers.
 
+## Notes: Free / Paid control and auto-generated diagrams
+
+**Admin panel → Study material** controls every note:
+
+| Setting      | Student sees                                                                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Free`       | "Read Notes" opens immediately for everyone                                                                                                                                                    |
+| `Paid`       | `₹ price` + `23KAAT coin price`; students buy it from `/checkout?note=<id>` exactly like a Batch or Test Series (Razorpay online, 23KAAT coins, or "Contact Admin" when online payment is off) |
+| `Batch only` | Unlocked with the Batch the note belongs to                                                                                                                                                    |
+
+The list has one-tap **Free** / **Paid** buttons, and the editor previews the note
+exactly as a student will read it.
+
+### Diagrams and charts are generated from the text
+
+Write plain text — no images needed. Under a heading, the analyser reads the
+shape of the content and draws the right visual:
+
+| What you type                                | What is generated                                |
+| -------------------------------------------- | ------------------------------------------------ |
+| `Types of X` + 3 or more points              | classification tree                              |
+| `Process` / `Steps` + points                 | flow diagram with arrows                         |
+| `Advantages` / `Disadvantages` points        | two-column comparison                            |
+| Points that start with years (1946, 1950, …) | timeline in order                                |
+| Points with numbers / percentages            | bar chart, or a donut when the values are shares |
+| `:::cycle Name` → `A -> B -> C` → `:::`      | cycle diagram                                    |
+
+Explicit fences: `:::flow`, `:::cycle`, `:::tree`, `:::compare`, `:::timeline`,
+`:::chart`, `:::auto`. Write `[visuals:off]` anywhere in a note to keep it plain
+text only. A note never gets more than six auto visuals, and every figure is a real
+SVG, so it stays crisp on a phone screen and in a printed PDF.
+
+### Printing carries the KKCC watermark
+
+Every printed page (Print / Save as PDF, and the inline note that opens when a
+material has no PDF attached) repeats **KKCC Excellence Hub** and **Kusum Kartik
+Coaching Centre** as a rotated watermark layer, with the brand line in the page
+header and footer. That layer is a fixed print layer, which is why it appears on
+page 1, page 2, and every page after.
+
 ## Performance notes
 
 - The ~1.7 MB exam bank is code-split (`src/lib/exam-bank/lazy.ts`): the quiz page

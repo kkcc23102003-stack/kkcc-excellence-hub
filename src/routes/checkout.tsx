@@ -35,12 +35,14 @@ import {
   completeRazorpayLearningPurchase,
   getMy23KaatWallet,
   spend23KaatForCourse,
+  spend23KaatForMaterial,
   spend23KaatForSeries,
   spend23KaatForTest,
 } from "@/lib/coins.functions";
 import {
   getCustomSeriesCatalog,
   listPublishedCourses,
+  listPublicMaterials,
   listPublicTests,
   listSeriesOverrides,
 } from "@/lib/content.functions";
@@ -65,6 +67,8 @@ const searchSchema = z.object({
   course: z.string().optional(),
   series: z.string().optional(),
   test: z.string().optional(),
+  /** Paid study notes / notes bundle id — same checkout, same Razorpay path. */
+  note: z.string().optional(),
   coupon: z.string().optional(),
 });
 
@@ -105,9 +109,10 @@ export const Route = createFileRoute("/checkout")({
     ],
   }),
   loader: async () => {
-    const [courses, tests, customCatalog, seriesOverrides, payment] = await Promise.all([
+    const [courses, tests, notes, customCatalog, seriesOverrides, payment] = await Promise.all([
       safeServerCall(() => listPublishedCourses(), []),
       safeServerCall(() => listPublicTests(), []),
+      safeServerCall(() => listPublicMaterials(), []),
       safeServerCall(() => getCustomSeriesCatalog({} as never), {}),
       safeServerCall(() => listSeriesOverrides({} as never), []),
       safeServerCall(() => getPublicPaymentSettings(), {
@@ -119,7 +124,7 @@ export const Route = createFileRoute("/checkout")({
           "Online payment (Razorpay) is currently off. Please contact Admin for offline payment (UPI / Cash / Bank Transfer) to unlock access on your student account.",
       }),
     ]);
-    return { courses, tests, customCatalog, seriesOverrides, payment };
+    return { courses, tests, notes, customCatalog, seriesOverrides, payment };
   },
   component: Checkout,
 });
@@ -156,15 +161,18 @@ function Checkout() {
     course: slug,
     series: seriesIdParam,
     test: testIdParam,
+    note: noteIdParam,
     coupon: initialCouponParam,
   } = Route.useSearch();
-  const { courses, tests, customCatalog, seriesOverrides, payment } = Route.useLoaderData();
+  const { courses, tests, notes, customCatalog, seriesOverrides, payment } = Route.useLoaderData();
 
-  const checkoutMode: "series" | "test" | "course" = seriesIdParam
+  const checkoutMode: "series" | "test" | "course" | "material" = seriesIdParam
     ? "series"
     : testIdParam
       ? "test"
-      : "course";
+      : noteIdParam
+        ? "material"
+        : "course";
 
   const allSeries = useMemo(() => {
     setRuntimeCustomSeriesCatalog(customCatalog ?? {});
@@ -195,6 +203,12 @@ function Checkout() {
     () => (slug ? courses.find((c) => c.slug === slug) : undefined),
     [courses, slug],
   );
+  /** Notes have to be Paid in the admin panel before they can be sold. */
+  const selectedNote = useMemo(
+    () => (noteIdParam ? (notes.find((n) => n.id === noteIdParam) ?? null) : null),
+    [notes, noteIdParam],
+  );
+  const notePurchasable = Boolean(selectedNote && selectedNote.access_type === "paid");
 
   const [coupon, setCoupon] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
@@ -215,6 +229,7 @@ function Checkout() {
   const spendCoinsForCourse = useServerFn(spend23KaatForCourse);
   const spendCoinsForSeries = useServerFn(spend23KaatForSeries);
   const spendCoinsForTest = useServerFn(spend23KaatForTest);
+  const spendCoinsForNotes = useServerFn(spend23KaatForMaterial);
   const finishRazorpayPurchase = useServerFn(completeRazorpayLearningPurchase);
   const sendEnquiry = useServerFn(submitAdmissionEnquiry);
 
@@ -236,6 +251,8 @@ function Checkout() {
     if (checkoutMode === "test" && selectedTest) {
       return Boolean(learningAccess.data?.allowed_test_ids.includes(selectedTest.id));
     }
+    // Notes: the server answers "already unlocked" when the order is created,
+    // so an owner of the note is never asked to pay twice.
     return false;
   }, [checkoutMode, selectedSeries, selectedTest, learningAccess.data]);
 
@@ -248,20 +265,27 @@ function Checkout() {
         !selectedTest.is_paid || (selectedTest.price_inr <= 0 && selectedTest.price_coins <= 0)
       );
     }
+    if (checkoutMode === "material") {
+      // Free notes never reach checkout; batch-only notes are not sold here.
+      return !notePurchasable;
+    }
     return course ? isFreeCourse(course) : false;
-  }, [checkoutMode, selectedSeries, selectedTest, course]);
+  }, [checkoutMode, selectedSeries, selectedTest, course, notePurchasable]);
 
   const basePriceInr = useMemo(() => {
     if (checkoutMode === "series" && selectedSeries) return Math.max(0, selectedSeries.priceInr);
     if (checkoutMode === "test" && selectedTest) return Math.max(0, selectedTest.price_inr);
+    if (checkoutMode === "material" && selectedNote && notePurchasable)
+      return Math.max(0, selectedNote.price ?? 0);
     return course ? Math.max(0, course.price) : 0;
-  }, [checkoutMode, selectedSeries, selectedTest, course]);
+  }, [checkoutMode, selectedSeries, selectedTest, course, selectedNote, notePurchasable]);
 
   const originalPriceInr = useMemo(() => {
     if (checkoutMode === "series" && selectedSeries) return Math.max(0, selectedSeries.priceInr);
     if (checkoutMode === "test" && selectedTest) return Math.max(0, selectedTest.price_inr);
+    if (checkoutMode === "material" && selectedNote) return Math.max(0, selectedNote.price ?? 0);
     return course ? Math.max(course.original_price || course.price, course.price) : 0;
-  }, [checkoutMode, selectedSeries, selectedTest, course]);
+  }, [checkoutMode, selectedSeries, selectedTest, course, selectedNote]);
 
   const baseCoinCost = useMemo(() => {
     if (free) return 0;
@@ -271,8 +295,9 @@ function Checkout() {
     if (checkoutMode === "test" && selectedTest) {
       return Math.max(0, selectedTest.price_coins || selectedTest.price_inr);
     }
+    if (checkoutMode === "material" && selectedNote) return Math.max(0, coinPriceOf(selectedNote));
     return course ? coinPriceOf(course) : 0;
-  }, [free, checkoutMode, selectedSeries, selectedTest, course]);
+  }, [free, checkoutMode, selectedSeries, selectedTest, course, selectedNote]);
 
   const coinCost = useMemo(() => {
     if (free) return 0;
@@ -292,25 +317,35 @@ function Checkout() {
       ? (selectedSeries?.name ?? "")
       : checkoutMode === "test"
         ? (selectedTest?.title ?? "")
-        : (course?.title ?? "");
+        : checkoutMode === "material"
+          ? (selectedNote?.title ?? "")
+          : (course?.title ?? "");
 
   const itemId =
     checkoutMode === "series"
       ? (selectedSeries?.id ?? "")
       : checkoutMode === "test"
         ? (selectedTest?.id ?? "")
-        : (course?.id ?? "");
+        : checkoutMode === "material"
+          ? (selectedNote?.id ?? "")
+          : (course?.id ?? "");
 
   const redirectUrlAfterCheckout =
     checkoutMode === "series" && selectedSeries
       ? `/checkout?series=${selectedSeries.id}`
       : checkoutMode === "test" && selectedTest
         ? `/checkout?test=${selectedTest.id}`
-        : course
-          ? `/checkout?course=${course.slug}`
-          : "/checkout";
+        : checkoutMode === "material" && selectedNote
+          ? `/checkout?note=${selectedNote.id}`
+          : course
+            ? `/checkout?course=${course.slug}`
+            : "/checkout";
 
   const openAfterUnlock = () => {
+    if (checkoutMode === "material") {
+      void navigate({ to: "/study-material" });
+      return;
+    }
     if (checkoutMode === "series" && selectedSeries) {
       void navigate({
         to: "/test-series/learn/$seriesId",
@@ -359,18 +394,23 @@ function Checkout() {
                   coupon_code: appliedCoupon?.code ?? "",
                 },
               })
-            : course
-              ? await spendCoinsForCourse({
-                  data: {
-                    course_id: course.id,
-                    expected_coins: coinCost,
-                    coupon_code: appliedCoupon?.code ?? "",
-                  },
-                })
-              : null;
+            : checkoutMode === "material" && selectedNote
+              ? await spendCoinsForNotes({ data: { material_id: selectedNote.id } })
+              : course
+                ? await spendCoinsForCourse({
+                    data: {
+                      course_id: course.id,
+                      expected_coins: coinCost,
+                      coupon_code: appliedCoupon?.code ?? "",
+                    },
+                  })
+                : null;
       if (!result) return;
+      // The notes path answers with the note payload instead of a wallet
+      // balance, so the balance is read defensively.
+      const remainingBalance = (result as { balance?: number }).balance;
       toast.success(
-        `Unlocked with 23KAAT${result.balance != null ? ` · Balance ${result.balance}` : ""}`,
+        `Unlocked with 23KAAT${remainingBalance != null ? ` · Balance ${remainingBalance}` : ""}`,
       );
       await invalidateLearningQueries(queryClient);
       window.dispatchEvent(new Event("kkcc:23kaat-refresh"));
@@ -443,7 +483,7 @@ function Checkout() {
         amount: order.amount_paise || Math.round(payableInr * 100),
         currency: "INR",
         name: "KKCC Excellence Hub",
-        description: `${checkoutMode === "series" ? "Test Series" : checkoutMode === "test" ? "Mock Test" : "Batch"}: ${itemTitle}`,
+        description: `${checkoutMode === "series" ? "Test Series" : checkoutMode === "test" ? "Mock Test" : checkoutMode === "material" ? "Study Notes" : "Batch"}: ${itemTitle}`,
         prefill: {
           name: displayNameFromUser(user) || user.email || "Student",
           email: user.email || "",
@@ -535,7 +575,9 @@ function Checkout() {
           ? `Test Series (${itemTitle})`
           : checkoutMode === "test"
             ? `Mock Test (${itemTitle})`
-            : `Batch / Course (${itemTitle})`;
+            : checkoutMode === "material"
+              ? `Study Notes (${itemTitle})`
+              : `Batch / Course (${itemTitle})`;
       const couponSuffix = appliedCoupon
         ? ` Coupon applied: ${appliedCoupon.code} (${appliedCoupon.discount_percent}% OFF — saved ${formatINR(appliedCoupon.discount_amount)}).`
         : "";
@@ -549,9 +591,16 @@ function Checkout() {
               ? (selectedSeries?.examTrack ?? "")
               : checkoutMode === "test"
                 ? (selectedTest?.exam_track ?? "")
-                : (course?.class_level ?? ""),
+                : checkoutMode === "material"
+                  ? (selectedNote?.class_level ?? "")
+                  : (course?.class_level ?? ""),
           interest: label,
-          source: checkoutMode === "series" ? "paid_test_series" : "checkout",
+          source:
+            checkoutMode === "series"
+              ? "paid_test_series"
+              : checkoutMode === "material"
+                ? "paid_notes"
+                : "checkout",
           message: `Offline payment / unlock request for ${label}.${couponSuffix} Final Payable Price: ${formatINR(total)} (or ${coinCost} 23KAAT coins). Please contact me for offline payment and unlock access on my student account (${user.email}).`,
         },
       });
@@ -581,6 +630,7 @@ function Checkout() {
           course_slug: checkoutMode === "course" ? (course?.slug ?? "") : "",
           series_id: checkoutMode === "series" ? (selectedSeries?.id ?? "") : "",
           test_id: checkoutMode === "test" ? (selectedTest?.id ?? "") : "",
+          material_id: checkoutMode === "material" ? (selectedNote?.id ?? "") : "",
         },
       })) as CouponValidationResult;
       if (!result.valid) {
@@ -672,6 +722,10 @@ function Checkout() {
       });
       return;
     }
+    if (checkoutMode === "material") {
+      void navigate({ to: "/study-material" });
+      return;
+    }
     if (!course) return;
     setStartingFree(true);
     try {
@@ -691,13 +745,13 @@ function Checkout() {
     }
   };
 
-  if (!course && !selectedSeries && !selectedTest) {
+  if (!course && !selectedSeries && !selectedTest && !selectedNote) {
     return (
       <SiteLayout>
         <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center sm:px-6">
-          <h1 className="text-2xl font-bold">No batch or test series selected</h1>
+          <h1 className="text-2xl font-bold">No batch, test series or notes selected</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Select a course batch or test series to proceed to checkout.
+            Select a course batch, test series or paid notes to proceed to checkout.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Button asChild className="rounded-full">
@@ -705,6 +759,9 @@ function Checkout() {
             </Button>
             <Button asChild variant="outline" className="rounded-full">
               <Link to="/test-series">Browse Test Series</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-full">
+              <Link to="/study-material">Browse Notes</Link>
             </Button>
           </div>
         </div>
@@ -999,7 +1056,21 @@ function Checkout() {
               )}
             </dl>
 
-            {alreadyUnlocked || free ? (
+            {checkoutMode === "material" && !notePurchasable ? (
+              <div className="mt-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+                <p className="font-bold text-amber-900 dark:text-amber-200">
+                  Ye notes online bikri ke liye set nahi hain
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Notes ya to Free hain, ya apne Batch ke saath aate hain. Admin panel → Study
+                  material me isse <strong>Paid</strong> karke ₹ price daal dein, phir yahan online
+                  payment button aa jayega.
+                </p>
+                <Button asChild variant="outline" className="mt-3 rounded-full">
+                  <Link to="/study-material">Back to Study Material</Link>
+                </Button>
+              </div>
+            ) : alreadyUnlocked || free ? (
               <Button
                 size="lg"
                 className="mt-6 w-full rounded-full"

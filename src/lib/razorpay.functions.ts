@@ -40,7 +40,7 @@ import {
 } from "@/lib/razorpay.server";
 
 const learningOrderSchema = z.object({
-  kind: z.enum(["course", "series", "test"]),
+  kind: z.enum(["course", "series", "test", "material"]),
   item_id: z.string().trim().min(1).max(120),
   coupon_code: z.string().trim().max(40).optional().default(""),
 });
@@ -57,7 +57,7 @@ const adminRecoverSchema = z.object({
   payment_id: z.string().trim().min(6).max(120),
   user_id: z.string().trim().max(80).optional().default(""),
   email: z.string().trim().max(200).optional().default(""),
-  kind: z.enum(["course", "series", "test", "coin_pack"]).optional(),
+  kind: z.enum(["course", "series", "test", "material", "coin_pack"]).optional(),
   item_id: z.string().trim().max(120).optional().default(""),
 });
 

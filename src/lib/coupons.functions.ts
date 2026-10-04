@@ -39,12 +39,15 @@ const validateCouponSchema = z.object({
   course_slug: z.string().trim().optional().default(""),
   series_id: z.string().trim().optional().default(""),
   test_id: z.string().trim().optional().default(""),
+  /** Paid study notes / notes bundle — coupons work here too. */
+  material_id: z.string().trim().optional().default(""),
 });
 const redeemCouponSchema = z.object({
   code: couponCodeSchema,
   course_slug: z.string().trim().optional().default(""),
   series_id: z.string().trim().optional().default(""),
   test_id: z.string().trim().optional().default(""),
+  material_id: z.string().trim().optional().default(""),
 });
 
 type CourseCoupon = CouponCodeRow & { course?: CourseRow | null };
@@ -306,6 +309,18 @@ export const validateCouponForCourse = createServerFn({ method: "GET" })
       if (!test) return { valid: false, message: "Test not found." };
       originalAmountInr = Math.max(0, Number(test.price_inr) || 0);
       originalCoins = Math.max(0, Number(test.price_coins || test.price_inr) || 0);
+    } else if (data.material_id) {
+      const { data: material } = await projectContent
+        .from("materials")
+        .select("*")
+        .eq("id", data.material_id)
+        .eq("is_published", true)
+        .maybeSingle();
+      if (!material) return { valid: false, message: "Notes not found." };
+      if (material.access_type !== "paid")
+        return { valid: false, message: "These notes are not a paid item." };
+      originalAmountInr = Math.max(0, Number(material.price) || 0);
+      originalCoins = Math.max(0, Number(material.coin_price || material.price) || 0);
     } else if (data.course_slug) {
       const { data: course, error: courseError } = await projectContent
         .from("courses")
@@ -444,6 +459,48 @@ export const redeemCouponForCourse = createServerFn({ method: "POST" })
         ok: true,
         code: res.coupon?.code ?? data.code,
         course_id: test.id,
+        final_amount: res.finalAmount,
+        discount_amount: res.discountAmount,
+        discount_percent: res.discountPercent,
+        enrolled,
+      };
+    }
+
+    // Case 2b: Paid Notes 100% coupon unlock
+    if (data.material_id) {
+      const { data: material } = await projectContent
+        .from("materials")
+        .select("*")
+        .eq("id", data.material_id)
+        .eq("is_published", true)
+        .maybeSingle();
+      if (!material) throw new Error("Notes not found.");
+      const res = await resolveServerCouponDiscount({
+        code: data.code,
+        targetCourseId: null,
+        originalAmountInr: Math.max(0, Number(material.price) || 0),
+        originalCoins: Math.max(0, Number(material.coin_price || material.price) || 0),
+        userId: context.userId,
+        recordRedemption: true,
+      });
+      const enrolled = res.finalAmount <= 0 && res.finalCoins <= 0;
+      if (enrolled) {
+        const { error } = await supabaseAdmin.from("material_purchases").upsert(
+          {
+            user_id: context.userId,
+            material_id: material.id,
+            paid_coins: 0,
+            status: "active",
+            created_by: context.userId,
+          } as never,
+          { onConflict: "user_id,material_id" },
+        );
+        if (error) throw new Error(error.message);
+      }
+      return {
+        ok: true,
+        code: res.coupon?.code ?? data.code,
+        course_id: material.id,
         final_amount: res.finalAmount,
         discount_amount: res.discountAmount,
         discount_percent: res.discountPercent,

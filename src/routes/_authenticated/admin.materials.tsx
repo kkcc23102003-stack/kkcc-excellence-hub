@@ -37,6 +37,12 @@ import {
   saveMaterial,
 } from "@/lib/admin.functions";
 import { MATERIAL_TYPES, type Course, type Material } from "@/lib/cms";
+import {
+  VISUAL_KIND_LABELS,
+  describeVisuals,
+  renderNotesBody,
+  analyzeNotes,
+} from "@/lib/notes-visuals";
 import { friendlyError, uploadContentFile } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/admin/materials")({
@@ -327,6 +333,11 @@ function MaterialsManager() {
                         Free
                       </Badge>
                     )}
+                    {m.access_type === "course" && (
+                      <Badge variant="outline" className="rounded-full text-[11px]">
+                        Batch only
+                      </Badge>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {m.material_type}
                       {m.subject ? ` · ${m.subject}` : ""}
@@ -342,6 +353,47 @@ function MaterialsManager() {
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  {/* One tap Free / Paid — the student side updates instantly. */}
+                  <Button
+                    size="sm"
+                    variant={m.access_type === "free" ? "default" : "outline"}
+                    className="rounded-full"
+                    title="Ye notes sabke liye free kar dein"
+                    onClick={() => {
+                      if (m.access_type === "free") return;
+                      saveMutation.mutate({
+                        ...toInput(m),
+                        access_type: "free",
+                        price: 0,
+                        coin_price: 0,
+                      });
+                      toast.success(`"${m.title}" ab Free hai`);
+                    }}
+                  >
+                    Free
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={m.access_type === "paid" ? "default" : "outline"}
+                    className="rounded-full"
+                    title="Paid notes — ₹ price aur 23KAAT coin price editor me set karein"
+                    onClick={() => {
+                      if (m.access_type === "paid") {
+                        setOpenId(m.id);
+                        return;
+                      }
+                      saveMutation.mutate({
+                        ...toInput(m),
+                        access_type: "paid",
+                        price: m.price && m.price > 0 ? m.price : 49,
+                        coin_price: m.coin_price && m.coin_price > 0 ? m.coin_price : 49,
+                      });
+                      setOpenId(m.id);
+                      toast.success(`"${m.title}" ab Paid hai — ₹ price check kar lein`);
+                    }}
+                  >
+                    Paid
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -428,6 +480,8 @@ function MaterialForm({
   onSave: (v: MaterialInput) => void | Promise<unknown>;
 }) {
   const [v, setV] = useState<MaterialInput>(() => toInput(material));
+  // Recomputed as the admin types, so the preview below is always the truth.
+  const visualsCache = useMemo(() => analyzeNotes(v.description).visuals, [v.description]);
   useEffect(() => setV(toInput(material)), [material]);
   const folder = `materials/${v.course_id ?? "library"}`;
 
@@ -488,6 +542,41 @@ function MaterialForm({
             onChange={(e) => setV({ ...v, description: e.target.value })}
             placeholder="Write or paste complete chapter study notes here (students can read & print this directly even without a PDF file), or attach a PDF / Google Drive link below."
           />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            Diagrams apne aap ban jaate hain: heading ke neeche 3+ points likhein (Types, Steps,
+            Advantages/Disadvantages, saal ke saath Timeline) ya number wale points likhein (chart).
+            Apna diagram chahiye to likhein <code>:::flow Naam</code> &rarr; step → step &rarr; step
+            &rarr; <code>:::</code> (ya <code>:::cycle</code> / <code>:::tree</code> /{" "}
+            <code>:::compare</code> / <code>:::timeline</code> / <code>:::chart</code> /{" "}
+            <code>:::auto</code>). Band karne ke liye <code>[visuals:off]</code> likh dein.
+          </p>
+          {v.description.trim() ? (
+            <div className="mt-3 rounded-2xl border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Student ko aisa dikhega —{" "}
+                  {describeVisuals(visualsCache.map((entry) => entry.spec))}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {visualsCache.map((entry, index) => (
+                    <Badge
+                      key={`${entry.spec.kind}-${index}`}
+                      variant="secondary"
+                      className="rounded-full text-[10px]"
+                    >
+                      {VISUAL_KIND_LABELS[entry.spec.kind]}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div
+                className="kkcc-note-reader mt-2 max-h-72 overflow-y-auto rounded-xl bg-card p-3 text-foreground"
+                dangerouslySetInnerHTML={{
+                  __html: renderNotesBody(v.description, { fontScale: 13 }),
+                }}
+              />
+            </div>
+          ) : null}
         </div>
         <div>
           <Label>Course / batch assignment</Label>

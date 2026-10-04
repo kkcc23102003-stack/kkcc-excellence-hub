@@ -62,7 +62,7 @@ const testSpendSchema = z.object({
   coupon_code: z.string().trim().max(40).optional().default(""),
 });
 const razorpayCompleteSchema = z.object({
-  kind: z.enum(["course", "series", "test"]),
+  kind: z.enum(["course", "series", "test", "material"]),
   item_id: z.string().trim().min(1).max(120),
   coupon_code: z.string().trim().max(40).optional().default(""),
   razorpay_payment_id: z.string().trim().min(3).max(200),

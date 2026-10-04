@@ -12,9 +12,13 @@ import { coinPriceOf } from "@/lib/cms";
 import { resolveServerCouponDiscount } from "@/lib/coupons.functions";
 import { effectiveSeries, unwrap } from "@/lib/learning.server";
 import { projectContent } from "@/lib/project-content.server";
-import type { CourseRow, TestRow } from "@/integrations/supabase/db";
+import type { CourseRow, MaterialRow, TestRow } from "@/integrations/supabase/db";
 
-export type LearningKind = "course" | "series" | "test";
+/**
+ * Everything a student can buy. `material` is a set of Notes — the admin
+ * switches each note between Free, Paid (₹ + 23KAAT) and Batch-only.
+ */
+export type LearningKind = "course" | "series" | "test" | "material";
 
 export type LearningItem = {
   id: string;
@@ -78,6 +82,26 @@ export async function loadLearningItem(kind: LearningKind, itemId: string): Prom
       title: series.name,
       baseInr,
       baseCoins: Math.max(0, series.priceCoins ?? baseInr),
+    };
+  }
+
+  if (kind === "material") {
+    const material = unwrap(
+      await projectContent
+        .from("materials")
+        .select("*")
+        .eq("id", itemId)
+        .eq("is_published", true)
+        .single(),
+    ) as MaterialRow;
+    const isPaid = material.access_type === "paid";
+    return {
+      id: material.id,
+      kind,
+      title: material.title || "Study Notes",
+      // A note switched back to Free by the admin costs nothing, instantly.
+      baseInr: isPaid ? Math.max(0, material.price ?? 0) : 0,
+      baseCoins: isPaid ? Math.max(0, coinPriceOf(material)) : 0,
     };
   }
 
@@ -232,6 +256,19 @@ export async function grantLearningPurchase(input: {
         note,
       } as never);
     }
+  } else if (input.kind === "material") {
+    // Notes unlock through material_purchases — that is what the reader checks.
+    const { error } = await supabaseAdmin.from("material_purchases").upsert(
+      {
+        user_id: input.userId,
+        material_id: price.item.id,
+        paid_coins: 0,
+        status: "active",
+        created_by: input.userId,
+      } as never,
+      { onConflict: "user_id,material_id" },
+    );
+    if (error) throw new Error(error.message);
   } else {
     await supabaseAdmin.from("test_access_grants").insert({
       user_id: input.userId,
@@ -275,6 +312,22 @@ export async function hasLearningAccess(
       .eq("series_id", itemId)
       .is("revoked_at", null);
     return (count ?? 0) > 0;
+  }
+  if (kind === "material") {
+    const { count } = await supabaseAdmin
+      .from("material_purchases")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("material_id", itemId)
+      .eq("status", "active");
+    if ((count ?? 0) > 0) return true;
+    // A note the admin switched to Free opens immediately, no purchase needed.
+    const { data } = await projectContent
+      .from("materials")
+      .select("access_type")
+      .eq("id", itemId)
+      .maybeSingle();
+    return (data as { access_type?: string } | null)?.access_type === "free";
   }
   const { count } = await supabaseAdmin
     .from("test_access_grants")

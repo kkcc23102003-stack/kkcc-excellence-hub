@@ -734,3 +734,84 @@ html.high-refresh:not(.lite-motion) .reveal {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* ---------------------------------------------------------------- notes reader
+   Notes are plain text written by the admin; diagrams and charts are generated
+   from that text (see src/lib/notes-visuals). These rules style the generated
+   document both on screen and on paper. */
+.kkcc-note-reader {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.kkcc-note-reader .kkcc-note-body {
+  line-height: 1.75;
+}
+
+.kkcc-note-reader h2.kkcc-note-h2 {
+  margin: 1.15rem 0 0.5rem;
+  border-left: 4px solid var(--primary);
+  padding-left: 0.6rem;
+  font-size: 1.08em;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.kkcc-note-reader h3.kkcc-note-h3 {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 1em;
+  font-weight: 800;
+}
+
+.kkcc-note-reader p.kkcc-note-p {
+  margin: 0.45rem 0;
+}
+
+.kkcc-note-reader ul.kkcc-note-list,
+.kkcc-note-reader ol.kkcc-note-list {
+  margin: 0.45rem 0 0.45rem 1.15rem;
+  padding: 0;
+}
+
+.kkcc-note-reader li.kkcc-note-li {
+  margin: 0.25rem 0;
+}
+
+.kkcc-note-reader figure.kkcc-visual {
+  margin: 1rem 0;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--card) 92%, white 8%);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.kkcc-note-reader figure.kkcc-visual svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.kkcc-note-reader figcaption {
+  margin-top: 0.35rem;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Printing straight from the reader still shows the brand on the sheet. */
+@media print {
+  .kkcc-note-reader figure.kkcc-visual {
+    border-color: #cbd5e1;
+    background: #ffffff;
+  }
+
+  .kkcc-note-reader .kkcc-note-h2 {
+    border-left-color: #4338ca;
+  }
+}

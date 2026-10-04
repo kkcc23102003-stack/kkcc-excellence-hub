@@ -1,4 +1,5 @@
 import { isFreeCourse } from "@/lib/cms";
+import { notesPrintDocument } from "@/lib/notes-visuals";
 import type { StudentContext } from "@/lib/learning.server";
 import { readStudentAccess, unwrap } from "@/lib/learning.server";
 import { projectContent } from "@/lib/project-content.server";
@@ -7,18 +8,19 @@ import { resolveContentUrl } from "@/lib/content-storage.server";
 function buildInlineNoteDataUrl(material: {
   title?: string | null;
   subject?: string | null;
+  chapter?: string | null;
   material_type?: string | null;
   description?: string | null;
 }) {
-  const title = material.title || "KKCC Study Note";
-  const subject = material.subject || "General Studies";
-  const body = material.description || "Study note content.";
-  const escapedBody = body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br/>");
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"/><title>${title}</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;width:100%;max-width:780px;margin:0 auto;padding:16px;line-height:1.75;color:#0f172a;background:#f8fafc;overflow-wrap:anywhere;word-break:break-word}h1{margin:0 0 10px;color:#0f172a;font-size:clamp(20px,4.5vw,28px);line-height:1.3}.meta{font-size:12px;font-weight:800;color:#0284c7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:clamp(16px,4vw,28px);box-shadow:0 4px 20px rgba(15,23,42,.05);font-size:clamp(15px,3.8vw,16px)}.print-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;max-width:240px;margin-bottom:14px;padding:10px 18px;border-radius:999px;background:#0284c7;color:#fff;font-weight:700;font-size:14px;border:none;cursor:pointer}@media print{.print-btn{display:none}body{background:#fff;padding:0}.card{border:none;box-shadow:none;padding:0}}</style></head><body><button class="print-btn" onclick="window.print()">Print / Save as PDF</button><div class="card"><div class="meta">KKCC Excellence Hub · ${subject} · ${material.material_type || "Notes"}</div><h1>${title}</h1><div>${escapedBody}</div></div></body></html>`;
+  // Same builder the reader and the print button use: text goes in, headings,
+  // diagrams/charts and the KKCC watermark on every page come out.
+  const html = notesPrintDocument({
+    title: material.title || "KKCC Study Note",
+    subject: material.subject,
+    chapter: material.chapter,
+    materialType: material.material_type,
+    text: material.description ?? "",
+  });
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 

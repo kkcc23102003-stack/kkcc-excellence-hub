@@ -10,7 +10,8 @@
  */
 export type PendingPayment = {
   payment_id: string;
-  kind: "course" | "series" | "test" | "coin_pack";
+  /** `material` = paid study notes, bought through the same checkout. */
+  kind: "course" | "series" | "test" | "material" | "coin_pack";
   item_id: string;
   title: string;
   amount_inr: number;
