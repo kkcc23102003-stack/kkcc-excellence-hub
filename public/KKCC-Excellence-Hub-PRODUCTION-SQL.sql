@@ -823,3 +823,154 @@ END $$;
 NOTIFY pgrst, 'reload schema';
 
 SELECT public.kkcc_clean_database_bloat() AS cleaner_report;
+
+
+-- KKCC Free-plan space tools. Run ONCE in Supabase SQL Editor.
+-- Installing this file deletes NOTHING. Admin panel defaults to preview only.
+-- Back up before a confirmed cleanup. Submitted results/payments/users stay intact.
+BEGIN;
+CREATE OR REPLACE FUNCTION public.kkcc_space_report(
+  p_cleanup boolean DEFAULT false,
+  p_before timestamptz DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  cutoff timestamptz := coalesce(p_before, now() - interval '90 days');
+  candidates integer := 0;
+  removed integer := 0;
+  sizes jsonb;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'Admin access required' USING ERRCODE = '42501';
+  END IF;
+  IF cutoff > now() - interval '90 days' OR cutoff < timestamptz '2000-01-01' THEN
+    RAISE EXCEPTION 'Cutoff must be at least 90 days old';
+  END IF;
+  -- Bound work to 5,000 rows per confirmed batch. No cron, no silent deletion.
+  SELECT count(*) INTO candidates FROM (
+    SELECT id FROM public.learning_attempts
+    WHERE status = 'started' AND submitted_at IS NULL
+      AND started_at < cutoff AND duration_seconds >= 0
+      AND started_at + make_interval(secs => duration_seconds) < cutoff
+    ORDER BY started_at, id LIMIT 5000
+  ) eligible;
+  IF p_cleanup THEN
+    WITH eligible AS (
+      SELECT id FROM public.learning_attempts
+      WHERE status = 'started' AND submitted_at IS NULL
+        AND started_at < cutoff AND duration_seconds >= 0
+        AND started_at + make_interval(secs => duration_seconds) < cutoff
+      ORDER BY started_at, id LIMIT 5000 FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM public.learning_attempts a USING eligible e
+    WHERE a.id = e.id AND a.status = 'started' AND a.submitted_at IS NULL;
+    GET DIAGNOSTICS removed = ROW_COUNT;
+  END IF;
+  SELECT coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO sizes FROM (
+    SELECT c.relname AS name, pg_total_relation_size(c.oid) AS bytes
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r','m')
+    ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 12
+  ) t;
+  RETURN jsonb_build_object(
+    'database_bytes', pg_database_size(current_database()),
+    'tables', sizes, 'cutoff', cutoff, 'eligible_batch', candidates,
+    'deleted', removed, 'batch_limit', 5000, 'preview', NOT p_cleanup
+  );
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_space_report(boolean,timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.kkcc_space_report(boolean,timestamptz) TO authenticated;
+
+-- Disable the old destructive cleaner entry point. It used to delete 24-hour
+-- attempts and expire grants, and could run without checking the caller's role.
+-- Legacy callers now get a non-destructive, admin-only report.
+CREATE OR REPLACE FUNCTION public.kkcc_clean_database_bloat()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  RETURN public.kkcc_space_report(false, NULL);
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_clean_database_bloat() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.kkcc_clean_database_bloat() TO authenticated;
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+-- PostgreSQL autovacuum can reuse deleted space later. File size/billed usage
+-- need not shrink immediately. Do NOT run VACUUM FULL on a live app casually.
+-- This report is database size, NOT Supabase Storage object quota or billing.
+-- NOTES READ-ONLY FIX: durable Supabase notes/settings, no S3 required.
+-- Additive. Does not delete legacy data, student records or question banks.
+-- Deploy updated app alongside this migration. Never expose service_role in VITE_*.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.kkcc_materials (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ course_id uuid, lecture_id uuid,
+ title text NOT NULL DEFAULT '', description text NOT NULL DEFAULT '',
+ subject text NOT NULL DEFAULT '', chapter text NOT NULL DEFAULT '',
+ module_title text NOT NULL DEFAULT '', batch text NOT NULL DEFAULT '',
+ material_type text NOT NULL DEFAULT 'Notes', class_level text NOT NULL DEFAULT '',
+ pages integer NOT NULL DEFAULT 0, file_url text, thumbnail_url text,
+ access_type text NOT NULL DEFAULT 'free', price integer NOT NULL DEFAULT 0,
+ coin_price integer NOT NULL DEFAULT 0, is_published boolean NOT NULL DEFAULT false,
+ sort_order integer NOT NULL DEFAULT 0,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_site_settings (
+ key text PRIMARY KEY, value text NOT NULL DEFAULT '',
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_private_settings (
+ key text PRIMARY KEY, value text NOT NULL DEFAULT '', updated_by uuid,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_content_files (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider text NOT NULL DEFAULT 'supabase',
+ bucket text NOT NULL DEFAULT 'course-content', path text NOT NULL,
+ public_url text NOT NULL DEFAULT '', original_url text NOT NULL DEFAULT '',
+ mime_type text NOT NULL DEFAULT '', size_bytes bigint NOT NULL DEFAULT 0,
+ linked_table text NOT NULL DEFAULT '', linked_id uuid, created_by uuid,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- App server checks admin/student access before reading these tables.
+-- Browser roles must NEVER read private settings or paid note bodies directly.
+ALTER TABLE public.kkcc_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_site_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_private_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_content_files ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_materials,public.kkcc_site_settings,public.kkcc_private_settings,public.kkcc_content_files FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_materials,public.kkcc_site_settings,public.kkcc_private_settings,public.kkcc_content_files TO service_role;
+CREATE INDEX IF NOT EXISTS kkcc_materials_published_order ON public.kkcc_materials(is_published,sort_order);
+
+-- Copy matching old CMS rows once, without overwriting any newer admin edits.
+DO $$ BEGIN
+ IF to_regclass('public.materials') IS NOT NULL THEN
+   EXECUTE $copy$
+     INSERT INTO public.kkcc_materials
+     SELECT (jsonb_populate_record(NULL::public.kkcc_materials,
+       '{"title":"","description":"","subject":"","chapter":"","module_title":"","batch":"","material_type":"Notes","class_level":"","pages":0,"access_type":"free","price":0,"coin_price":0,"is_published":false,"sort_order":0}'::jsonb
+       || jsonb_build_object('created_at',now(),'updated_at',now()) || jsonb_strip_nulls(to_jsonb(m)))).*
+     FROM public.materials m ON CONFLICT(id) DO NOTHING
+   $copy$;
+ END IF;
+ IF to_regclass('public.site_settings') IS NOT NULL THEN
+   EXECUTE 'INSERT INTO public.kkcc_site_settings(key,value) SELECT key,coalesce(value,'''') FROM public.site_settings ON CONFLICT(key) DO NOTHING';
+ END IF;
+ IF to_regclass('public.private_settings') IS NOT NULL THEN
+   EXECUTE 'INSERT INTO public.kkcc_private_settings(key,value) SELECT key,coalesce(value,'''') FROM public.private_settings ON CONFLICT(key) DO NOTHING';
+ END IF;
+END $$;
+-- Do not overwrite an existing provider and break previously uploaded objects.
+INSERT INTO public.kkcc_site_settings(key,value) VALUES
+ ('storage_provider','supabase'),('storage_bucket','course-content')
+ON CONFLICT(key) DO NOTHING;
+INSERT INTO storage.buckets(id,name,public,file_size_limit)
+VALUES('course-content','course-content',false,47185920)
+ON CONFLICT(id) DO NOTHING;
+DROP POLICY IF EXISTS "KKCC notes admin upload" ON storage.objects;
+CREATE POLICY "KKCC notes admin upload" ON storage.objects FOR INSERT TO authenticated
+ WITH CHECK(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "KKCC notes admin update" ON storage.objects;
+CREATE POLICY "KKCC notes admin update" ON storage.objects FOR UPDATE TO authenticated
+ USING(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'))
+ WITH CHECK(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'));
+NOTIFY pgrst,'reload schema';
+COMMIT;
+-- Existing file/S3 project-content documents are not in legacy SQL tables and
+-- are not copied by this SQL. Export/back up and import them separately if used.

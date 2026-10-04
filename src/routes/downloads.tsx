@@ -257,7 +257,7 @@ function DownloadsPage() {
 
                 <div className="mt-6 space-y-2">
                   <a
-                    href="/__fixture__/supabase/download/production.sql"
+                    href="/KKCC-Excellence-Hub-PRODUCTION-SQL.sql"
                     download="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:opacity-90"
                   >
@@ -312,7 +312,7 @@ function DownloadsPage() {
 
                 <div className="mt-6 space-y-2">
                   <a
-                    href="/__fixture__/supabase/download/cleaner.sql"
+                    href="/KKCC-Excellence-Hub-SQL-CLEANER.sql"
                     download="KKCC-Excellence-Hub-SQL-CLEANER.sql"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-sm transition hover:opacity-90"
                   >

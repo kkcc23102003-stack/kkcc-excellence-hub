@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inspectDatabaseSpace, type SpaceReport } from "@/lib/space-saver.functions";
-const SQL_URL = "/__fixture__/supabase/download/space-saver.sql";
+const SQL_URL = "/KKCC-Excellence-Hub-SPACE-SAVER.sql";
 const size = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 export function SpaceSaverPanel() {
   const inspect = useServerFn(inspectDatabaseSpace);

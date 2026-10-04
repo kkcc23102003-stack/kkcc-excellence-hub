@@ -23,7 +23,8 @@
     "content:import": "tsx scripts/import-project-content.ts",
     "start": "node scripts/serve.mjs",
     "content:export": "tsx scripts/export-project-content.ts",
-    "sitemap": "node scripts/generate-sitemap.mjs"
+    "sitemap": "node scripts/generate-sitemap.mjs",
+    "check:release-sql": "node scripts/sync-release-sql.mjs --check"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.950.0",

@@ -28,6 +28,9 @@
         color: #c9d7ce;
         line-height: 1.7;
       }
+      a {
+        color: #18f4d6;
+      }
       strong {
         color: #18f4d6;
       }
@@ -36,14 +39,36 @@
   <body>
     <main>
       <h1>KKCC Excellence Hub Downloads</h1>
-      <p><strong>Legacy Supabase SQL downloads are retired.</strong></p>
+      <p><strong>Notes save/edit fix — Supabase setup</strong></p>
       <p>
-        The legacy SQL export area has been permanently retired. Educational questions and learning
-        content are bundled with the application and are not stored in Supabase.
+        Existing app: back up first, run the Notes Supabase SQL once, configure the server-only
+        SUPABASE_SERVICE_ROLE_KEY on your hosting and redeploy the updated app. Never share the
+        service-role key or use a VITE_ prefix. No S3 account is needed for managed notes/settings.
       </p>
       <p>
-        Student authentication, profiles, enrolments, access grants and learning-attempt records
-        continue to use Supabase where required by the application.
+        <a href="/KKCC-Excellence-Hub-NOTES-SUPABASE.sql" download
+          >Download Notes Supabase Fix SQL</a
+        >
+      </p>
+      <p>
+        <a href="/KKCC-Excellence-Hub-SPACE-SAVER.sql" download
+          >Download Space Saver SQL (optional separate feature)</a
+        >
+      </p>
+      <p>
+        <a href="/KKCC-Excellence-Hub-PRODUCTION-SQL.sql" download>Full Production SQL</a> ·
+        <a href="/KKCC-Excellence-Hub-SQL-CLEANER.sql" download>Safe Cleaner installer</a>
+      </p>
+      <p>
+        <a
+          href="https://github.com/kkcc23102003-stack/kkcc-excellence-hub/raw/arena/01a10030-kkcc-excellence-hub/full%20fledge%20kkcc%20excellence%20hub.zip"
+          >Download updated project ZIP</a
+        >
+      </p>
+      <p>
+        For the notes fix, do not run every SQL file: use the Notes Supabase patch. Managed note
+        text uses database space; uploaded files use the configured storage provider. Template banks
+        stay in project files.
       </p>
     </main>
   </body>
