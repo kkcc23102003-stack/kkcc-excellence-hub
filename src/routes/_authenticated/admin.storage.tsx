@@ -1,3 +1,4 @@
+import { SpaceSaverPanel } from "@/components/kkcc/space-saver-panel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -156,6 +157,7 @@ function AdminStoragePage() {
           </Button>
         </div>
 
+        <SpaceSaverPanel />
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="surface-panel p-5">
             <Cloud className="h-9 w-9 text-primary" />

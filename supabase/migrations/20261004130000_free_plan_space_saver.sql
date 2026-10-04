@@ -1,4 +1,3 @@
--- Compatibility filename: now installs SAFE preview-first tools only.
 -- KKCC Free-plan space tools. Run ONCE in Supabase SQL Editor.
 -- Installing this file deletes NOTHING. Admin panel defaults to preview only.
 -- Back up before a confirmed cleanup. Submitted results/payments/users stay intact.

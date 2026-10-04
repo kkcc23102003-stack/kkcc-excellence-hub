@@ -108,6 +108,21 @@ export function createProductionServer(entry, options = {}) {
           return;
         }
       }
+      if (url.pathname === "/__fixture__/supabase/download/space-saver.sql") {
+        const sqlFile = resolve("KKCC-Excellence-Hub-SPACE-SAVER.sql");
+        const details = await stat(sqlFile).catch(() => null);
+        if (details?.isFile()) {
+          const sqlBytes = await readFile(sqlFile);
+          outgoing.writeHead(200, {
+            "content-type": "text/sql; charset=utf-8",
+            "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SPACE-SAVER.sql"',
+            "content-length": String(sqlBytes.byteLength),
+            "cache-control": "no-store",
+          });
+          outgoing.end(incoming.method === "HEAD" ? undefined : sqlBytes);
+          return;
+        }
+      }
       if (url.pathname === "/__fixture__/supabase/download/cleaner.sql") {
         const sqlFile = resolve("KKCC-Excellence-Hub-SQL-CLEANER.sql");
         const details = await stat(sqlFile).catch(() => null);

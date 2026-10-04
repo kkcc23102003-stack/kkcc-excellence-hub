@@ -504,6 +504,18 @@ const server = createServer(async (req, res) => {
       res.end(buf);
       return;
     }
+    if (url.pathname === "/download/space-saver.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-SPACE-SAVER.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SPACE-SAVER.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
     if (url.pathname === "/download/cleaner.sql") {
       const sqlPath = "KKCC-Excellence-Hub-SQL-CLEANER.sql";
       const buf = readFileSync(sqlPath);

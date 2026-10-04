@@ -1536,8 +1536,8 @@ promise: original-format fallbacks, PDFs, student records and accumulating image
 can still fill the configured provider. Check actual usage in the provider's
 dashboard. Removing a note image reference does not automatically delete its
 stored object (it may be shared). Use Admin Storage to review files before deleting.
-The question-template bank remains in project files. Actual published test rows
-and student records still use the database.
+The question-template bank remains in project files. Published test rows use the private project-content store too; student records
+and attempt metadata still use Supabase.
 
 Admin → Tests → select test → pencil edits generated as well as manual questions,
 including options, correct answer and explanation. This update preserves the
@@ -1578,3 +1578,39 @@ if any active topic lacks a usable source; provenance IDs/indices are retained i
 `src/lib/notes-visuals/syllabus-library.json`. Coverage tests compare every topic
 with the active bank and render every map. The large bank itself is not imported
 by the new admin component.
+
+
+### Free-plan database space saver (4 October 2026)
+
+**Architecture correction:** `projectContent.from("test_questions")` is a private
+JSON/persistent-volume or external-object-store adapter, NOT Supabase PostgREST.
+Publishing questions does not insert their full text into Supabase in this build.
+Notes text and templates also stay outside Supabase. Student attempts store
+answers/references and summary results; users, access and financial records still
+consume database space. Uploaded files consume the selected provider's storage.
+Always provision persistent project-content storage and back it up.
+
+**One-time existing-project setup:** run `KKCC-Excellence-Hub-SPACE-SAVER.sql`
+in Supabase SQL Editor (or migration `20261004130000_free_plan_space_saver.sql`).
+Fresh installs include it in the Production SQL and student-only schema.
+Installation is non-destructive; nothing has been executed against your live DB
+by this code update. The SQL Cleaner filename now installs the same safe tools,
+rather than running the previous broad destructive cleanup.
+
+Admin → Storage → Free-plan space saver → Preview:
+- Shows measured PostgreSQL size and largest public tables including indexes.
+  It is NOT remaining Free-plan quota or file-storage usage.
+- Reports at most 5,000 eligible drafts per batch, never-submitted AND expired
+  at least 90 days ago. Long-running/recent attempts and submitted results stay.
+- Back up first, then type `CLEAN OLD DRAFTS` to explicitly delete a batch.
+  Deleted drafts cannot be resumed. Another batch requires a fresh preview.
+- No schedules, user/result/payment/access-grant deletion, plan changes or
+  automatic migration of uploaded files. Existing old cleaner callers now get
+  an admin-only, non-destructive report. Students cannot call either function.
+- Deletes allow PostgreSQL/autovacuum to reuse space, not necessarily shrink the
+  displayed database size immediately. Avoid casually running `VACUUM FULL`.
+
+For files, compressed note photos are already supported. Drive URLs avoid a
+second PDF copy but retain Drive sharing/link-leak risks; changing storage
+provider alone does not migrate existing objects. There is no zero-space or
+unlimited-Free-plan guarantee. Actual production savings depend on eligible data.

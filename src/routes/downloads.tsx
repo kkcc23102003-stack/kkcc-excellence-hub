@@ -299,14 +299,14 @@ function DownloadsPage() {
                       <FileCode2 className="h-6 w-6" />
                     </span>
                     <Badge className="rounded-full bg-amber-500 text-slate-950">
-                      SQL Cleaner + Indexes
+                      Safe Space Saver
                     </Badge>
                   </div>
                   <h2 className="mt-4 text-xl font-black">KKCC-Excellence-Hub-SQL-CLEANER.sql</h2>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Removes abandoned test attempts (&gt;24h), cleans expired grants &amp; old
-                    notification reads, adds B-Tree composite indexes for fast queries, and reloads
-                    PostgREST schema cache.
+                    Installs preview-first database usage tools. Installation deletes nothing. Admin
+                    → Storage can explicitly remove never-submitted, expired drafts older than 90
+                    days. Results, users, payments and access grants are preserved.
                   </p>
                 </div>
 
