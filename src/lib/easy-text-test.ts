@@ -3,8 +3,8 @@ import { parseBulkMcqText } from "./test-bulk-parse";
 export const easyQuestionSchema = z
   .object({
     question_text: z.string().trim().min(3).max(2000),
-    options: z.array(z.string().trim().min(1).max(600)).min(2).max(4),
-    correct_index: z.number().int().min(0).max(3),
+    options: z.array(z.string().trim().min(1).max(600)).min(2).max(6),
+    correct_index: z.number().int().min(0).max(5),
     explanation: z.string().max(4000),
   })
   .superRefine((q, ctx) => {
@@ -15,6 +15,9 @@ export const easyQuestionSchema = z
   });
 export const easyTestSchema = z
   .object({
+    publish: z.boolean().default(true),
+    topic: z.string().trim().max(120).default(""),
+    assembly_source_ids: z.array(z.string().uuid()).max(50).default([]),
     is_paid: z.boolean().default(false),
     price_inr: z.number().int().min(0).max(100000).default(0),
     price_coins: z.number().int().min(0).max(1000000).default(0),

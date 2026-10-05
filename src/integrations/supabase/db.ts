@@ -70,6 +70,7 @@ export type MaterialRow = {
 };
 
 export type TestRow = {
+  assembly_source_ids?: string[];
   id: string;
   course_id: string | null;
   lecture_id: string | null;
@@ -497,6 +498,26 @@ export type DB = {
   };
   public: {
     Tables: {
+      kkcc_test_folders: TableDefinition<
+        {
+          id: string;
+          series_name: string;
+          subject: string;
+          chapter: string;
+          topic: string;
+          created_at: string;
+        },
+        {
+          id?: string;
+          series_name: string;
+          subject: string;
+          chapter: string;
+          topic: string;
+          created_at?: string;
+        },
+        { series_name?: string; subject?: string; chapter?: string; topic?: string }
+      >;
+
       learning_attempts: TableDefinition<
         LearningAttemptRow,
         Partial<LearningAttemptRow>,
@@ -647,6 +668,7 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      publish_easy_text_test_v3: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       publish_easy_text_test_v2: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       publish_easy_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       kkcc_space_report: {

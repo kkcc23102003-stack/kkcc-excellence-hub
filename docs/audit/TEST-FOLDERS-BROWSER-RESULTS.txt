@@ -1,0 +1,11 @@
+
+Running 6 tests using 1 worker
+
+  ✓  1 tests/e2e/test-builders.spec.ts:71:1 › Easy free series name, edited explanations, publish, student attempt/result and Advanced edit persist (15.2s)
+  ✓  2 tests/e2e/test-builders.spec.ts:105:1 › Easy paid publishes correct prices, blocks unpaid student, offline grant unlocks only assigned student (13.5s)
+  ✓  3 tests/e2e/test-builders.spec.ts:143:1 › Advanced blank draft cannot publish; own bulk preview/publish retains series and questions (13.6s)
+  ✓  4 tests/e2e/test-builders.spec.ts:205:1 › Easy mobile: incomplete MCQs and zero-price paid publication are blocked; draft survives tab switch (5.8s)
+  ✓  5 tests/e2e/test-builders.spec.ts:233:1 › Advanced bank recipe keeps exam/subject/chapter and admin count through student result (7.5s)
+  ✓  6 tests/e2e/test-folders.spec.ts:9:1 › Subject/chapter/topic drafts persist; complete subject combines own questions and publishes a student-ready snapshot (28.5s)
+
+  6 passed (1.4m)

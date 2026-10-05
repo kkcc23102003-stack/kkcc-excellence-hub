@@ -1736,3 +1736,18 @@ Easy series names now appear in review and student cards. Advanced publication,
 field-level autosave, option-index correction and mutation/cache races were fixed.
 Run `npm run test:e2e` after installing Playwright Chromium; the fixture uses port
 4600. No new SQL is required beyond the previous Publish Fix migration.
+
+## Subject / Chapter / Topic folder organiser
+
+Admin → Tests → **Subject / Chapter folders**. Create persistent subject/chapter/
+optional-topic folders, paste own questions, save private drafts or publish. Select
+original sets across chapters to assemble an editable combined paper, or choose
+Complete subject test. Same-series/subject boundaries are enforced; exact duplicate
+questions are removed and conflicting answers/explanations fail explicitly. Existing
+Easy and Advanced workflows remain available. See `TEST-FOLDERS-GUIDE-HINDI.md`.
+
+Apply **KKCC-Excellence-Hub-TEST-FOLDERS.sql** once (includes previous Publish Fix),
+then redeploy. Folder paths are in a service-only Supabase table; questions remain
+saved manual test snapshots, not an imported template bank. No production migration
+was executed. Combined papers are independent, with max 50 source sets / 200 unique
+questions and explicit preview + confirm before publish.

@@ -198,6 +198,18 @@ function DownloadsPage() {
                 </a>
               </Button>
             </section>
+            <section className="mt-4 rounded-2xl border p-5">
+              <h2 className="font-bold">Subject / Chapter / Topic folders + Complete Test</h2>
+              <p className="my-2 text-sm text-muted-foreground">
+                New organiser setup: run Test Folders SQL once, then redeploy. This download
+                includes the previous Notes + Publish Fix; no Cleaner is needed for this update.
+              </p>
+              <Button asChild>
+                <a href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download>
+                  Download Test Folders SQL
+                </a>
+              </Button>
+            </section>
             {/* 3 Primary Download Cards */}
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               {/* Card 1: Complete Project ZIP */}

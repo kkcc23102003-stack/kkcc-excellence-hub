@@ -1,3 +1,4 @@
+import { TestFolderOrganiser } from "@/components/kkcc/test-folder-organiser";
 import { EasyTextTestBuilder } from "@/components/kkcc/easy-text-test-builder";
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -191,7 +192,7 @@ function TestQuestionWriter() {
   const reorder = useServerFn(reorderTestQuestions);
   const bulkAddFn = useServerFn(bulkAddTestQuestions);
 
-  const [builderMode, setBuilderMode] = useState<"easy" | "advanced">("easy");
+  const [builderMode, setBuilderMode] = useState<"easy" | "advanced" | "folders">("easy");
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
   const [showBulkPaste, setShowBulkPaste] = useState(false);
@@ -578,6 +579,12 @@ function TestQuestionWriter() {
         )}
         <div className="my-4 flex flex-wrap gap-2">
           <Button
+            variant={builderMode === "folders" ? "default" : "outline"}
+            onClick={() => setBuilderMode("folders")}
+          >
+            Subject / Chapter folders
+          </Button>
+          <Button
             variant={builderMode === "easy" ? "default" : "outline"}
             onClick={() => setBuilderMode("easy")}
           >
@@ -590,6 +597,19 @@ function TestQuestionWriter() {
             Advanced — existing setup
           </Button>
         </div>
+        <div hidden={builderMode !== "folders"}>
+          <TestFolderOrganiser
+            tests={tests}
+            onEdit={(id) => {
+              setActiveTestId(id);
+              setBuilderMode("advanced");
+            }}
+            onSaved={() => {
+              invalidateAll();
+              void invalidateLearningQueries(queryClient);
+            }}
+          />
+        </div>
         <div hidden={builderMode !== "easy"}>
           <EasyTextTestBuilder
             seriesNames={[
@@ -599,12 +619,16 @@ function TestQuestionWriter() {
                   .filter((name): name is string => Boolean(name)),
               ),
             ]}
-            onPublished={(id) => {
+            onPublished={(id, published) => {
               setActiveTestId(id);
               invalidateAll();
               void invalidateLearningQueries(queryClient);
               setBuilderMode("advanced");
-              toast.success("Your text test is published — no bank questions added.");
+              toast.success(
+                published
+                  ? "Your text test is published — no bank questions added."
+                  : "Folder draft saved. Students cannot see it until published.",
+              );
             }}
           />
         </div>

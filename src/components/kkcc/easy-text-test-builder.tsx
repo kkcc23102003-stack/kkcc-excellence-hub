@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,23 +20,47 @@ C) 4
 D) 3
 Answer: A
 Explanation: Subtracting 4 from 10 gives 6.`;
+export type EasyTestSeed = {
+  is_paid?: boolean;
+  title?: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  series_name?: string;
+  questions?: EasyQuestion[];
+  assembly_source_ids?: string[];
+};
+function questionText(questions: EasyQuestion[]) {
+  return questions
+    .map(
+      (q, i) =>
+        `Q${i + 1}. ${q.question_text}\n${q.options.map((o, n) => `${String.fromCharCode(65 + n)}) ${o}`).join("\n")}\nAnswer: ${String.fromCharCode(65 + q.correct_index)}\nExplanation: ${q.explanation}`,
+    )
+    .join("\n\n");
+}
 export function EasyTextTestBuilder({
   onPublished,
   seriesNames = [],
+  initial = {},
 }: {
-  onPublished: (id: string) => void;
+  onPublished: (id: string, published: boolean) => void;
+  initial?: EasyTestSeed;
   seriesNames?: string[];
 }) {
+  const editorId = useId();
   const publish = useServerFn(publishEasyTextTest);
-  const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState("");
-  const [chapter, setChapter] = useState("");
-  const [series, setSeries] = useState("");
-  const [isPaid, setIsPaid] = useState(false);
+  const [title, setTitle] = useState(initial.title || "");
+  const [subject, setSubject] = useState(initial.subject || "");
+  const [chapter, setChapter] = useState(initial.chapter || "");
+  const [series, setSeries] = useState(initial.series_name || "");
+  const [isPaid, setIsPaid] = useState(initial.is_paid || false);
   const [priceInr, setPriceInr] = useState("0");
   const [priceCoins, setPriceCoins] = useState("0");
   const [minutes, setMinutes] = useState("30");
-  const [text, setText] = useState("");
+  const initialText = initial.questions ? questionText(initial.questions) : "";
+  const [text, setText] = useState(initialText);
+  const [topic, setTopic] = useState(initial.topic || "");
+  const [sourceIds, setSourceIds] = useState(initial.assembly_source_ids || []);
   const [questions, setQuestions] = useState<EasyQuestion[] | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [error, setError] = useState("");
@@ -47,6 +71,8 @@ export function EasyTextTestBuilder({
     setQuestions((current) => current!.map((q, i) => (i === index ? { ...q, ...update } : q)));
   const payload = () => ({
     id: id!,
+    topic,
+    assembly_source_ids: sourceIds,
     is_paid: isPaid,
     price_inr: isPaid ? Number(priceInr) : 0,
     price_coins: isPaid ? Number(priceCoins) : 0,
@@ -59,7 +85,10 @@ export function EasyTextTestBuilder({
   });
   const preview = () => {
     setError("");
-    const result = previewEasyText(text);
+    const result =
+      initial.questions && text === initialText
+        ? { questions: initial.questions, incomplete: 0 }
+        : previewEasyText(text);
     if (!subject.trim() || !chapter.trim()) {
       setError("Subject aur chapter likhein.");
       return;
@@ -80,13 +109,16 @@ export function EasyTextTestBuilder({
     setQuestions(result.questions);
     setStep(2);
   };
-  const submit = async () => {
+  const submit = async (shouldPublish = true) => {
     if (!confirmed || busy) return;
     setBusy(true);
     setError("");
     try {
-      const result = await publish({ data: easyTestSchema.parse(payload()) });
-      onPublished(result.id);
+      const result = await publish({
+        data: easyTestSchema.parse({ ...payload(), publish: shouldPublish }),
+      });
+      onPublished(result.id, result.published);
+      setSourceIds([]);
       setStep(1);
       setText("");
       setQuestions(null);
@@ -115,11 +147,11 @@ export function EasyTextTestBuilder({
       <details className="rounded border p-3 text-xs">
         <summary>First-time setup / save error?</summary>
         <p>
-          Existing deployment: run the latest Publish Fix SQL once, then redeploy. No S3 required.
+          Existing deployment: run the latest Test Folders SQL once, then redeploy. No S3 required.
           Saved test/questions use Supabase; the template bank stays in project files.
         </p>
-        <a className="underline" href="/KKCC-Excellence-Hub-PUBLISH-FIX.sql" download>
-          Download Notes + Test Publish Fix SQL
+        <a className="underline" href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download>
+          Download Test Folders Setup SQL
         </a>
       </details>
       {error && (
@@ -147,20 +179,29 @@ export function EasyTextTestBuilder({
               />
             </label>
             <label>
+              Topic (optional)
+              <Input
+                maxLength={120}
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="e.g. Addition of fractions"
+              />
+            </label>
+            <label>
               Test title (optional)
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             <label>
               Series name (optional)
               <Input
-                list="easy-test-series-names"
+                list={`${editorId}-series-names`}
                 maxLength={120}
                 value={series}
                 onChange={(e) => setSeries(e.target.value)}
                 placeholder="e.g. Punjab ETT Practice Series"
               />
             </label>
-            <datalist id="easy-test-series-names">
+            <datalist id={`${editorId}-series-names`}>
               {seriesNames.map((name) => (
                 <option key={name} value={name} />
               ))}
@@ -182,7 +223,7 @@ export function EasyTextTestBuilder({
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
-                  name="easy-access"
+                  name={`${editorId}-access`}
                   checked={!isPaid}
                   onChange={() => setIsPaid(false)}
                 />
@@ -191,7 +232,7 @@ export function EasyTextTestBuilder({
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
-                  name="easy-access"
+                  name={`${editorId}-access`}
                   checked={isPaid}
                   onChange={() => setIsPaid(true)}
                 />
@@ -272,7 +313,7 @@ export function EasyTextTestBuilder({
                   <label key={oi} className="flex items-center gap-2">
                     <input
                       type="radio"
-                      name={`easy-answer-${index}`}
+                      name={`${editorId}-answer-${index}`}
                       aria-label={`Q${index + 1} correct answer ${String.fromCharCode(65 + oi)}`}
                       checked={q.correct_index === oi}
                       onChange={() => patch(index, { correct_index: oi })}
@@ -328,6 +369,13 @@ export function EasyTextTestBuilder({
       {step === 3 && (
         <>
           <h3 className="font-bold">{payload().title}</h3>
+          {topic && <p>Topic: {topic}</p>}
+          {sourceIds.length > 0 && (
+            <p className="text-sm">
+              Combined from {sourceIds.length} saved sets. This is an independent snapshot; source
+              questions are unchanged.
+            </p>
+          )}
           {series.trim() && (
             <p data-testid="easy-series-review">
               Series: <strong>{series.trim()}</strong>
@@ -364,6 +412,13 @@ export function EasyTextTestBuilder({
             }}
           >
             Back to questions
+          </Button>{" "}
+          <Button
+            variant="outline"
+            disabled={!confirmed || busy}
+            onClick={() => void submit(false)}
+          >
+            Save folder draft
           </Button>{" "}
           <Button disabled={!confirmed || busy} onClick={() => void submit()}>
             {busy ? "Publishing…" : "Publish my test"}
