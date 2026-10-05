@@ -91,3 +91,29 @@ export function combineOwnQuestions(sources: { test: FolderTest; questions: Easy
     );
   return { questions: [...seen.values()], duplicates };
 }
+
+/** A chapter/topic list is one name per line; commas may be part of a name. */
+export function parseOutlineNames(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\s*(?:[-*•]\s+|\d+[.)]\s+)/, "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+export const childListSchema = z
+  .object({
+    parent: folderPathSchema,
+    names: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
+  })
+  .refine((data) => !data.parent.topic, "Topics cannot contain another topic level.");
+export function childListPaths(parent: FolderPath, names: string[]): FolderPath[] {
+  const input = childListSchema.parse({ parent, names });
+  return input.names.map((name) =>
+    input.parent.chapter
+      ? { ...input.parent, topic: name }
+      : { ...input.parent, chapter: name, topic: "" },
+  );
+}

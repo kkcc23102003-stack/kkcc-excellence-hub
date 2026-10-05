@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   folderPathSchema,
+  childListSchema,
+  childListPaths,
   expandFolderPaths,
   combineOwnQuestions,
   type FolderTest,
@@ -75,4 +77,19 @@ export const prepareFolderTest = createServerFn({ method: "POST" })
         })),
     }));
     return { ...combineOwnQuestions(sources), source_ids: data.ids };
+  });
+
+/** Add the list below a fixed parent in one database statement. */
+export const addTestOutlineList = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => childListSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const db = await admin(context);
+    const paths = childListPaths(data.parent, data.names);
+    const result = await db.from("kkcc_test_folders").upsert(expandFolderPaths(paths), {
+      onConflict: "series_name,subject,chapter,topic",
+      ignoreDuplicates: true,
+    });
+    check(result.error);
+    return paths;
   });

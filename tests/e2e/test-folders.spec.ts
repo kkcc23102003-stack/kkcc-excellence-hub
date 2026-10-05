@@ -16,9 +16,26 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
       sp = await student.newPage();
     await login(ap);
     await ap.goto("/admin/tests");
-    await ap.getByRole("button", { name: "Subject / Chapter folders", exact: true }).click();
+    await ap.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
     const organiser = ap.getByTestId("test-folder-organiser");
     const series = `Folder Series ${Date.now()}`;
+    await organiser.getByLabel("Series name (optional)", { exact: true }).fill(series);
+    await organiser.getByLabel("Subject name", { exact: true }).fill("Mathematics");
+    await organiser.getByRole("button", { name: "Add subject", exact: true }).click();
+    const root = organiser.getByTestId("outline-subject").filter({
+      has: ap.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
+    });
+    await expect(
+      root.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await root
+      .getByLabel("Chapters list for Mathematics", { exact: true })
+      .fill("1. Addition\n2. Subtraction");
+    await root.getByRole("button", { name: "Add chapters", exact: true }).click();
+    await expect(
+      root.getByRole("button", { name: "Chapter: Addition", exact: true }),
+    ).toBeVisible();
+    await expect(root.getByLabel("Topics list for Addition", { exact: true })).not.toBeVisible();
     for (const [chapter, topic, title, q] of [
       [
         "Addition",
@@ -33,21 +50,43 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
         "Q1. What is 10 - 4?\nA) 6\nB) 5\nAnswer: A\nExplanation: Subtraction explanation.",
       ],
     ]) {
-      await organiser.getByLabel("Folder series name", { exact: true }).fill(series!);
-      await organiser.getByLabel("Folder subject", { exact: true }).fill("Mathematics");
-      await organiser.getByLabel("Folder chapter (optional)", { exact: true }).fill(chapter!);
-      await organiser.getByLabel("Folder topic (optional)", { exact: true }).fill(topic!);
-      await organiser.getByRole("button", { name: "Create folder", exact: true }).click();
-      await organiser.getByRole("button", { name: "Add text questions here", exact: true }).click();
+      const chapterPanel = root
+        .getByTestId("outline-chapter")
+        .filter({ has: ap.getByRole("button", { name: `Chapter: ${chapter}`, exact: true }) });
+      await chapterPanel.getByRole("button", { name: `Chapter: ${chapter}`, exact: true }).click();
+      if (topic) {
+        await chapterPanel.getByLabel(`Topics list for ${chapter}`, { exact: true }).fill(topic);
+        await chapterPanel.getByRole("button", { name: "Add topics", exact: true }).click();
+        const topicPanel = chapterPanel.getByTestId("outline-topic");
+        await topicPanel.getByRole("button", { name: `Topic: ${topic}`, exact: true }).click();
+        await topicPanel
+          .getByRole("button", { name: "Paste topic questions", exact: true })
+          .click();
+      } else {
+        await chapterPanel
+          .getByRole("button", { name: "Paste chapter questions (without topic)", exact: true })
+          .click();
+      }
       const editor = organiser.getByTestId("easy-test-builder");
       await expect(editor.getByLabel("Chapter", { exact: true })).toHaveValue(chapter!);
       await expect(editor.getByLabel("Topic (optional)", { exact: true })).toHaveValue(topic!);
+      await expect(chapterPanel.getByTestId("folder-test-draft")).toBeVisible();
       await editor.getByLabel("Test title (optional)").fill(title!);
       if (chapter === "Addition") {
         await editor.getByRole("radio", { name: "Paid", exact: true }).check();
         await editor.getByLabel("Price (₹)", { exact: true }).fill("99");
       }
       await editor.getByLabel("Your question text").fill(q!);
+      await chapterPanel.getByRole("button", { name: `Chapter: ${chapter}`, exact: true }).click();
+      await expect(editor).not.toBeVisible();
+      await chapterPanel.getByRole("button", { name: `Chapter: ${chapter}`, exact: true }).click();
+      await expect(editor.getByLabel("Your question text")).toHaveValue(q!);
+      await ap.setViewportSize({ width: 390, height: 844 });
+      expect(await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(
+        true,
+      );
+      await ap.setViewportSize({ width: 1280, height: 800 });
+
       await editor.getByRole("button", { name: /Preview questions/ }).click();
       await editor.getByRole("button", { name: "Next → Review publish" }).click();
       await editor.getByRole("checkbox").check();
@@ -56,10 +95,9 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
       await expect(editor).toHaveCount(0);
     }
     await ap.reload();
-    await ap.getByRole("button", { name: "Subject / Chapter folders", exact: true }).click();
+    await ap.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
     await organiser
-      .getByRole("navigation", { name: "Test folder tree" })
-      .getByRole("button", { name: new RegExp(`Mathematics.*${series}`) })
+      .getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true })
       .click();
     await expect(organiser).toContainText("Addition folder set");
     await expect(organiser).toContainText("Subtraction folder set");

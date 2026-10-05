@@ -582,7 +582,7 @@ function TestQuestionWriter() {
             variant={builderMode === "folders" ? "default" : "outline"}
             onClick={() => setBuilderMode("folders")}
           >
-            Subject / Chapter folders
+            Subjects & Chapters
           </Button>
           <Button
             variant={builderMode === "easy" ? "default" : "outline"}

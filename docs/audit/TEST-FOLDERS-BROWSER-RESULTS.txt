@@ -1,11 +1,38 @@
+[WebServer] [plugin builtin:vite-reporter]
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[WebServer] [PLUGIN_TIMINGS] JavaScript callbacks ran for 9.8s of this 10.4s build (94%).
+[WebServer] The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+[WebServer]   - plugin tanstack-router:code-splitter:compile-reference-file transform (41%, 4.3s, 63 calls)
+[WebServer]   - plugin tanstack-router:code-splitter:compile-virtual-file transform (29%, 3.0s, 77 calls)
+[WebServer]   - plugin @tailwindcss/vite:generate:build transform (10%, 1.1s, 1 call)
+[WebServer] Additional callback time came from the callbacks below and from callbacks under 1s.
+[WebServer] 2 callbacks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+[WebServer]   - plugin tanstack-start-core:import-protection resolveId (7843 calls)
+[WebServer]   - plugin tanstack-start-core::server-fn:client transform (46 calls)
+[WebServer] See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+[WebServer]
+[WebServer] [PLUGIN_TIMINGS] JavaScript callbacks ran for 10.9s of this 11.2s build (97%).
+[WebServer] The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+[WebServer]   - plugin tanstack-router:code-splitter:compile-reference-file transform (42%, 4.7s, 61 calls)
+[WebServer]   - plugin tanstack-router:code-splitter:compile-virtual-file transform (27%, 3.0s, 77 calls)
+[WebServer]   - plugin @tailwindcss/vite:generate:build transform (14%, 1.5s, 1 call)
+[WebServer] Additional callback time came from the callbacks below and from callbacks under 1s.
+[WebServer] 2 callbacks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+[WebServer]   - plugin tanstack-start-core:import-protection resolveId (2397 calls)
+[WebServer]   - plugin tanstack-start-core::server-fn:ssr transform (70 calls)
+[WebServer] See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+[WebServer]
 
 Running 6 tests using 1 worker
 
-  ✓  1 tests/e2e/test-builders.spec.ts:71:1 › Easy free series name, edited explanations, publish, student attempt/result and Advanced edit persist (15.2s)
-  ✓  2 tests/e2e/test-builders.spec.ts:105:1 › Easy paid publishes correct prices, blocks unpaid student, offline grant unlocks only assigned student (13.5s)
-  ✓  3 tests/e2e/test-builders.spec.ts:143:1 › Advanced blank draft cannot publish; own bulk preview/publish retains series and questions (13.6s)
-  ✓  4 tests/e2e/test-builders.spec.ts:205:1 › Easy mobile: incomplete MCQs and zero-price paid publication are blocked; draft survives tab switch (5.8s)
-  ✓  5 tests/e2e/test-builders.spec.ts:233:1 › Advanced bank recipe keeps exam/subject/chapter and admin count through student result (7.5s)
-  ✓  6 tests/e2e/test-folders.spec.ts:9:1 › Subject/chapter/topic drafts persist; complete subject combines own questions and publishes a student-ready snapshot (28.5s)
+  ✓  1 tests/e2e/test-builders.spec.ts:71:1 › Easy free series name, edited explanations, publish, student attempt/result and Advanced edit persist (16.6s)
+  ✓  2 tests/e2e/test-builders.spec.ts:105:1 › Easy paid publishes correct prices, blocks unpaid student, offline grant unlocks only assigned student (13.3s)
+  ✓  3 tests/e2e/test-builders.spec.ts:143:1 › Advanced blank draft cannot publish; own bulk preview/publish retains series and questions (18.1s)
+  ✓  4 tests/e2e/test-builders.spec.ts:205:1 › Easy mobile: incomplete MCQs and zero-price paid publication are blocked; draft survives tab switch (6.2s)
+  ✓  5 tests/e2e/test-builders.spec.ts:233:1 › Advanced bank recipe keeps exam/subject/chapter and admin count through student result (8.9s)
+  ✓  6 tests/e2e/test-folders.spec.ts:9:1 › Subject/chapter/topic drafts persist; complete subject combines own questions and publishes a student-ready snapshot (35.5s)
 
-  6 passed (1.4m)
+  6 passed (2.2m)

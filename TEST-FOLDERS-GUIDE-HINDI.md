@@ -1,21 +1,26 @@
 # Subject → Chapter → Topic folders
 
-Admin → Tests → **Subject / Chapter folders**.
+Admin → Tests → **Subjects & Chapters**.
 
-## 1. Subject folder banao
-- Series name optional: `ETT Maths Practice`.
-- Subject: `Mathematics`.
-- Chapter aur Topic blank rakh kar **Create folder** dabao.
-- Folder empty hone par bhi save hoga aur reload ke baad rahega.
+## 1. Subject add karo
+- Optional series name aur Subject name likho → **Add subject**.
+- Subject ki heading click karke neeche ki list expand/collapse kar sakte ho.
+- Empty subjects/chapters bhi save rehte hain.
 
-## 2. Chapter aur optional Topic
-- Usi Series + Subject ke saath Chapter: `Fractions` → **Create folder**.
-- Topic chahiye toh `Addition of fractions` likho. Topic optional hai.
-- Subject/Chapter/Topic parent folders automatically ban jaate hain.
-- Tree se folder select karke **Add text questions here** dabao.
+## 2. Subject ke andar chapters list
+- Expanded subject mein chapters likho: har line par ek chapter.
+- **Add chapters** dabao. Numbered/bulleted lists bhi accepted hain.
+- Chapter ki heading click karo: uske controls usi ke neeche khulenge.
+
+## 3. Optional topics ya direct chapter questions
+- Topic nahi chahiye? **Paste chapter questions (without topic)** dabao.
+- Topics chahiye? Chapter ke andar har line par ek topic likho → **Add topics**.
+- Topic expand karo → **Paste topic questions**.
+- Editor usi chapter/topic ke andar khulta hai, alag global form mein nahi.
 - Apne MCQs paste karo, preview/edit, Next aur confirmation karo.
-- **Save folder draft**: questions safely saved, students se hidden.
-- **Publish my test**: questions aur selected Free/Paid settings live.
+- **Save folder draft**: students se hidden; **Publish my test**: selected Free/Paid settings ke saath live.
+- Collapse karne par unsaved editor retain rehta hai. Doosra draft kholne par replacement confirmation aayegi.
+- Saved sets dikhane ke liye **Show saved sets**; parent reopen karna zaroori nahi.
 
 Text example:
 
@@ -34,7 +39,7 @@ Saved sets ki corrections, rename, paid settings, unpublish/delete ke liye
 **Edit in Advanced** use karo. Question set ke subject/chapter/topic metadata
 badalne par uski folder location update hoti hai. Empty folder metadata alag rehti hai.
 
-## 3. Chapterwise / selected chapters / Complete Test
+## 4. Chapterwise / selected chapters / Complete Test
 - Chapter folder select → wanted sets tick → **Make test from selected sets**.
 - Subject folder select → alag chapters ke wanted sets tick → same button.
 - **Complete subject test** → us subject/series ke saare original manual sets
@@ -56,6 +61,7 @@ banane ka shortcut nahi. Students existing test cards se published tests open ka
 hain; admin folder tree student permissions bypass nahi karta.
 
 ## One-time Supabase setup
+Accordion UI ke liye **koi naya SQL nahi**. Neeche wala SQL pehle run kiya hai toh dobara zaroori nahi.
 **KKCC-Excellence-Hub-TEST-FOLDERS.sql** SQL Editor mein run karo, phir updated app
 redeploy karo. Is file mein previous Notes + Publish Fix bhi included hai; alag
 Cleaner run karne ki zaroorat nahi. Back up first. Service-role key server-only rahe.

@@ -157,3 +157,29 @@ test("folder SQL persists topic drafts privately and independently publishes com
     await db.close();
   }
 });
+
+test("accordion lists accept multiline names and inherit only their selected parent", async () => {
+  const { parseOutlineNames, childListPaths, childListSchema } =
+    await import("../../src/lib/test-folders");
+  assert.deepEqual(parseOutlineNames("1. Fractions\n2. Decimals\n• Fractions\n\nAlgebra, basics"), [
+    "Fractions",
+    "Decimals",
+    "Algebra, basics",
+  ]);
+  const parent = { series_name: "My series", subject: "Maths", chapter: "", topic: "" };
+  assert.deepEqual(childListPaths(parent, ["Fractions", "Decimals"]), [
+    { ...parent, chapter: "Fractions" },
+    { ...parent, chapter: "Decimals" },
+  ]);
+  assert.deepEqual(childListPaths({ ...parent, chapter: "Fractions" }, ["Addition"]), [
+    { ...parent, chapter: "Fractions", topic: "Addition" },
+  ]);
+  assert.equal(
+    childListSchema.safeParse({
+      parent: { ...parent, chapter: "Fractions", topic: "Addition" },
+      names: ["nested"],
+    }).success,
+    false,
+  );
+  assert.equal(childListSchema.safeParse({ parent, names: [] }).success, false);
+});

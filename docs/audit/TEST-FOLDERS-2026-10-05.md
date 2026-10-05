@@ -1,13 +1,13 @@
 # Test folder organiser — verification
 
 ## Current change verification
-- **96/96 unit/database tests passed** (including 3 new folder tests).
+- **97/97 unit/database tests passed** (including multiline accordion list validation).
 - **6/6 targeted Chromium browser E2E tests passed**: the existing five Easy/Advanced builder checks plus the new folder lifecycle.
 - TypeScript and production build passed. Lint: 0 errors, 12 existing warnings.
 - This is a targeted regression run. The earlier 78-test whole-app report belongs to the previous release; it was not re-run in full for this change.
 
 ## New browser flow covered
-1. Create subject/chapter/topic paths and save two original question sets as private drafts.
+1. Add subject, add two chapters in a numbered multiline list, verify collapsed contents are hidden; expand chapter, add/expand optional topic and paste inline. Save topic questions and direct chapter questions as private drafts.
 2. Reload the organiser and verify both chapter sets persist.
 3. Verify draft sets do not appear in student catalogue.
 4. Select a single saved set and preview a chapter paper.
@@ -40,3 +40,8 @@ remain ordinary draft/published test snapshots. No old S3 files were migrated.
 Limits are explicit: one subject/series, max 50 original sets and 200 unique questions
 per combined test. Combined paper uses the Easy scoring defaults (1 mark, no negative
 marking), editable later in Advanced. Series names do not create paid catalogue bundles.
+
+## Accordion correction
+Flat navigation replaced with downward-expanding subject/chapter/topic lists. Parent actions remain accessible while descendants are open. Uses existing SQL; no migration added. Batch creation inherits the selected parent and forbids children below topics.
+
+Accordion browser coverage additionally confirms unsaved pasted text survives chapter collapse/reopen and checks 390px width with the nested editor open.

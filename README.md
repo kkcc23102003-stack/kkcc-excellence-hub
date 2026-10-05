@@ -1739,8 +1739,9 @@ Run `npm run test:e2e` after installing Playwright Chromium; the fixture uses po
 
 ## Subject / Chapter / Topic folder organiser
 
-Admin → Tests → **Subject / Chapter folders**. Create persistent subject/chapter/
-optional-topic folders, paste own questions, save private drafts or publish. Select
+Admin → Tests → **Subjects & Chapters**. Add a subject, expand it, add a multiline
+chapters list, then expand a chapter. Add optional topics or paste questions directly
+inside the chapter. The editor opens inline beneath the chapter/topic. Save private drafts or publish. Select
 original sets across chapters to assemble an editable combined paper, or choose
 Complete subject test. Same-series/subject boundaries are enforced; exact duplicate
 questions are removed and conflicting answers/explanations fail explicitly. Existing
@@ -1751,3 +1752,5 @@ then redeploy. Folder paths are in a service-only Supabase table; questions rema
 saved manual test snapshots, not an imported template bank. No production migration
 was executed. Combined papers are independent, with max 50 source sets / 200 unique
 questions and explicit preview + confirm before publish.
+
+The expandable accordion update reuses the installed Test Folders SQL; no additional migration is required.

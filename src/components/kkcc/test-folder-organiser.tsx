@@ -1,19 +1,68 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { EasyTextTestBuilder, type EasyTestSeed } from "./easy-text-test-builder";
-import { listTestFolders, createTestFolder, prepareFolderTest } from "@/lib/test-folders.functions";
+import {
+  listTestFolders,
+  createTestFolder,
+  prepareFolderTest,
+  addTestOutlineList,
+} from "@/lib/test-folders.functions";
 import {
   expandFolderPaths,
   pathContains,
   pathKey,
   testPath,
+  parseOutlineNames,
   type FolderPath,
   type FolderTest,
 } from "@/lib/test-folders";
-const empty: FolderPath = { series_name: "", subject: "", chapter: "", topic: "" };
+
+function ChildListEditor({
+  parent,
+  busy,
+  onAdd,
+}: {
+  parent: FolderPath;
+  busy: boolean;
+  onAdd: (names: string[]) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  const kind = parent.chapter ? "Topics" : "Chapters";
+  return (
+    <fieldset disabled={busy} className="space-y-2 rounded-xl border border-dashed p-3">
+      <legend className="px-1 text-sm font-semibold">
+        {parent.chapter ? "Optional: add topics" : "Add chapters to this subject"}
+      </legend>
+      <label className="block text-sm">
+        {kind} — one per line
+        <Textarea
+          aria-label={`${kind} list for ${parent.chapter || parent.subject}`}
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={parent.chapter ? "Addition\nSubtraction" : "Fractions\nDecimals\nAlgebra"}
+        />
+      </label>
+      <Button
+        disabled={busy || !parseOutlineNames(text).length}
+        onClick={async () => {
+          if (await onAdd(parseOutlineNames(text))) setText("");
+        }}
+      >
+        {parent.chapter ? "Add topics" : "Add chapters"}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {parent.chapter
+          ? "Topic zaroori nahi—neeche seedha chapter ke questions paste kar sakte ho."
+          : "Ek naam ya poori list paste karo. Ye chapters isi subject ke andar add honge."}
+      </p>
+    </fieldset>
+  );
+}
 export function TestFolderOrganiser({
   tests,
   onSaved,
@@ -23,51 +72,90 @@ export function TestFolderOrganiser({
   onSaved: (id: string, published: boolean) => void;
   onEdit: (id: string) => void;
 }) {
+  const treeId = useId();
   const queryClient = useQueryClient();
   const load = useServerFn(listTestFolders),
     create = useServerFn(createTestFolder),
-    assemble = useServerFn(prepareFolderTest);
+    assemble = useServerFn(prepareFolderTest),
+    addList = useServerFn(addTestOutlineList);
   const folders = useQuery({ queryKey: ["admin", "test-folders"], queryFn: () => load() });
-  const [form, setForm] = useState<FolderPath>(empty),
-    [selected, setSelected] = useState<FolderPath | null>(null),
+  const [subject, setSubject] = useState(""),
+    [series, setSeries] = useState("");
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<FolderPath | null>(null),
     [ids, setIds] = useState<string[]>([]);
-  const [draft, setDraft] = useState<{ key: string; seed: EasyTestSeed } | null>(null),
-    [error, setError] = useState(""),
+  const [draft, setDraft] = useState<{ key: string; location: string; seed: EasyTestSeed } | null>(
+    null,
+  );
+  const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
   const manual = tests.filter((t) => t.question_source === "manual");
   const originals = manual.filter((t) => !t.assembly_source_ids?.length && t.questions_count > 0);
   const nodes = expandFolderPaths([...(folders.data || []), ...manual.map(testPath)]);
-  const visible = selected ? manual.filter((t) => pathContains(selected, testPath(t))) : [];
-  const candidates = visible.filter((t) => originals.some((o) => o.id === t.id));
   const choose = (path: FolderPath) => {
-    setSelected(path);
-    setForm(path);
-    setIds([]);
+    if (!selected || pathKey(selected) !== pathKey(path)) {
+      setIds([]);
+      setSelected(path);
+    }
     setError("");
   };
-  const makeFolder = async () => {
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin", "test-folders"] });
+  const makeSubject = async () => {
     setBusy(true);
     setError("");
     try {
-      const path = await create({ data: form });
-      await queryClient.invalidateQueries({ queryKey: ["admin", "test-folders"] });
+      const path = await create({ data: { series_name: series, subject, chapter: "", topic: "" } });
+      await refresh();
+      setOpened((current) => ({ ...current, [pathKey(path)]: true }));
       choose(path);
+      setSubject("");
+      setNotice("Subject added. Add its chapter list below.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Folder save failed");
+      setError(e instanceof Error ? e.message : "Subject save failed");
     } finally {
       setBusy(false);
     }
   };
-  const combine = async (wholeSubject: boolean) => {
-    if (!selected) return;
+  const saveChildren = async (parent: FolderPath, names: string[]) => {
+    setBusy(true);
+    setError("");
+    try {
+      await addList({ data: { parent, names } });
+      await refresh();
+      setOpened((current) => ({ ...current, [pathKey(parent)]: true }));
+      choose(parent);
+      setNotice(
+        parent.chapter
+          ? "Topic list saved. Expand a topic to paste its questions."
+          : "Chapter list saved. Expand a chapter to continue.",
+      );
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "List save failed");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const startDraft = (path: FolderPath) => {
+    if (draft && !window.confirm("Replace the current unsaved test draft?")) return;
+    choose(path);
+    setNotice("");
+    setDraft({
+      key: crypto.randomUUID(),
+      location: pathKey(path),
+      seed: { ...path, title: `${path.subject} — ${path.topic || path.chapter}` },
+    });
+  };
+  const combine = async (path: FolderPath, wholeSubject: boolean) => {
     if (draft && !window.confirm("Replace the current unsaved test draft?")) return;
     setBusy(true);
     setError("");
     try {
       const chosen = wholeSubject
         ? originals
-            .filter((t) => pathContains({ ...selected, chapter: "", topic: "" }, testPath(t)))
+            .filter((t) => pathContains({ ...path, chapter: "", topic: "" }, testPath(t)))
             .map((t) => t.id)
         : ids;
       const result = await assemble({ data: { ids: chosen } });
@@ -80,13 +168,14 @@ export function TestFolderOrganiser({
       );
       setDraft({
         key: crypto.randomUUID(),
+        location: pathKey(path),
         seed: {
-          is_paid: sources.some((source) => source.is_paid),
-          subject: selected.subject,
-          series_name: selected.series_name,
+          is_paid: sources.some((t) => t.is_paid),
+          subject: path.subject,
+          series_name: path.series_name,
           chapter,
-          topic: wholeSubject ? "" : selected.topic,
-          title: `${selected.subject} — ${wholeSubject ? "Complete Test" : chapter}`,
+          topic: wholeSubject ? "" : path.topic,
+          title: `${path.subject} — ${chapter}`,
           questions: result.questions,
           assembly_source_ids: result.source_ids,
         },
@@ -97,201 +186,234 @@ export function TestFolderOrganiser({
       setBusy(false);
     }
   };
+  function editor(path: FolderPath) {
+    if (!draft || draft.location !== pathKey(path)) return null;
+    return (
+      <div data-testid="folder-test-draft" className="min-w-0 border-t pt-3">
+        <p className="text-sm font-semibold">
+          Questions under: {[path.subject, path.chapter, path.topic].filter(Boolean).join(" → ")}
+        </p>
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (window.confirm("Discard this unsaved test draft?")) setDraft(null);
+          }}
+        >
+          Close unsaved editor
+        </Button>
+        <EasyTextTestBuilder
+          key={draft.key}
+          initial={draft.seed}
+          onPublished={(id, published) => {
+            setDraft(null);
+            setNotice(
+              published ? "Test published." : "Question set saved as draft — hidden from students.",
+            );
+            void refresh();
+            onSaved(id, published);
+          }}
+        />
+      </div>
+    );
+  }
+  function actions(path: FolderPath) {
+    const active = Boolean(selected && pathKey(path) === pathKey(selected));
+    const visible = manual.filter((t) => pathContains(path, testPath(t)));
+    const candidates = visible.filter((t) => originals.some((o) => o.id === t.id));
+    return (
+      <div data-testid="outline-selection" className="min-w-0 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {path.chapter ? (
+            <Button disabled={busy} onClick={() => startDraft(path)}>
+              {path.topic ? "Paste topic questions" : "Paste chapter questions (without topic)"}
+            </Button>
+          ) : (
+            <Button disabled={busy} onClick={() => void combine(path, true)}>
+              Complete subject test
+            </Button>
+          )}
+        </div>
+        {!active && visible.length > 0 && (
+          <Button variant="outline" onClick={() => choose(path)}>
+            Show saved sets
+          </Button>
+        )}
+        {active && !!visible.length && (
+          <>
+            <label className="flex gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={candidates.length > 0 && ids.length === candidates.length}
+                onChange={(e) => setIds(e.target.checked ? candidates.map((t) => t.id) : [])}
+              />
+              Select all original sets in this section
+            </label>
+            {visible.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-2 rounded border p-3">
+                {!t.assembly_source_ids?.length && t.questions_count > 0 && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${t.title}`}
+                    checked={ids.includes(t.id)}
+                    onChange={(e) =>
+                      setIds(e.target.checked ? [...ids, t.id] : ids.filter((id) => id !== t.id))
+                    }
+                  />
+                )}
+                <div className="min-w-0 flex-1 break-words">
+                  <b>{t.title}</b>
+                  <p className="text-xs">
+                    {t.syllabus_chapter} {t.syllabus_topic && `/ ${t.syllabus_topic}`} ·{" "}
+                    {t.questions_count} Q · {t.is_published ? "Published" : "Draft"}
+                    {t.assembly_source_ids?.length ? " · Combined snapshot" : ""}
+                  </p>
+                </div>
+                <Button variant="outline" onClick={() => onEdit(t.id)}>
+                  Edit in Advanced
+                </Button>
+              </div>
+            ))}
+            <Button disabled={!ids.length || busy} onClick={() => void combine(path, false)}>
+              Make test from selected sets ({ids.length})
+            </Button>
+          </>
+        )}
+        {!visible.length && <p className="text-xs text-muted-foreground">No question sets yet.</p>}
+      </div>
+    );
+  }
+  function node(path: FolderPath) {
+    const key = pathKey(path),
+      isOpen = Boolean(opened[key]);
+    const level = path.topic ? "Topic" : path.chapter ? "Chapter" : "Subject";
+    const name = path.topic || path.chapter || path.subject;
+    const children = nodes.filter(
+      (child) =>
+        child.series_name === path.series_name &&
+        child.subject === path.subject &&
+        (path.topic
+          ? false
+          : path.chapter
+            ? child.chapter === path.chapter && Boolean(child.topic)
+            : Boolean(child.chapter) && !child.topic),
+    );
+    const panelId = `${treeId}-${encodeURIComponent(key)}`;
+    return (
+      <div
+        key={key}
+        data-testid={`outline-${level.toLowerCase()}`}
+        className="min-w-0 rounded-xl border bg-card"
+      >
+        <h3>
+          <button
+            type="button"
+            aria-expanded={isOpen}
+            aria-controls={panelId}
+            aria-label={`${level}: ${name}${level === "Subject" && path.series_name ? ` — ${path.series_name}` : ""}`}
+            onClick={() => {
+              setOpened((current) => ({ ...current, [key]: !isOpen }));
+              if (!isOpen) choose(path);
+            }}
+            className="flex w-full items-center gap-2 rounded-xl p-3 text-left font-semibold hover:bg-muted/50"
+          >
+            <span aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+            <span className="min-w-0 break-words">
+              {name}
+              {level === "Subject" && path.series_name && (
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {path.series_name}
+                </span>
+              )}
+            </span>
+            <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
+              {level}
+            </span>
+          </button>
+        </h3>
+        <div id={panelId} hidden={!isOpen} className="min-w-0 space-y-4 border-t p-2 sm:p-4">
+          {!path.topic && (
+            <ChildListEditor
+              parent={path}
+              busy={busy}
+              onAdd={(names) => saveChildren(path, names)}
+            />
+          )}
+          {!path.topic && (
+            <div
+              className="space-y-2"
+              aria-label={`${path.chapter ? "Topics" : "Chapters"} under ${name}`}
+            >
+              {children.map(node)}
+              {!children.length && (
+                <p className="text-xs text-muted-foreground">
+                  {path.chapter
+                    ? "No topics added. You can paste questions directly below."
+                    : "Add your chapters above, then expand one."}
+                </p>
+              )}
+            </div>
+          )}
+          {actions(path)}
+          {editor(path)}
+        </div>
+      </div>
+    );
+  }
   return (
-    <section data-testid="test-folder-organiser" className="my-5 min-w-0 space-y-4">
-      <h2 className="text-xl font-bold">Subject → Chapter → Topic folders</h2>
+    <section
+      data-testid="test-folder-organiser"
+      className="my-5 min-w-0 space-y-4 [&_button]:h-auto [&_button]:min-h-9 [&_button]:whitespace-normal"
+    >
+      <h2 className="text-xl font-bold">Subject → Chapters → Optional topics</h2>
       <p className="text-sm text-muted-foreground">
-        Folder banao → apne MCQs paste karo → draft save ya publish. Selected chapters ya poore
-        subject ka complete test bhi bana sakte ho. Sirf original manual sets use honge, koi auto
-        bank fill nahi.
+        Subject kholo → chapters ki list add karo → chapter kholo → topic optional hai, ya seedha
+        MCQs paste karo. Har level neeche expand hota hai.
       </p>
       {(error || folders.error) && (
         <p role="alert" className="rounded border border-destructive p-3">
           {error || String(folders.error instanceof Error ? folders.error.message : folders.error)}
         </p>
       )}
-      <details className="rounded border p-3">
-        <summary>Folder setup / examples</summary>
-        <p className="text-sm">
-          Subject: Mathematics → Chapter: Fractions → Topic: Addition (optional). Subject folder ke
-          liye chapter/topic blank rakho. Series name optional hai, paid bundle access automatically
-          create nahi hota.
-        </p>
-        <a href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download className="underline">
-          Download Test Folders SQL
-        </a>
-      </details>
       <fieldset disabled={busy} className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2">
-        <legend className="px-2 font-semibold">Create a folder</legend>
+        <legend className="px-2 font-semibold">1. Add a subject</legend>
         <label>
-          Folder series name
-          <Input
-            value={form.series_name}
-            onChange={(e) => setForm({ ...form, series_name: e.target.value })}
-            maxLength={120}
-          />
+          Series name (optional)
+          <Input value={series} onChange={(e) => setSeries(e.target.value)} maxLength={120} />
         </label>
         <label>
-          Folder subject
+          Subject name
           <Input
-            value={form.subject}
-            onChange={(e) => setForm({ ...form, subject: e.target.value })}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
             maxLength={80}
+            placeholder="e.g. Mathematics"
           />
         </label>
-        <label>
-          Folder chapter (optional)
-          <Input
-            value={form.chapter}
-            onChange={(e) => setForm({ ...form, chapter: e.target.value })}
-            maxLength={120}
-          />
-        </label>
-        <label>
-          Folder topic (optional)
-          <Input
-            value={form.topic}
-            onChange={(e) => setForm({ ...form, topic: e.target.value })}
-            maxLength={120}
-          />
-        </label>
-        <Button onClick={() => void makeFolder()} disabled={!form.subject.trim() || busy}>
-          Create folder
+        <Button disabled={busy || !subject.trim()} onClick={() => void makeSubject()}>
+          Add subject
         </Button>
       </fieldset>
-      <div className="grid min-w-0 gap-4 md:grid-cols-[260px_1fr]">
-        <nav aria-label="Test folder tree" className="min-w-0 space-y-1 rounded-xl border p-3">
-          {folders.isLoading && <p>Loading folders…</p>}
-          {!nodes.length && !folders.isLoading && (
-            <p className="text-sm">No folders yet. Create your first subject above.</p>
-          )}
-          {nodes.map((node) => (
-            <button
-              key={pathKey(node)}
-              type="button"
-              aria-pressed={Boolean(selected && pathKey(selected) === pathKey(node))}
-              onClick={() => choose(node)}
-              className={`block w-full break-words rounded-lg border p-2 text-left text-sm ${selected && pathKey(selected) === pathKey(node) ? "border-primary bg-primary/10" : ""} ${node.topic ? "pl-8" : node.chapter ? "pl-5" : ""}`}
-            >
-              📁 {node.topic || node.chapter || node.subject}
-              {!node.chapter && (
-                <span className="block text-xs text-muted-foreground">
-                  {node.series_name || "No series"}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-        <div className="min-w-0 space-y-3 rounded-xl border p-4">
-          {!selected ? (
-            <p>Select a folder.</p>
-          ) : (
-            <>
-              <h3 className="break-words font-bold">
-                {[selected.series_name, selected.subject, selected.chapter, selected.topic]
-                  .filter(Boolean)
-                  .join(" / ")}
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={!selected.chapter || busy}
-                  onClick={() => {
-                    if (draft && !window.confirm("Replace the current unsaved test draft?")) return;
-                    setNotice("");
-                    setDraft({
-                      key: crypto.randomUUID(),
-                      seed: {
-                        ...selected,
-                        title: `${selected.subject} — ${selected.topic || selected.chapter}`,
-                      },
-                    });
-                  }}
-                >
-                  Add text questions here
-                </Button>
-                <Button variant="outline" disabled={busy} onClick={() => void combine(true)}>
-                  Complete subject test
-                </Button>
-              </div>
-              {!selected.chapter && (
-                <p className="text-xs">
-                  Questions paste karne ke liye chapter folder create/select karo. Complete test ke
-                  liye chapter sets add karo.
-                </p>
-              )}
-              <label className="flex gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={candidates.length > 0 && ids.length === candidates.length}
-                  onChange={(e) => setIds(e.target.checked ? candidates.map((t) => t.id) : [])}
-                />
-                Select all original sets in this folder
-              </label>
-              {visible.map((t) => (
-                <div key={t.id} className="flex flex-wrap items-center gap-2 rounded border p-3">
-                  {!t.assembly_source_ids?.length && t.questions_count > 0 && (
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${t.title}`}
-                      checked={ids.includes(t.id)}
-                      onChange={(e) =>
-                        setIds(e.target.checked ? [...ids, t.id] : ids.filter((id) => id !== t.id))
-                      }
-                    />
-                  )}
-                  <div className="min-w-0 flex-1 break-words">
-                    <b>{t.title}</b>
-                    <p className="text-xs">
-                      {t.syllabus_chapter} {t.syllabus_topic && `/ ${t.syllabus_topic}`} ·{" "}
-                      {t.questions_count} Q · {t.is_published ? "Published" : "Draft"}
-                      {t.assembly_source_ids?.length ? " · Combined snapshot" : ""}
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => onEdit(t.id)}>
-                    Edit in Advanced
-                  </Button>
-                </div>
-              ))}
-              {!visible.length && <p>No question sets here yet.</p>}
-              <Button disabled={!ids.length || busy} onClick={() => void combine(false)}>
-                Make test from selected sets ({ids.length})
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Combined papers are independent copies, excluded from future source selection to
-                avoid repeated questions. Max 50 sets / 200 unique questions; nothing is silently
-                truncated.
-              </p>
-            </>
-          )}
-        </div>
-      </div>
       {notice && <p role="status">{notice}</p>}
-      {draft && (
-        <div data-testid="folder-test-draft">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (window.confirm("Discard this unsaved test draft?")) setDraft(null);
-            }}
-          >
-            Close unsaved editor
-          </Button>
-          <EasyTextTestBuilder
-            key={draft.key}
-            initial={draft.seed}
-            onPublished={(id, published) => {
-              setDraft(null);
-              setNotice(
-                published
-                  ? "Test published."
-                  : "Folder question set saved as draft — hidden from students.",
-              );
-              void queryClient.invalidateQueries({ queryKey: ["admin", "test-folders"] });
-              onSaved(id, published);
-            }}
-          />
-        </div>
-      )}
+      <div aria-label="Subject chapter accordion" className="space-y-3">
+        {folders.isLoading && <p>Loading subjects…</p>}
+        {nodes.filter((path) => !path.chapter).map(node)}
+        {!nodes.length && !folders.isLoading && <p>Add your first subject above.</p>}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Complete/combined tests use only your selected original sets (max 50 sets / 200 unique
+        questions), without bank auto-fill. Existing saved subjects, chapters, topics and tests are
+        retained.
+      </p>
+      <details className="rounded border p-3 text-xs">
+        <summary>Setup help</summary>
+        <p>
+          Same existing Test Folders SQL—no new SQL for this accordion update. Series name is a
+          grouping label, not a new paid catalogue bundle.
+        </p>
+        <a href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download className="underline">
+          Download Test Folders SQL if not installed yet
+        </a>
+      </details>
     </section>
   );
 }
