@@ -19,12 +19,30 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
     await ap.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
     const organiser = ap.getByTestId("test-folder-organiser");
     const series = `Folder Series ${Date.now()}`;
-    await organiser.getByLabel("Series name (optional)", { exact: true }).fill(series);
-    await organiser.getByLabel("Subject name", { exact: true }).fill("Mathematics");
-    await organiser.getByRole("button", { name: "Add subject", exact: true }).click();
+    await organiser.getByLabel("Series name", { exact: true }).fill(series);
+    await organiser.getByRole("button", { name: "Continue → Subjects", exact: true }).click();
+    await organiser.getByLabel(`Subject name in ${series}`, { exact: true }).fill("Mathematics");
+    const seriesPanel = organiser
+      .getByTestId("outline-series")
+      .filter({ has: ap.getByRole("heading", { name: series, exact: true }) });
+    await seriesPanel.getByRole("button", { name: "Save subject", exact: true }).click();
+    await expect(
+      seriesPanel.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
+    ).toBeVisible();
+    await seriesPanel.getByLabel(`Subject name in ${series}`, { exact: true }).fill("Hindi");
+    await seriesPanel.getByRole("button", { name: "Save subject", exact: true }).click();
+    await expect(
+      seriesPanel.getByRole("button", { name: `Subject: Hindi — ${series}`, exact: true }),
+    ).toHaveAttribute("aria-expanded", "false");
     const root = organiser.getByTestId("outline-subject").filter({
       has: ap.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
     });
+    await expect(
+      root.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await root
+      .getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true })
+      .click();
     await expect(
       root.getByRole("button", { name: `Subject: Mathematics — ${series}`, exact: true }),
     ).toHaveAttribute("aria-expanded", "true");
@@ -64,7 +82,7 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
           .click();
       } else {
         await chapterPanel
-          .getByRole("button", { name: "Paste chapter questions (without topic)", exact: true })
+          .getByRole("button", { name: "Skip topics → Paste chapter questions", exact: true })
           .click();
       }
       const editor = organiser.getByTestId("easy-test-builder");

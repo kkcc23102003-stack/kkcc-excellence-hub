@@ -2,25 +2,29 @@
 
 Admin → Tests → **Subjects & Chapters**.
 
-## 1. Subject add karo
-- Optional series name aur Subject name likho → **Add subject**.
-- Subject ki heading click karke neeche ki list expand/collapse kar sakte ho.
-- Empty subjects/chapters bhi save rehte hain.
+## 1. Pehle series, phir uski subjects list
+- **Series name** likho → **Continue → Subjects**.
+- Us series ke neeche Subject name likho → **Save subject**. Isi tarah multiple subjects add karo.
+- Har saved subject ke aage **Chapters →** button dikhega. Click karne par sirf uski chapters list khulegi.
+- Series aur subject grouping first subject save hone par database mein persist hoti hai; khaali unsaved series reload par nahi rahegi.
+- Existing series apni alag subject lists ke saath dikhti hain; purane unassigned subjects bhi retained hain.
 
 ## 2. Subject ke andar chapters list
 - Expanded subject mein chapters likho: har line par ek chapter.
 - **Add chapters** dabao. Numbered/bulleted lists bhi accepted hain.
-- Chapter ki heading click karo: uske controls usi ke neeche khulenge.
+- Har saved chapter ke aage **Topics / Skip →** button click karo: optional topics list usi ke neeche khulegi.
 
 ## 3. Optional topics ya direct chapter questions
-- Topic nahi chahiye? **Paste chapter questions (without topic)** dabao.
+- Topic nahi chahiye? **Skip topics → Paste chapter questions** dabao.
 - Topics chahiye? Chapter ke andar har line par ek topic likho → **Add topics**.
-- Topic expand karo → **Paste topic questions**.
+- Topic ke aage **Questions →** click karo → **Paste topic questions**.
 - Editor usi chapter/topic ke andar khulta hai, alag global form mein nahi.
 - Apne MCQs paste karo, preview/edit, Next aur confirmation karo.
 - **Save folder draft**: students se hidden; **Publish my test**: selected Free/Paid settings ke saath live.
 - Collapse karne par unsaved editor retain rehta hai. Doosra draft kholne par replacement confirmation aayegi.
 - Saved sets dikhane ke liye **Show saved sets**; parent reopen karna zaroori nahi.
+
+Paste format: apne ready MCQs/options/answer/explanation paste karne par structured questions automatically parse hote hain. Plain theory se naye AI questions generate karna is parser ka kaam nahi. Preview mein corrections karke Next → review → Save folder draft ya Publish my test karo.
 
 Text example:
 

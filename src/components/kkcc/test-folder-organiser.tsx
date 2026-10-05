@@ -63,6 +63,42 @@ function ChildListEditor({
     </fieldset>
   );
 }
+function SubjectEntry({
+  series,
+  busy,
+  onSave,
+}: {
+  series: string;
+  busy: boolean;
+  onSave: (name: string, series: string) => Promise<boolean>;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <fieldset
+      disabled={busy}
+      className="flex flex-wrap items-end gap-2 rounded border border-dashed p-3"
+    >
+      <label className="min-w-0 flex-1">
+        Subject name
+        <Input
+          aria-label={`Subject name in ${series || "Unassigned series"}`}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={80}
+          placeholder="e.g. Mathematics"
+        />
+      </label>
+      <Button
+        disabled={busy || !name.trim()}
+        onClick={async () => {
+          if (await onSave(name, series)) setName("");
+        }}
+      >
+        Save subject
+      </Button>
+    </fieldset>
+  );
+}
 export function TestFolderOrganiser({
   tests,
   onSaved,
@@ -79,8 +115,8 @@ export function TestFolderOrganiser({
     assemble = useServerFn(prepareFolderTest),
     addList = useServerFn(addTestOutlineList);
   const folders = useQuery({ queryKey: ["admin", "test-folders"], queryFn: () => load() });
-  const [subject, setSubject] = useState(""),
-    [series, setSeries] = useState("");
+  const [series, setSeries] = useState("");
+  const [pendingSeries, setPendingSeries] = useState<string[]>([]);
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<FolderPath | null>(null),
     [ids, setIds] = useState<string[]>([]);
@@ -101,18 +137,18 @@ export function TestFolderOrganiser({
     setError("");
   };
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin", "test-folders"] });
-  const makeSubject = async () => {
+  const makeSubject = async (subject: string, series: string) => {
     setBusy(true);
     setError("");
     try {
       const path = await create({ data: { series_name: series, subject, chapter: "", topic: "" } });
       await refresh();
-      setOpened((current) => ({ ...current, [pathKey(path)]: true }));
       choose(path);
-      setSubject("");
-      setNotice("Subject added. Add its chapter list below.");
+      setNotice("Subject saved. Click Chapters → next to its name.");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Subject save failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -225,7 +261,7 @@ export function TestFolderOrganiser({
         <div className="flex flex-wrap gap-2">
           {path.chapter ? (
             <Button disabled={busy} onClick={() => startDraft(path)}>
-              {path.topic ? "Paste topic questions" : "Paste chapter questions (without topic)"}
+              {path.topic ? "Paste topic questions" : "Skip topics → Paste chapter questions"}
             </Button>
           ) : (
             <Button disabled={busy} onClick={() => void combine(path, true)}>
@@ -325,8 +361,14 @@ export function TestFolderOrganiser({
                 </span>
               )}
             </span>
-            <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
-              {level}
+            <span className="ml-auto shrink-0 rounded-md border bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+              {isOpen
+                ? "Close ↑"
+                : path.topic
+                  ? "Questions →"
+                  : path.chapter
+                    ? "Topics / Skip →"
+                    : "Chapters →"}
             </span>
           </button>
         </h3>
@@ -364,40 +406,64 @@ export function TestFolderOrganiser({
       data-testid="test-folder-organiser"
       className="my-5 min-w-0 space-y-4 [&_button]:h-auto [&_button]:min-h-9 [&_button]:whitespace-normal"
     >
-      <h2 className="text-xl font-bold">Subject → Chapters → Optional topics</h2>
+      <h2 className="text-xl font-bold">Series → Subjects → Chapters → Optional topics</h2>
       <p className="text-sm text-muted-foreground">
-        Subject kholo → chapters ki list add karo → chapter kholo → topic optional hai, ya seedha
-        MCQs paste karo. Har level neeche expand hota hai.
+        Series name likho → neeche subjects save karo → subject ke aage Chapters → chapter ke aage
+        Topics / Skip → apna MCQ text paste karo → preview → save / publish.
       </p>
       {(error || folders.error) && (
         <p role="alert" className="rounded border border-destructive p-3">
           {error || String(folders.error instanceof Error ? folders.error.message : folders.error)}
         </p>
       )}
-      <fieldset disabled={busy} className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2">
-        <legend className="px-2 font-semibold">1. Add a subject</legend>
-        <label>
-          Series name (optional)
-          <Input value={series} onChange={(e) => setSeries(e.target.value)} maxLength={120} />
-        </label>
-        <label>
-          Subject name
+      <fieldset disabled={busy} className="space-y-3 rounded-xl border p-4">
+        <legend className="px-2 font-semibold">1. Name your series</legend>
+        <label className="block">
+          Series name
           <Input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            maxLength={80}
-            placeholder="e.g. Mathematics"
+            value={series}
+            onChange={(e) => setSeries(e.target.value)}
+            maxLength={120}
+            placeholder="e.g. ETT Practice Series"
           />
         </label>
-        <Button disabled={busy || !subject.trim()} onClick={() => void makeSubject()}>
-          Add subject
+        <Button
+          disabled={busy || !series.trim()}
+          onClick={() => {
+            const name = series.trim();
+            setPendingSeries((current) => [...new Set([...current, name])]);
+            setSeries("");
+            setNotice(
+              "Series ready. Save subjects below; each subject has its own Chapters button.",
+            );
+          }}
+        >
+          Continue → Subjects
         </Button>
+        <p className="text-xs text-muted-foreground">
+          Series grouping is saved when you save its first subject.
+        </p>
       </fieldset>
       {notice && <p role="status">{notice}</p>}
-      <div aria-label="Subject chapter accordion" className="space-y-3">
-        {folders.isLoading && <p>Loading subjects…</p>}
-        {nodes.filter((path) => !path.chapter).map(node)}
-        {!nodes.length && !folders.isLoading && <p>Add your first subject above.</p>}
+      <div aria-label="Series subject chapter accordion" className="space-y-4">
+        {folders.isLoading && <p>Loading series…</p>}
+        {[...new Set([...nodes.map((path) => path.series_name), ...pendingSeries])].map(
+          (seriesName) => (
+            <section
+              key={seriesName}
+              data-testid="outline-series"
+              className="min-w-0 space-y-3 rounded-xl border-2 border-primary/30 p-2 sm:p-4"
+            >
+              <h3 className="break-words text-lg font-bold">{seriesName || "Unassigned series"}</h3>
+              <p className="text-sm font-semibold">2. Subjects list</p>
+              {nodes.filter((path) => !path.chapter && path.series_name === seriesName).map(node)}
+              <SubjectEntry series={seriesName} busy={busy} onSave={makeSubject} />
+            </section>
+          ),
+        )}
+        {!nodes.length && !pendingSeries.length && !folders.isLoading && (
+          <p>Start by naming your series above.</p>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         Complete/combined tests use only your selected original sets (max 50 sets / 200 unique

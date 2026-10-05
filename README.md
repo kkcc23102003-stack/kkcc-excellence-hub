@@ -1739,8 +1739,9 @@ Run `npm run test:e2e` after installing Playwright Chromium; the fixture uses po
 
 ## Subject / Chapter / Topic folder organiser
 
-Admin → Tests → **Subjects & Chapters**. Add a subject, expand it, add a multiline
-chapters list, then expand a chapter. Add optional topics or paste questions directly
+Admin → Tests → **Subjects & Chapters**. Name a series first, then save subjects in
+its own list. Every saved subject has a Chapters button; add a multiline
+chapters list, then use each chapter’s Topics / Skip button. Add optional topics or paste questions directly
 inside the chapter. The editor opens inline beneath the chapter/topic. Save private drafts or publish. Select
 original sets across chapters to assemble an editable combined paper, or choose
 Complete subject test. Same-series/subject boundaries are enforced; exact duplicate
@@ -1754,3 +1755,5 @@ was executed. Combined papers are independent, with max 50 source sets / 200 uni
 questions and explicit preview + confirm before publish.
 
 The expandable accordion update reuses the installed Test Folders SQL; no additional migration is required.
+
+Series-first workflow: Continue → Subjects → Save subject → Chapters → save chapter list → Topics / Skip → paste MCQ text → preview → save/publish. Empty series drafts persist only after their first subject is saved.

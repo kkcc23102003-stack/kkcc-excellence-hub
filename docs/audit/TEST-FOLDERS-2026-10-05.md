@@ -45,3 +45,13 @@ marking), editable later in Advanced. Series names do not create paid catalogue 
 Flat navigation replaced with downward-expanding subject/chapter/topic lists. Parent actions remain accessible while descendants are open. Uses existing SQL; no migration added. Batch creation inherits the selected parent and forbids children below topics.
 
 Accordion browser coverage additionally confirms unsaved pasted text survives chapter collapse/reopen and checks 390px width with the nested editor open.
+
+## Series-first correction
+Updated browser run: 6/6 targeted tests; 97/97 unit tests. TypeScript passed.
+Starts with series name, then a scoped subject input/list. Saves Mathematics and Hindi
+under the same series; verifies each saved subject starts collapsed with its own action.
+Opens Mathematics, saves chapter list, then tests optional topic and explicit Skip topics
+paths. Existing regression assertions cover persisted MCQs, draft privacy, paid controls,
+collapse/reopen preservation, mobile width and preview/publication/student result.
+Empty series is a local draft until its first subject save; no additional SQL migration.
+Pasted ready MCQs are parsed, not generated from arbitrary theory text.
