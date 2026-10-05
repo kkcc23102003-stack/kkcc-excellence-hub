@@ -57,7 +57,7 @@ test("notes backend does not upload template/test banks to Supabase or hide setu
   assert.equal(MANAGED_CONTENT_TABLES["materials"], "kkcc_materials");
   assert.equal(MANAGED_CONTENT_TABLES["test_questions"], "kkcc_test_questions");
   const source = readFileSync("src/lib/project-content.server.ts", "utf8");
-  assert.ok(source.includes('code: "NOTES_SETUP_REQUIRED"'));
+  assert.ok(source.includes('"NOTES_SETUP_REQUIRED"'));
   assert.equal(
     readFileSync("KKCC-Excellence-Hub-NOTES-SUPABASE.sql", "utf8"),
     readFileSync("supabase/migrations/20261004150000_supabase_managed_notes.sql", "utf8"),

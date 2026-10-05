@@ -26,6 +26,9 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
   const [subject, setSubject] = useState("");
   const [chapter, setChapter] = useState("");
   const [series, setSeries] = useState("");
+  const [isPaid, setIsPaid] = useState(false);
+  const [priceInr, setPriceInr] = useState("0");
+  const [priceCoins, setPriceCoins] = useState("0");
   const [minutes, setMinutes] = useState("30");
   const [text, setText] = useState("");
   const [questions, setQuestions] = useState<EasyQuestion[] | null>(null);
@@ -38,6 +41,9 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
     setQuestions((current) => current!.map((q, i) => (i === index ? { ...q, ...update } : q)));
   const payload = () => ({
     id: id!,
+    is_paid: isPaid,
+    price_inr: isPaid ? Number(priceInr) : 0,
+    price_coins: isPaid ? Number(priceCoins) : 0,
     title: title.trim() || `${subject} — ${chapter}`,
     subject,
     chapter,
@@ -81,6 +87,9 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
       setId(null);
       setConfirmed(false);
       setTitle("");
+      setIsPaid(false);
+      setPriceInr("0");
+      setPriceCoins("0");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Publish failed. Retry is safe.");
     } finally {
@@ -91,17 +100,17 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
     <section className="my-6 space-y-4 rounded-3xl border bg-card p-5">
       <h2 className="text-xl font-bold">Easy Text Test · {step}/3</h2>
       <p className="text-sm text-muted-foreground">
-        Sirf aapke questions. Koi bank auto-fill nahi. Default: Free test, 1 mark/question, no
-        negative marks. Advanced settings baad mein badal sakte hain.
+        Sirf aapke questions. Koi bank auto-fill nahi. Free ya Paid yahin select karein. 1
+        mark/question, no negative marks; baaki settings Advanced mein available hain.
       </p>
       <details className="rounded border p-3 text-xs">
         <summary>First-time setup / save error?</summary>
         <p>
-          Existing deployment: run the Easy Tests SQL once, then redeploy. No S3 required. Saved
-          test/questions use Supabase; the template bank stays in project files.
+          Existing deployment: run the latest Publish Fix SQL once, then redeploy. No S3 required.
+          Saved test/questions use Supabase; the template bank stays in project files.
         </p>
-        <a className="underline" href="/KKCC-Excellence-Hub-EASY-TESTS.sql" download>
-          Download Easy Tests SQL
+        <a className="underline" href="/KKCC-Excellence-Hub-PUBLISH-FIX.sql" download>
+          Download Notes + Test Publish Fix SQL
         </a>
       </details>
       {error && (
@@ -151,6 +160,61 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
               />
             </label>
           </div>
+          <fieldset className="space-y-3 rounded-xl border p-4">
+            <legend className="px-2 font-semibold">Test access & price</legend>
+            <div className="flex gap-5">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="easy-access"
+                  checked={!isPaid}
+                  onChange={() => setIsPaid(false)}
+                />
+                Free
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="easy-access"
+                  checked={isPaid}
+                  onChange={() => setIsPaid(true)}
+                />
+                Paid
+              </label>
+            </div>
+            {isPaid && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label>
+                  Price (₹)
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100000}
+                    step={1}
+                    value={priceInr}
+                    onChange={(e) => setPriceInr(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Coin price
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1000000}
+                    step={1}
+                    value={priceCoins}
+                    onChange={(e) => setPriceCoins(e.target.value)}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Kam se kam ek price 0 se zyada rakhein. Dono set karne par alternative payment
+                  options honge, dono ek saath charge nahi honge. Razorpay OFF par rupee payment ke
+                  liye Contact Admin; ON par existing online checkout. Coin access existing wallet
+                  rules se milega.
+                </p>
+              </div>
+            )}
+          </fieldset>
           <details className="rounded border p-3">
             <summary>Paste ka format dekhein</summary>
             <pre className="whitespace-pre-wrap text-xs">{EXAMPLE}</pre>
@@ -248,12 +312,17 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
         <>
           <h3 className="font-bold">{payload().title}</h3>
           <p>
-            {subject} · {chapter} · {questions?.length} questions · {minutes} minutes · Free
+            {subject} · {chapter} · {questions?.length} questions · {minutes} minutes ·{" "}
+            {isPaid
+              ? `Paid${Number(priceInr) > 0 ? ` · ₹${Number(priceInr)}` : ""}${Number(priceCoins) > 0 ? ` · ${Number(priceCoins)} coins` : ""}`
+              : "Free"}
           </p>
           <p className="text-sm">
-            Publish ke baad ye test students ko available hoga. Yahi edited
-            questions/options/explanations save honge. Series name sirf grouping hai; existing paid
-            bundle se automatic link nahi hota.
+            {isPaid
+              ? "Publish ke baad paid test locked rahega jab tak student ko valid access na mile."
+              : "Publish ke baad ye free test students ko available hoga."}{" "}
+            Yahi edited questions/options/explanations save honge. Series name sirf grouping hai;
+            existing paid bundle se automatic link nahi hota.
           </p>
           <label className="flex gap-2">
             <input

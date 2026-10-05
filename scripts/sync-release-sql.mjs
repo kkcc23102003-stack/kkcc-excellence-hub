@@ -1,7 +1,12 @@
 import { copyFileSync, readFileSync } from "node:fs";
-const files = ["PRODUCTION-SQL", "SQL-CLEANER", "NOTES-SUPABASE", "SPACE-SAVER", "EASY-TESTS"].map(
-  (name) => `KKCC-Excellence-Hub-${name}.sql`,
-);
+const files = [
+  "PRODUCTION-SQL",
+  "SQL-CLEANER",
+  "NOTES-SUPABASE",
+  "SPACE-SAVER",
+  "EASY-TESTS",
+  "PUBLISH-FIX",
+].map((name) => `KKCC-Excellence-Hub-${name}.sql`);
 for (const name of files) {
   if (process.argv.includes("--check")) {
     if (!readFileSync(name).equals(readFileSync(`public/${name}`)))

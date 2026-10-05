@@ -12,14 +12,14 @@ export const publishEasyTextTest = createServerFn({ method: "POST" })
     });
     if (role.error || !role.data) throw new Error("Admin access required");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const result = await supabaseAdmin.rpc("publish_easy_text_test", {
+    const result = await supabaseAdmin.rpc("publish_easy_text_test_v2", {
       p_actor: context.userId,
       p_payload: data,
     });
     if (result.error)
       throw new Error(
         ["PGRST202", "42883", "42P01"].includes(result.error.code)
-          ? "One-time setup: run KKCC-Excellence-Hub-EASY-TESTS.sql in Supabase SQL Editor and redeploy."
+          ? "Publish setup pending: run the latest KKCC-Excellence-Hub-PUBLISH-FIX.sql in Supabase SQL Editor and redeploy. No test was published; your preview is safe to retry. S3 is not required."
           : result.error.message,
       );
     invalidateProjectContentCache("tests");

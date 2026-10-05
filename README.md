@@ -1709,3 +1709,20 @@ substitutes unrelated chapters, synthesizes generic filler, or returns all manua
 rows when a subject/chapter selection does not match. Exact coverage may be lower
 than requested; the admin must lower the count or add questions. Old mislabeled
 stored content is preserved for admin review, not silently removed.
+
+### Easy Free/Paid and publish repair
+
+Easy Text Test now includes Free/Paid, INR price, and coin price. Paid needs at
+least one positive price; free clears both. The price is shown in final review
+and persisted atomically with questions via `publish_easy_text_test_v2`. The
+versioned endpoint prevents an older SQL function silently ignoring paid fields.
+
+Existing deployments: back up, run **KKCC-Excellence-Hub-PUBLISH-FIX.sql**, verify
+server-only Supabase env, and redeploy. It combines notes and test setup, including
+the paid RPC. No automatic production migration was executed. Managed notes/test
+metadata ignores old global file/S3 overrides; missing SQL returns a setup error,
+not a readonly/S3 fallback. Explicit `KKCC_FIXTURE_LOCAL_CMS=1` is only for local
+fixtures and is ignored on Vercel. Template bank remains outside Supabase.
+Attachment storage selection and legacy files are NOT automatically changed or
+migrated. Production SQL copy/preview now loads the real static SQL and fails
+visibly on download errors, never substituting the cleaner script.

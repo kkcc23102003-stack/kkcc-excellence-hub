@@ -189,3 +189,87 @@ test("easy publish is atomic, admin-only, exact, idempotent, and manually editab
     await db.close();
   }
 });
+
+test("paid Easy tests validate prices and publish paid/coin/free access atomically with v2", async () => {
+  assert.equal(easyTestSchema.safeParse({ ...payload, is_paid: true }).success, false);
+  assert.equal(
+    easyTestSchema.safeParse({ ...payload, is_paid: true, price_inr: -5 }).success,
+    false,
+  );
+  assert.equal(
+    easyTestSchema.safeParse({ ...payload, is_paid: true, price_inr: 100001 }).success,
+    false,
+  );
+  assert.equal(easyTestSchema.parse({ ...payload, is_paid: false, price_inr: 99 }).price_inr, 0);
+  const db = await createFixtureDatabase();
+  try {
+    await seedFixtureUsers(db);
+    await asRole(db, "authenticated", fixtureIds.studentA);
+    await assert.rejects(
+      db.query("SELECT public.publish_easy_text_test_v2($1,$2::jsonb)", [
+        fixtureIds.admin,
+        JSON.stringify(payload),
+      ]),
+      /permission/i,
+    );
+    await asRole(db, "service_role");
+    await assert.rejects(
+      db.query("SELECT public.publish_easy_text_test_v2($1,$2::jsonb)", [
+        fixtureIds.studentA,
+        JSON.stringify(payload),
+      ]),
+      /Admin server only/,
+    );
+    await assert.rejects(
+      db.query("SELECT public.publish_easy_text_test_v2($1,$2::jsonb)", [
+        fixtureIds.admin,
+        JSON.stringify({ ...payload, is_paid: true }),
+      ]),
+      /paid test needs/,
+    );
+    assert.equal(
+      (await db.query("SELECT * FROM public.kkcc_tests WHERE id=$1", [payload.id])).rows.length,
+      0,
+    );
+    const configurations = [
+      { is_paid: true, price_inr: 199, price_coins: 0 },
+      { is_paid: true, price_inr: 0, price_coins: 150 },
+      { is_paid: true, price_inr: 299, price_coins: 200 },
+      { is_paid: false, price_inr: 299, price_coins: 200 },
+    ];
+    for (const [index, config] of configurations.entries()) {
+      const data = { ...payload, ...config, id: `90000000-0000-4000-8000-00000000000${index + 2}` };
+      for (let retry = 0; retry < 2; retry++)
+        await db.query("SELECT public.publish_easy_text_test_v2($1,$2::jsonb)", [
+          fixtureIds.admin,
+          JSON.stringify(data),
+        ]);
+      const result = await db.query<{
+        is_paid: boolean;
+        price_inr: number;
+        price_coins: number;
+        is_published: boolean;
+      }>("SELECT * FROM public.kkcc_tests WHERE id=$1", [data.id]);
+      assert.equal(result.rows.length, 1);
+      const saved = result.rows[0]!;
+      assert.equal(saved.is_paid, config.is_paid);
+      assert.equal(saved.price_inr, config.is_paid ? config.price_inr : 0);
+      assert.equal(saved.price_coins, config.is_paid ? config.price_coins : 0);
+      assert.equal(saved.is_published, true);
+      assert.equal(
+        (await db.query("SELECT * FROM public.kkcc_test_questions WHERE test_id=$1", [data.id]))
+          .rows.length,
+        1,
+      );
+    }
+    await db.exec("RESET ROLE");
+    await db.exec(readFileSync("KKCC-Excellence-Hub-PUBLISH-FIX.sql", "utf8"));
+    await db.exec(readFileSync("KKCC-Excellence-Hub-PUBLISH-FIX.sql", "utf8"));
+    assert.equal(
+      (await db.query("SELECT * FROM public.kkcc_tests WHERE is_paid=true")).rows.length,
+      3,
+    );
+  } finally {
+    await db.close();
+  }
+});

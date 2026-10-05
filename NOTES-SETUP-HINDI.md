@@ -11,7 +11,7 @@ notes/settings ko Supabase tables mein save karti hai, S3 mein nahi.
 3. Hosting Environment Variables mein existing Supabase URL/public key ke saath
    **SUPABASE_SERVICE_ROLE_KEY** server-only set/check karo. Is key ko chat mein
    mat bhejna; `VITE_` prefix mat lagana.
-4. Production mein `KKCC_CONTENT_BACKEND=file` ho toh remove karo. Updated branch/ZIP deploy karke redeploy karo.
+4. Updated branch/ZIP deploy karke redeploy karo. Managed notes/tests legacy `KKCC_CONTENT_BACKEND=file/s3` override ko ignore karte hain; baaki modules ki settings bina data migration change na karein.
 5. Admin → Storage mein Supabase / `course-content` choose karo. Provider change
    existing S3 files ko move nahi karta; aisi files pehle re-upload/migrate karo.
 6. Admin → Materials → **Make sample notes editable** ek baar click karo.
@@ -42,3 +42,5 @@ export/import zaroori hai. Kisi existing saved content ko assume karke discard m
 Local automated tests and build verify kiye gaye hain. Live Supabase SQL apply aur
 hosting redeploy is workspace se execute nahi kiye gaye. In steps ke bina live
 screenshot wala deployment updated nahi maana ja sakta.
+
+Notes + test publish dono issue hon toh latest `KKCC-Excellence-Hub-PUBLISH-FIX.sql` combined repair run karo. Ismein notes tables, saved tests/questions aur paid Easy publish RPC included hain.

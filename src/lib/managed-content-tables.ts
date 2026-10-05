@@ -12,4 +12,18 @@ export const NOTES_SETUP_ERROR =
   "Supabase notes setup required. Run KKCC-Excellence-Hub-NOTES-SUPABASE.sql in Supabase SQL Editor, set SUPABASE_SERVICE_ROLE_KEY on the server, and redeploy. S3 is not required.";
 
 export const TESTS_SETUP_ERROR =
-  "Test setup required: run KKCC-Excellence-Hub-EASY-TESTS.sql in Supabase SQL Editor, then redeploy. Only published test rows are saved; template banks remain in project files.";
+  "Test setup required: run the latest KKCC-Excellence-Hub-PUBLISH-FIX.sql in Supabase SQL Editor, set the server-only SUPABASE_SERVICE_ROLE_KEY, then redeploy. S3 is not required. Only published test rows are saved; template banks remain in project files.";
+
+/** A legacy global file/S3 setting must never divert live notes/tests off Supabase.
+ * Explicit local fixtures retain their disposable CMS; never on Vercel. */
+export function isLocalManagedFixture(
+  table: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  return (
+    Boolean(MANAGED_CONTENT_TABLES[table]) &&
+    env["KKCC_FIXTURE_LOCAL_CMS"] === "1" &&
+    !env["VERCEL"] &&
+    !(env["KKCC_TESTS_BACKEND"] === "supabase" && ["tests", "test_questions"].includes(table))
+  );
+}

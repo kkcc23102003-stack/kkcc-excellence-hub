@@ -1,5 +1,6 @@
 import {
   MANAGED_CONTENT_TABLES,
+  isLocalManagedFixture,
   NOTES_SETUP_ERROR,
   TESTS_SETUP_ERROR,
 } from "./managed-content-tables";
@@ -611,12 +612,10 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
   }
   private async execute(): Promise<Result<Output>> {
     if (
-      (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" &&
-        !(
-          process.env["KKCC_TESTS_BACKEND"] === "supabase" &&
-          ["tests", "test_questions"].includes(this.table)
-        )) ||
-      (!MANAGED_CONTENT_TABLES[this.table] && missingRemoteTables.has(this.table))
+      isLocalManagedFixture(this.table, process.env) ||
+      (!MANAGED_CONTENT_TABLES[this.table] &&
+        (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" ||
+          missingRemoteTables.has(this.table)))
     ) {
       return this.executeLocal();
     }
@@ -633,10 +632,10 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       }
     } else {
       invalidateProjectContentCache(table);
-      if (table === "lectures" || table === "materials" || table === "tests") {
+      if (["lectures", "materials", "tests"].includes(this.table)) {
         invalidateProjectContentCache("courses");
       }
-      if (table === "test_questions") {
+      if (this.table === "test_questions") {
         invalidateProjectContentCache("tests");
       }
     }
@@ -723,7 +722,9 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
                 message: ["tests", "test_questions"].includes(this.table)
                   ? TESTS_SETUP_ERROR
                   : NOTES_SETUP_ERROR,
-                code: "NOTES_SETUP_REQUIRED",
+                code: ["tests", "test_questions"].includes(this.table)
+                  ? "TESTS_SETUP_REQUIRED"
+                  : "NOTES_SETUP_REQUIRED",
               },
               count: null,
             };
@@ -760,7 +761,9 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
               message: ["tests", "test_questions"].includes(this.table)
                 ? TESTS_SETUP_ERROR
                 : NOTES_SETUP_ERROR,
-              code: "NOTES_SETUP_REQUIRED",
+              code: ["tests", "test_questions"].includes(this.table)
+                ? "TESTS_SETUP_REQUIRED"
+                : "NOTES_SETUP_REQUIRED",
             },
             count: null,
           };

@@ -842,6 +842,7 @@ const env = {
   SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
   KKCC_CONTENT_BACKEND: "file",
+  KKCC_FIXTURE_LOCAL_CMS: "1",
   KKCC_TESTS_BACKEND: "supabase",
   KKCC_CONTENT_FILE: runtime,
   KKCC_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("hex"),

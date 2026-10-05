@@ -28,6 +28,7 @@ test("all sample notes have stable editable IDs and fit admin form limits", () =
 test("sample adoption retries preserve edits, drafts, and paid settings", async () => {
   const folder = await mkdtemp(resolve("data", "material-test-"));
   process.env["KKCC_CONTENT_BACKEND"] = "file";
+  process.env["KKCC_FIXTURE_LOCAL_CMS"] = "1";
   process.env["KKCC_CONTENT_FILE"] = resolve(folder, "content.json");
   try {
     const samples = builtInMaterials();
@@ -71,6 +72,7 @@ test("sample adoption retries preserve edits, drafts, and paid settings", async 
     );
   } finally {
     delete process.env["KKCC_CONTENT_BACKEND"];
+    delete process.env["KKCC_FIXTURE_LOCAL_CMS"];
     delete process.env["KKCC_CONTENT_FILE"];
     await rm(folder, { recursive: true, force: true });
   }

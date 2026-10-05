@@ -13,15 +13,28 @@ export const easyQuestionSchema = z
     if (new Set(q.options.map((o) => o.toLocaleLowerCase())).size !== q.options.length)
       ctx.addIssue({ code: "custom", message: "Options duplicate nahi hone chahiye" });
   });
-export const easyTestSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string().trim().min(2).max(200),
-  subject: z.string().trim().min(1).max(80),
-  chapter: z.string().trim().min(1).max(120),
-  series_name: z.string().trim().max(120).default(""),
-  duration_minutes: z.number().int().min(1).max(300),
-  questions: z.array(easyQuestionSchema).min(1).max(200),
-});
+export const easyTestSchema = z
+  .object({
+    is_paid: z.boolean().default(false),
+    price_inr: z.number().int().min(0).max(100000).default(0),
+    price_coins: z.number().int().min(0).max(1000000).default(0),
+    id: z.string().uuid(),
+    title: z.string().trim().min(2).max(200),
+    subject: z.string().trim().min(1).max(80),
+    chapter: z.string().trim().min(1).max(120),
+    series_name: z.string().trim().max(120).default(""),
+    duration_minutes: z.number().int().min(1).max(300),
+    questions: z.array(easyQuestionSchema).min(1).max(200),
+  })
+  .superRefine((test, ctx) => {
+    if (test.is_paid && test.price_inr <= 0 && test.price_coins <= 0)
+      ctx.addIssue({
+        code: "custom",
+        path: ["price_inr"],
+        message: "Paid test ke liye rupee price, coin price ya dono set karein.",
+      });
+  })
+  .transform((test) => (test.is_paid ? test : { ...test, price_inr: 0, price_coins: 0 }));
 export type EasyQuestion = z.infer<typeof easyQuestionSchema>;
 export type EasyTestInput = z.infer<typeof easyTestSchema>;
 export function previewEasyText(text: string) {

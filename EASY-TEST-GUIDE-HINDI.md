@@ -34,8 +34,11 @@ Explanation: rakho. Explanation optional; system missing explanation invent nahi
    Incomplete numbered question ho toh pehle fix karna padega.
 4. Next → review. Checkbox se confirm karke **Publish my test** dabao.
    Preview/Next par kuch save nahi hota.
-5. Default free test, 1 mark per question, zero negative marking. Maximum 200
-   pasted questions. Paid price, timers, reorder, edit/delete etc. Advanced tab mein.
+5. **Free / Paid yahin Easy panel mein choose karo**. Paid ke liye ₹ price, coin price
+   ya dono set karo (kam se kam ek positive). Dono alternative options hain, combined charge nahi.
+   Review screen par pricing dikhegi. Free choose karne par stored prices zero honge.
+   1 mark per question, zero negative marking. Maximum 200
+   pasted questions. Timers, reorder, edit/delete etc. Advanced tab mein bhi available hain.
    Actual question count approved preview se set hota hai, forced 60 nahi.
 
 Series name optional grouping label hai, existing paid test-series bundle mein
@@ -53,10 +56,24 @@ Strict matching ka matlab kuch custom chapter names ko actual bank chapter names
 se match karna ya apne questions add karna zaroori ho sakta hai.
 
 ## Existing live deployment: ek baar SQL
-Back up first. `KKCC-Excellence-Hub-EASY-TESTS.sql` Supabase SQL Editor mein run karo,
+Back up first. latest `KKCC-Excellence-Hub-PUBLISH-FIX.sql` Supabase SQL Editor mein run karo,
 server-only `SUPABASE_SERVICE_ROLE_KEY` check karo aur updated app redeploy karo.
 Templates bank ko DB mein bulk import nahi kiya jata. **Saved test metadata aur
 published question rows Supabase space use karte hain.** Legacy SQL test rows
 copy hote hain; old local/S3 JSON data ho toh separately export/import karo.
 Atomic publication: invalid question par poora save rollback; retry same request
 se duplicates nahi. Live SQL/hosting deployment assistant ne execute nahi kiya.
+
+## S3/read-only error aur publish pending
+Managed notes/tests ab legacy global `KKCC_CONTENT_BACKEND=file/s3` setting ko follow
+nahi karte; unka metadata Supabase mein hi save hota hai. Missing SQL par clear
+setup error aayega, S3 fallback nahi. Test and question cache invalidation bhi fixed.
+Versioned paid RPC ensures old SQL cannot silently publish a paid selection as free.
+Razorpay OFF: rupee payment ke liye Contact Admin; ON: existing online checkout.
+Coins existing wallet/access rules follow karte hain. Paid flag saves lock metadata;
+production payment success ke liye configured payment provider bhi zaroori hai.
+
+Attachment upload alag hai: Admin → Storage mein Supabase select karo if you want
+new uploads there. Existing S3 attachments automatically move nahi kiye gaye.
+Combined SQL existing storage-provider selection ko overwrite nahi karti.
+Production SQL/env/logs remotely inspect ya migration execute nahi ki gayi.

@@ -37,21 +37,6 @@ export const Route = createFileRoute("/downloads")({
 const GITHUB_BRANCH_RAW =
   "https://github.com/kkcc23102003-stack/kkcc-excellence-hub/raw/arena/01a10030-kkcc-excellence-hub";
 
-const FALLBACK_CLEANER_SQL = `-- KKCC SUPABASE DATABASE & STORAGE BLOAT CLEANER + COMPOSITE SPEED INDEXES
-BEGIN;
-DELETE FROM public.learning_attempts WHERE status = 'started' AND started_at < now() - interval '24 hours';
-DELETE FROM public.test_access_grants WHERE (revoked_at IS NOT NULL AND revoked_at < now() - interval '90 days') OR (expires_at IS NOT NULL AND expires_at < now() - interval '90 days');
-DELETE FROM public.series_access_grants WHERE (revoked_at IS NOT NULL AND revoked_at < now() - interval '90 days') OR (expires_at IS NOT NULL AND expires_at < now() - interval '90 days');
-CREATE INDEX IF NOT EXISTS idx_learning_attempts_user_status_submitted ON public.learning_attempts (user_id, status, submitted_at DESC);
-CREATE INDEX IF NOT EXISTS idx_learning_attempts_user_started ON public.learning_attempts (user_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_test_access_grants_user_active ON public.test_access_grants (user_id, revoked_at, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_series_access_grants_user_active ON public.series_access_grants (user_id, revoked_at, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_course_enrollments_user_status ON public.course_enrollments (user_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_user_roles_user_role ON public.user_roles (user_id, role);
-CREATE INDEX IF NOT EXISTS idx_profiles_lower_email ON public.profiles (lower(email));
-NOTIFY pgrst, 'reload schema';
-COMMIT;`;
-
 type CleanerReport = {
   cleanedAbandonedAttempts: number;
   cleanedExpiredGrants: number;
@@ -76,39 +61,43 @@ function DownloadsPage() {
 
   const ensureSqlBundle = async () => {
     if (sqlBundle) return sqlBundle;
-    try {
-      const res = await fetch("/__fixture__/supabase/sql");
-      if (res.ok) {
-        const data = (await res.json()) as { cleanerSql?: string; productionSql?: string };
-        const loaded = {
-          cleanerSql: data.cleanerSql || FALLBACK_CLEANER_SQL,
-          productionSql: data.productionSql || FALLBACK_CLEANER_SQL,
-        };
-        setSqlBundle(loaded);
-        return loaded;
-      }
-    } catch {
-      // Fallback
-    }
-    const fallback = { cleanerSql: FALLBACK_CLEANER_SQL, productionSql: FALLBACK_CLEANER_SQL };
-    setSqlBundle(fallback);
-    return fallback;
+    const load = async (name: string) => {
+      const response = await fetch(`/KKCC-Excellence-Hub-${name}.sql`, { cache: "no-store" });
+      const sql = await response.text();
+      if (!response.ok || !sql.trimStart().startsWith("--"))
+        throw new Error(
+          "SQL download failed. Use the direct download link; no substitute SQL was copied.",
+        );
+      return sql;
+    };
+    const [productionSql, cleanerSql] = await Promise.all([
+      load("PRODUCTION-SQL"),
+      load("SQL-CLEANER"),
+    ]);
+    const loaded = { productionSql, cleanerSql };
+    setSqlBundle(loaded);
+    return loaded;
   };
 
   const copySql = async (kind: "cleaner" | "production") => {
-    const bundle = await ensureSqlBundle();
-    const text = kind === "cleaner" ? bundle.cleanerSql : bundle.productionSql;
-    await navigator.clipboard.writeText(text);
-    toast.success(
-      kind === "cleaner"
-        ? "Copied KKCC-Excellence-Hub-SQL-CLEANER.sql to clipboard!"
-        : "Copied KKCC-Excellence-Hub-PRODUCTION-SQL.sql to clipboard!",
-    );
+    try {
+      const bundle = await ensureSqlBundle();
+      await navigator.clipboard.writeText(
+        kind === "cleaner" ? bundle.cleanerSql : bundle.productionSql,
+      );
+      toast.success(`Copied ${kind === "cleaner" ? "Cleaner" : "Production"} SQL to clipboard!`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "SQL copy failed");
+    }
   };
 
   const previewSql = async (kind: "cleaner" | "production") => {
-    await ensureSqlBundle();
-    setSqlPreview((prev) => (prev === kind ? "none" : kind));
+    try {
+      await ensureSqlBundle();
+      setSqlPreview((prev) => (prev === kind ? "none" : kind));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "SQL preview failed");
+    }
   };
 
   const runLiveCleaner = async () => {
@@ -194,6 +183,21 @@ function DownloadsPage() {
               kar sakte hain.
             </p>
 
+            <section className="mt-6 rounded-2xl border border-primary/40 bg-primary/5 p-5">
+              <h2 className="font-bold">
+                Notes / Test publish error? Easy test ko Paid karna hai?
+              </h2>
+              <p className="my-2 text-sm text-muted-foreground">
+                Existing project mein latest combined Publish Fix SQL ek baar run karke redeploy
+                karein. Notes + test tables aur paid Easy publish function included hain. S3 setup
+                nahi chahiye; backup pehle lein. Old local/S3 files automatically migrate nahi hote.
+              </p>
+              <Button asChild>
+                <a href="/KKCC-Excellence-Hub-PUBLISH-FIX.sql" download>
+                  Download Notes + Test Publish Fix SQL
+                </a>
+              </Button>
+            </section>
             {/* 3 Primary Download Cards */}
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               {/* Card 1: Complete Project ZIP */}
