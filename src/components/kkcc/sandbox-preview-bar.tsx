@@ -203,7 +203,7 @@ export function SandboxPreviewBar() {
   };
 
   return (
-    <div className="sticky top-0 z-50 border-b border-primary/30 bg-background/95 backdrop-blur-md">
+    <div className="relative z-40 border-b lg:sticky lg:top-0 lg:z-50 border-primary/30 bg-background/95 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="rounded-full bg-primary text-primary-foreground">

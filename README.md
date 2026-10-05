@@ -1726,3 +1726,13 @@ fixtures and is ignored on Vercel. Template bank remains outside Supabase.
 Attachment storage selection and legacy files are NOT automatically changed or
 migrated. Production SQL copy/preview now loads the real static SQL and fails
 visibly on download errors, never substituting the cleaner script.
+
+### Browser-tested Easy + Advanced builders
+
+See `docs/audit/TEST-BUILDERS-E2E-2026-10-05.md` for coverage and limitations:
+**78 browser E2E tests passed**, including 66 exam-bank flows and Easy/Advanced
+publication, learner attempts/results, access gates and mobile checks.
+Easy series names now appear in review and student cards. Advanced publication,
+field-level autosave, option-index correction and mutation/cache races were fixed.
+Run `npm run test:e2e` after installing Playwright Chromium; the fixture uses port
+4600. No new SQL is required beyond the previous Publish Fix migration.

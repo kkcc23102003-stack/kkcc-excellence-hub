@@ -453,72 +453,88 @@ const testSchema = z.object({
   syllabus_topic: z.string().trim().max(240).default(""),
 });
 
+async function persistTest(
+  data: z.infer<typeof testSchema>,
+  context: AdminContext,
+  changes?: Record<string, unknown>,
+) {
+  await assertAdmin(context);
+  if (data.is_paid && data.price_inr <= 0 && data.price_coins <= 0) {
+    throw new Error("A paid test needs a rupee price, a coin price, or both.");
+  }
+  if (
+    data.course_id &&
+    !unwrap(
+      await projectContent.from("courses").select("id").eq("id", data.course_id).maybeSingle(),
+    )
+  )
+    throw new Error("Linked course is missing. Choose an existing course ID.");
+  if (data.is_published && data.question_source === "deterministic") {
+    if (data.generation_count < 1 && data.questions_count < 1) {
+      throw new Error("Choose a positive question target before publishing.");
+    }
+    const exam =
+      data.generation_exam && data.generation_exam !== "All Exams"
+        ? data.generation_exam
+        : data.exam_track || data.generation_exam || "All Exams";
+    const targetSubject = data.generation_subject || data.syllabus_subject || data.subject || "";
+    const targetTopic =
+      data.generation_topic && data.generation_topic !== "Mixed"
+        ? data.generation_topic
+        : data.syllabus_chapter || data.generation_topic || "Mixed";
+    const subjects = targetSubject ? [targetSubject] : allExamSubjects(exam);
+    const hasExactBank = subjects.some((subject) => {
+      const topics = getExamBankTopicsForExam(subject, exam);
+      return targetTopic === "Mixed" ? topics.length > 0 : topics.includes(targetTopic);
+    });
+    if (!hasExactBank) {
+      throw new Error("No mapped subject/chapter questions are available for this recipe.");
+    }
+  }
+  if (data.is_published && data.question_source === "manual") {
+    const count = data.id
+      ? unwrap(await projectContent.from("test_questions").select("id").eq("test_id", data.id))
+      : [];
+    if (!count.length) throw new Error("Add real questions before publishing this manual test.");
+  }
+  const { id, ...rest } = data;
+  const previousPublished = id
+    ? Boolean(
+        (await projectContent.from("tests").select("is_published").eq("id", id).maybeSingle()).data
+          ?.is_published,
+      )
+    : false;
+  const payload = clean({ ...(changes ?? rest), updated_at: new Date().toISOString() });
+  const { data: row, error } = id
+    ? await projectContent
+        .from("tests")
+        .update(payload as never)
+        .eq("id", id)
+        .select("*")
+        .single()
+    : await projectContent
+        .from("tests")
+        .insert(payload as never)
+        .select("*")
+        .single();
+  if (error) throw new Error(error.message);
+  await sendTestNotification(context, row, previousPublished);
+  return row;
+}
 export const saveTest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => testSchema.parse(input))
+  .handler(async ({ data, context }) => persistTest(data, context));
+
+/** Update only fields changed by the admin, so overlapping blur saves cannot erase each other. */
+export const patchTestSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => testSchema.partial().required({ id: true }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    if (data.is_paid && data.price_inr <= 0 && data.price_coins <= 0) {
-      throw new Error("A paid test needs a rupee price, a coin price, or both.");
-    }
-    if (
-      data.course_id &&
-      !unwrap(
-        await projectContent.from("courses").select("id").eq("id", data.course_id).maybeSingle(),
-      )
-    )
-      throw new Error("Linked course is missing. Choose an existing course ID.");
-    if (data.is_published && data.question_source === "deterministic") {
-      if (data.generation_count < 1 && data.questions_count < 1) {
-        throw new Error("Choose a positive question target before publishing.");
-      }
-      const exam =
-        data.generation_exam && data.generation_exam !== "All Exams"
-          ? data.generation_exam
-          : data.exam_track || data.generation_exam || "All Exams";
-      const targetSubject = data.generation_subject || data.syllabus_subject || data.subject || "";
-      const targetTopic =
-        data.generation_topic && data.generation_topic !== "Mixed"
-          ? data.generation_topic
-          : data.syllabus_chapter || data.generation_topic || "Mixed";
-      const subjects = targetSubject ? [targetSubject] : allExamSubjects(exam);
-      const hasExactBank = subjects.some((subject) => {
-        const topics = getExamBankTopicsForExam(subject, exam);
-        return targetTopic === "Mixed" ? topics.length > 0 : topics.includes(targetTopic);
-      });
-      if (!hasExactBank) {
-        throw new Error("No mapped subject/chapter questions are available for this recipe.");
-      }
-    }
-    if (data.is_published && data.question_source === "manual") {
-      const count = data.id
-        ? unwrap(await projectContent.from("test_questions").select("id").eq("test_id", data.id))
-        : [];
-      if (!count.length) throw new Error("Add real questions before publishing this manual test.");
-    }
-    const { id, ...rest } = data;
-    const previousPublished = id
-      ? Boolean(
-          (await projectContent.from("tests").select("is_published").eq("id", id).maybeSingle())
-            .data?.is_published,
-        )
-      : false;
-    const payload = clean({ ...rest, updated_at: new Date().toISOString() });
-    const { data: row, error } = id
-      ? await projectContent
-          .from("tests")
-          .update(payload as never)
-          .eq("id", id)
-          .select("*")
-          .single()
-      : await projectContent
-          .from("tests")
-          .insert(payload as never)
-          .select("*")
-          .single();
-    if (error) throw new Error(error.message);
-    await sendTestNotification(context, row, previousPublished);
-    return row;
+    const { id, ...changes } = data;
+    const current = unwrap(await projectContent.from("tests").select("*").eq("id", id).single());
+    return persistTest(testSchema.parse({ ...current, ...data }), context, changes);
   });
 
 export const deleteTest = createServerFn({ method: "POST" })
@@ -790,6 +806,7 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
           .max(300)
           .optional(),
         switchToManual: z.boolean().optional(),
+        publish: z.boolean().default(false),
       })
       .parse(input),
   )
@@ -799,6 +816,10 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
       await projectContent.from("tests").select("*").eq("id", data.test_id).maybeSingle(),
     );
     if (!parent) throw new Error("Parent test not found.");
+    if (data.publish && !data.questions?.length)
+      throw new Error("Approve at least one question in preview before publishing.");
+    if (data.publish && parent.is_paid && parent.price_inr <= 0 && parent.price_coins <= 0)
+      throw new Error("Set a rupee or coin price before publishing a paid test.");
     const fromPreview: ParsedBulkQuestion[] = (data.questions ?? []).map((question) => ({
       question_text: question.question_text,
       options: question.options,
@@ -827,14 +848,24 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
     }).map((row) => ({ ...row, test_id: data.test_id }));
     const { error } = await projectContent.from("test_questions").insert(rows as never);
     if (error) throw new Error(error.message);
-    if (data.switchToManual) {
-      await projectContent
-        .from("tests")
-        .update({ question_source: "manual", updated_at: new Date().toISOString() } as never)
-        .eq("id", data.test_id);
-    }
+    const saved = await projectContent
+      .from("tests")
+      .update({
+        ...(data.switchToManual ? { question_source: "manual" as const } : {}),
+        ...(data.publish ? { is_published: true } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", data.test_id)
+      .select("*")
+      .single();
     await syncTestQuestionStats(data.test_id);
-    return { ok: true, addedCount: rows.length };
+    // Questions already exist: do not encourage a duplicate bulk retry on a metadata failure.
+    return {
+      ok: true,
+      addedCount: rows.length,
+      published: Boolean(saved.data?.is_published),
+      publishError: saved.error?.message ?? null,
+    };
   });
 
 /** Persist a new display order after drag/move in the editor. */

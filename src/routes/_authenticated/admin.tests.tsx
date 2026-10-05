@@ -53,6 +53,7 @@ import {
   listTestQuestions,
   reorderTestQuestions,
   saveTest,
+  patchTestSettings,
   saveTestQuestion,
   pullQuestionsFromBank,
 } from "@/lib/admin.functions";
@@ -71,9 +72,6 @@ import {
 
 /** Exam tracks the bank actually carries, plus an everything option. */
 const BANK_EXAMS = CATALOG_EXAMS_LIST;
-
-/** One price across the whole app, in rupees and in coins alike. */
-const DEFAULT_TEST_PRICE = 999;
 
 export const Route = createFileRoute("/_authenticated/admin/tests")({
   head: () => ({
@@ -142,101 +140,18 @@ type TestPayload = {
   syllabus_topic: string;
 };
 
-/** Narrow a DB row to the exact shape saveTest validates. */
+/** Send field-level changes; never resend a stale whole-test snapshot on blur. */
 function toTestPayload(
-  test: {
-    id: string;
-    course_id: string | null;
-    lecture_id: string | null;
-    title: string;
-    instructions: string | null;
-    subject: string | null;
-    duration_minutes: number;
-    question_timer_seconds: number | null;
-    timer_mode: string | null;
-    questions_count: number;
-    total_marks: number;
-    is_published: boolean;
-    sort_order: number;
-    exam_track?: string | null;
-    level?: string | null;
-    series_name?: string | null;
-    is_paid?: boolean | null;
-    price_inr?: number | null;
-    price_coins?: number | null;
-    question_source?: "manual" | "deterministic" | null;
-    generation_exam?: string | null;
-    generation_subject?: string | null;
-    generation_topic?: string | null;
-    generation_difficulty?: "Easy" | "Moderate" | "Difficult" | "Mixed" | null;
-    generation_count?: number | null;
-    syllabus_subject?: string | null;
-    syllabus_chapter?: string | null;
-    syllabus_topic?: string | null;
-  },
-  patch: Partial<TestPayload> = {},
-): TestPayload {
-  const mode =
-    test.timer_mode === "question" || test.timer_mode === "unlimited" ? test.timer_mode : "test";
+  test: { id: string },
+  patch: Partial<TestPayload>,
+): Partial<TestPayload> & { id: string } {
   return {
     id: test.id,
-    course_id: test.course_id,
-    lecture_id: test.lecture_id,
-    title: test.title,
-    instructions: test.instructions ?? "",
-    subject:
-      patch.subject ??
-      (patch.syllabus_subject && (!test.subject || test.subject === "General")
-        ? patch.syllabus_subject
-        : (test.subject ?? "")),
-    duration_minutes: test.duration_minutes,
-    question_timer_seconds: test.question_timer_seconds ?? 0,
-    timer_mode: mode,
-    questions_count: test.questions_count,
-    total_marks: test.total_marks,
-    is_published: test.is_published,
-    sort_order: test.sort_order,
-    exam_track: test.exam_track ?? "",
-    level:
-      test.level === "Easy" || test.level === "Moderate" || test.level === "Difficult"
-        ? test.level
-        : "Mixed",
-    series_name: test.series_name ?? "",
-    is_paid: test.is_paid ?? false,
-    // Every paper is priced the same across the app: 999 rupees or 999
-    // coins. A new test starts there rather than at zero.
-    price_inr: test.price_inr ?? DEFAULT_TEST_PRICE,
-    price_coins: test.price_coins ?? DEFAULT_TEST_PRICE,
-    question_source: test.question_source === "deterministic" ? "deterministic" : "manual",
-    generation_exam: patch.exam_track || test.generation_exam || test.exam_track || "All Exams",
-    generation_subject:
-      patch.syllabus_subject ||
-      patch.subject ||
-      test.syllabus_subject ||
-      (test.subject && test.subject !== "General" ? test.subject : "") ||
-      (test.generation_subject && test.generation_subject !== "General"
-        ? test.generation_subject
-        : "") ||
-      test.subject ||
-      "",
-    generation_topic:
-      patch.syllabus_chapter !== undefined
-        ? patch.syllabus_chapter || "Mixed"
-        : test.syllabus_chapter || test.generation_topic || "Mixed",
-    generation_difficulty:
-      test.generation_difficulty === "Easy" ||
-      test.generation_difficulty === "Moderate" ||
-      test.generation_difficulty === "Difficult"
-        ? test.generation_difficulty
-        : "Mixed",
-    generation_count: test.generation_count || test.questions_count || 60,
-    syllabus_subject:
-      patch.syllabus_subject ??
-      patch.subject ??
-      (test.syllabus_subject || (test.subject && test.subject !== "General" ? test.subject : "")),
-    syllabus_chapter: test.syllabus_chapter ?? "",
-    syllabus_topic: test.syllabus_topic ?? "",
     ...patch,
+    ...(patch.syllabus_chapter !== undefined
+      ? { generation_topic: patch.syllabus_chapter || "Mixed" }
+      : {}),
+    ...(patch.exam_track !== undefined ? { generation_exam: patch.exam_track || "All Exams" } : {}),
   };
 }
 
@@ -269,6 +184,7 @@ function TestQuestionWriter() {
   const fetchSyllabus = useServerFn(listSyllabus);
   const fetchQuestions = useServerFn(listTestQuestions);
   const putTest = useServerFn(saveTest);
+  const patchTest = useServerFn(patchTestSettings);
   const dropTest = useServerFn(deleteTest);
   const putQuestion = useServerFn(saveTestQuestion);
   const dropQuestion = useServerFn(deleteTestQuestion);
@@ -457,7 +373,8 @@ function TestQuestionWriter() {
   });
 
   const updateTest = useMutation({
-    mutationFn: (payload: TestPayload) => putTest({ data: payload }),
+    scope: { id: "advanced-test-settings" },
+    mutationFn: (payload: Partial<TestPayload> & { id: string }) => patchTest({ data: payload }),
     onSuccess: () => {
       void invalidateLearningQueries(queryClient);
       toast.success("Test updated");
@@ -561,11 +478,21 @@ function TestQuestionWriter() {
               }
             : {}),
           switchToManual,
+          publish,
         },
       }),
     onSuccess: (res) => {
       void invalidateLearningQueries(queryClient);
-      toast.success(`${res.addedCount} questions publish ho gaye — test ab live hai`);
+      if (res.publishError)
+        toast.error(
+          `${res.addedCount} questions saved, but publish failed: ${res.publishError}. Use the Publish button to retry without adding duplicates.`,
+        );
+      else
+        toast.success(
+          res.published
+            ? `${res.addedCount} questions publish ho gaye — test ab live hai`
+            : `${res.addedCount} questions saved to draft`,
+        );
       setBulkText("");
       setBulkPreview([]);
       setBulkStep(1);
@@ -649,7 +576,7 @@ function TestQuestionWriter() {
               : "Tests could not load. Please retry."}
           </p>
         )}
-        <div className="my-4 flex gap-2">
+        <div className="my-4 flex flex-wrap gap-2">
           <Button
             variant={builderMode === "easy" ? "default" : "outline"}
             onClick={() => setBuilderMode("easy")}
@@ -665,6 +592,13 @@ function TestQuestionWriter() {
         </div>
         <div hidden={builderMode !== "easy"}>
           <EasyTextTestBuilder
+            seriesNames={[
+              ...new Set(
+                tests
+                  .map((test) => test.series_name?.trim())
+                  .filter((name): name is string => Boolean(name)),
+              ),
+            ]}
             onPublished={(id) => {
               setActiveTestId(id);
               invalidateAll();
@@ -719,6 +653,11 @@ function TestQuestionWriter() {
                         )}
                       >
                         <span className="block truncate text-sm font-medium">{test.title}</span>
+                        {test.series_name && (
+                          <span className="block text-xs text-muted-foreground">
+                            Series: {test.series_name}
+                          </span>
+                        )}
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <Badge variant="secondary" className="text-[10px]">
                             {test.questions_count} Q
@@ -749,7 +688,12 @@ function TestQuestionWriter() {
               ) : (
                 <>
                   {/* test settings */}
-                  <div className="rounded-3xl border bg-background/60 p-4">
+                  <div
+                    key={activeTest.id}
+                    data-testid="advanced-test-settings"
+                    data-test-id={activeTest.id}
+                    className="rounded-3xl border bg-background/60 p-4"
+                  >
                     <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                       <ClipboardList className="h-4 w-4 text-primary" /> Test settings
                     </h3>
@@ -757,6 +701,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Test title</Label>
                         <Input
+                          aria-label="Test title"
                           className="mt-1.5"
                           defaultValue={activeTest.title}
                           onBlur={(event) => {
@@ -770,6 +715,8 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Subject</Label>
                         <Input
+                          aria-label="Subject"
+                          key={`subject-${activeTest.id}-${activeTest.subject}`}
                           className="mt-1.5"
                           defaultValue={activeTest.subject ?? ""}
                           onBlur={(event) => {
@@ -828,6 +775,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Syllabus chapter</Label>
                         <Input
+                          aria-label="Syllabus chapter"
                           list="kkcc-syllabus-chapters"
                           className="mt-1.5"
                           placeholder="e.g. Life Processes"
@@ -848,6 +796,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Syllabus topic</Label>
                         <Input
+                          aria-label="Syllabus topic"
                           list="kkcc-syllabus-topics"
                           className="mt-1.5"
                           placeholder="e.g. Nutrition"
@@ -868,6 +817,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Duration (minutes)</Label>
                         <Input
+                          aria-label="Duration (minutes)"
                           type="number"
                           min={0}
                           className="mt-1.5"
@@ -883,6 +833,8 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Oriented for (exam)</Label>
                         <Input
+                          aria-label="Oriented for (exam)"
+                          key={`exam-${activeTest.id}-${activeTest.exam_track}`}
                           className="mt-1.5"
                           placeholder="e.g. Punjab PCS, PSSSB, UPSC CSE"
                           defaultValue={activeTest.exam_track ?? ""}
@@ -900,6 +852,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Series name</Label>
                         <Input
+                          aria-label="Series name"
                           className="mt-1.5"
                           placeholder="e.g. Punjab PCS Prelims Power Series"
                           defaultValue={activeTest.series_name ?? ""}
@@ -940,6 +893,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Price in rupees</Label>
                         <Input
+                          aria-label="Price in rupees"
                           type="number"
                           min={0}
                           className="mt-1.5"
@@ -955,6 +909,7 @@ function TestQuestionWriter() {
                       <div>
                         <Label>Price in Kit 2 Coins</Label>
                         <Input
+                          aria-label="Price in Kit 2 Coins"
                           type="number"
                           min={0}
                           className="mt-1.5"
@@ -1102,6 +1057,7 @@ function TestQuestionWriter() {
                           type="number"
                           min={1}
                           max={200}
+                          aria-label="Bank question count"
                           value={pullCount}
                           onChange={(e) => setPullCount(e.target.value)}
                         />
@@ -1502,6 +1458,7 @@ function TestQuestionWriter() {
                         <div>
                           <Label>Question</Label>
                           <Textarea
+                            aria-label="Question text"
                             rows={3}
                             className="mt-1.5"
                             placeholder="e.g. The Constitution of India came into force on which date?"
@@ -1557,9 +1514,11 @@ function TestQuestionWriter() {
                                         ...draft,
                                         options,
                                         correct_index:
-                                          draft.correct_index >= options.length
+                                          draft.correct_index === index
                                             ? 0
-                                            : draft.correct_index,
+                                            : draft.correct_index > index
+                                              ? draft.correct_index - 1
+                                              : draft.correct_index,
                                       });
                                     }}
                                   >
@@ -1588,6 +1547,7 @@ function TestQuestionWriter() {
                           <div>
                             <Label>Subject tag</Label>
                             <Input
+                              aria-label="Subject tag"
                               className="mt-1.5"
                               value={draft.subject}
                               onChange={(event) =>
@@ -1598,6 +1558,7 @@ function TestQuestionWriter() {
                           <div>
                             <Label>Marks</Label>
                             <Input
+                              aria-label="Marks"
                               type="number"
                               min={0}
                               className="mt-1.5"
@@ -1610,6 +1571,7 @@ function TestQuestionWriter() {
                           <div>
                             <Label>Negative marks</Label>
                             <Input
+                              aria-label="Negative marks"
                               type="number"
                               min={0}
                               className="mt-1.5"
@@ -1671,7 +1633,11 @@ function TestQuestionWriter() {
                     ) : (
                       <ol className="space-y-3">
                         {questions.map((question, index) => (
-                          <li key={question.id} className="rounded-3xl border bg-background/60 p-4">
+                          <li
+                            key={question.id}
+                            data-testid="admin-test-question"
+                            className="rounded-3xl border bg-background/60 p-4"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-sm font-medium">
                                 {index + 1}. {question.question_text}
@@ -1681,7 +1647,12 @@ function TestQuestionWriter() {
                                   size="icon"
                                   variant="ghost"
                                   aria-label="Move up"
-                                  disabled={index === 0}
+                                  disabled={
+                                    index === 0 ||
+                                    saveQuestion.isPending ||
+                                    moveQuestion.isPending ||
+                                    bulkAdd.isPending
+                                  }
                                   onClick={() => move(index, -1)}
                                 >
                                   <ChevronUp className="h-4 w-4" />
@@ -1690,7 +1661,12 @@ function TestQuestionWriter() {
                                   size="icon"
                                   variant="ghost"
                                   aria-label="Move down"
-                                  disabled={index === questions.length - 1}
+                                  disabled={
+                                    index === questions.length - 1 ||
+                                    saveQuestion.isPending ||
+                                    moveQuestion.isPending ||
+                                    bulkAdd.isPending
+                                  }
                                   onClick={() => move(index, 1)}
                                 >
                                   <ChevronDown className="h-4 w-4" />
@@ -1700,6 +1676,11 @@ function TestQuestionWriter() {
                                   variant="ghost"
                                   title="Correct question, options, answer and explanation (including generated questions)"
                                   aria-label="Edit question"
+                                  disabled={
+                                    saveQuestion.isPending ||
+                                    moveQuestion.isPending ||
+                                    bulkAdd.isPending
+                                  }
                                   onClick={() => startEdit(question)}
                                 >
                                   <Pencil className="h-4 w-4" />
@@ -1708,6 +1689,11 @@ function TestQuestionWriter() {
                                   size="icon"
                                   variant="ghost"
                                   aria-label="Delete question"
+                                  disabled={
+                                    saveQuestion.isPending ||
+                                    moveQuestion.isPending ||
+                                    bulkAdd.isPending
+                                  }
                                   className="text-destructive"
                                   onClick={() => setConfirmDeleteQuestion(question.id)}
                                 >

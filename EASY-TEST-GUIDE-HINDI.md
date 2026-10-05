@@ -77,3 +77,13 @@ Attachment upload alag hai: Admin → Storage mein Supabase select karo if you w
 new uploads there. Existing S3 attachments automatically move nahi kiye gaye.
 Combined SQL existing storage-provider selection ko overwrite nahi karti.
 Production SQL/env/logs remotely inspect ya migration execute nahi ki gayi.
+
+## Series name + verified browser flow
+Easy mein **Series name (optional)** likho; existing names suggestions mein milenge.
+Final review, admin list aur student test cards par naam dikhega. Advanced se same
+naam edit bhi ho sakta hai. Ye label/grouping hai, naya paid catalogue bundle
+create karne ka shortcut nahi.
+
+Advanced **Next → Publish** ab questions save karne ke saath test ko live bhi karta
+hai. Fast field edits ek doosre ko overwrite nahi karte. Audit report:
+`docs/audit/TEST-BUILDERS-E2E-2026-10-05.md` — 78 browser checks passed.

@@ -106,9 +106,11 @@ function objectAddress() {
 
 let cachedFileDoc: { path: string; mtimeMs: number; document: ContentDocument } | null = null;
 const missingRemoteTables = new Set<string>();
+let remoteCacheEpoch = 0;
 const remoteSelectCache = new Map<string, { expiresAt: number; result: Result<unknown> }>();
 
 export function invalidateProjectContentCache(table?: string) {
+  remoteCacheEpoch += 1;
   if (!table) {
     remoteSelectCache.clear();
     return;
@@ -119,6 +121,7 @@ export function invalidateProjectContentCache(table?: string) {
 }
 
 export function flushProjectContentCaches() {
+  remoteCacheEpoch += 1;
   const clearedSelectEntries = remoteSelectCache.size;
   const clearedMissingTables = missingRemoteTables.size;
   remoteSelectCache.clear();
@@ -621,6 +624,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     }
     const managed = MANAGED_CONTENT_TABLES[this.table];
     const table = managed || this.table;
+    const startedCacheEpoch = remoteCacheEpoch;
     const cacheKey =
       this.operation === "select"
         ? `${table}:${this.selectColumns}:${this.cardinality}:${this.head}:${this.offset}:${this.cap}:${JSON.stringify(this.remoteFilters)}:${JSON.stringify(this.orders)}`
@@ -709,6 +713,13 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       else if (this.cardinality === "maybe") query = query.maybeSingle();
 
       const result = await query;
+      // Clear again after commit; reads during a write must not survive that write.
+      if (!cacheKey) {
+        invalidateProjectContentCache(table);
+        if (this.table === "test_questions") invalidateProjectContentCache("tests");
+        if (["lectures", "materials", "tests"].includes(this.table))
+          invalidateProjectContentCache("courses");
+      }
       if (result.error) {
         if (
           /unavailable in fixture|does not exist|schema cache|not configured|Missing Supabase/i.test(
@@ -744,7 +755,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
         count:
           result.count ?? (Array.isArray(result.data) ? result.data.length : result.data ? 1 : 0),
       };
-      if (cacheKey) {
+      if (cacheKey && startedCacheEpoch === remoteCacheEpoch) {
         remoteSelectCache.set(cacheKey, {
           expiresAt: Date.now() + 4_000,
           result: copy(outResult) as Result<unknown>,

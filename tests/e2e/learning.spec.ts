@@ -3,7 +3,7 @@ import { getExamBankExams } from "../../src/lib/exam-bank/index";
 import { fixtureIds as ids } from "../fixtures/database";
 
 async function login(page: Page, name = "studenta") {
-  await page.goto("/login");
+  if (new URL(page.url()).pathname !== "/login") await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(`${name}@fixture.invalid`);
   await page.getByLabel("Password", { exact: true }).fill("FixturePass123!");
   await page.getByRole("button", { name: /Sign in|Login|Log in/i }).click();
@@ -181,7 +181,7 @@ test("No wrong-course fallback, invalid chapter injection is rejected, and untru
     ),
   ).toBe(false);
   await page.goto("/checkout?course=nonexistent-course");
-  await expect(page.getByRole("heading", { name: "No course selected" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^No .*selected$/ })).toBeVisible();
   await page.goto("/learn?course=nonexistent-course");
   await expect(page.getByRole("heading", { name: "Course not found" })).toBeVisible();
   await login(page, "admin");

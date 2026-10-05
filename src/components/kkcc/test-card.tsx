@@ -39,6 +39,14 @@ export function TestCard({
         </div>
       </div>
       <h3 className="mt-4 line-clamp-2 text-base font-bold tracking-tight">{test.title}</h3>
+      {test.series_name && (
+        <p
+          className="mt-1 break-words text-xs text-muted-foreground"
+          data-testid="test-series-name"
+        >
+          Series: {test.series_name}
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
         {test.exam_track && <Badge variant="outline">{test.exam_track}</Badge>}
         {(test.syllabus_chapter || test.generation_topic) && (

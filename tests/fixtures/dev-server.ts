@@ -9,7 +9,7 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createFixtureDatabase, seedFixtureUsers, fixtureIds as ids } from "./database";
-import { getExamBankExams } from "../../src/lib/exam-bank/index";
+import { getExamBankExams, ACTIVE_TEMPLATES } from "../../src/lib/exam-bank/index";
 
 const database = await createFixtureDatabase();
 await seedFixtureUsers(database);
@@ -401,7 +401,8 @@ doc.tables["tests"] = isLivePreview
         exam_track: exam,
         generation_exam: exam,
         generation_subject: "",
-        subject: exam,
+        // Exams are not subjects: use an actual scoped bank subject for this fixture.
+        subject: ACTIVE_TEMPLATES.find((template) => template.exams.includes(exam))!.subject,
         series_name: "",
         is_paid: false,
         sort_order: index + 10,
@@ -704,7 +705,8 @@ const server = createServer(async (req, res) => {
         return `$${params.length}`;
       };
       for (const [key, raw] of url.searchParams) {
-        if (["select", "limit", "offset", "order", "on_conflict"].includes(key)) continue;
+        if (["select", "limit", "offset", "order", "on_conflict", "columns"].includes(key))
+          continue;
         const dot = raw.indexOf(".");
         const op = raw.slice(0, dot);
         const value = raw.slice(dot + 1);
@@ -796,6 +798,13 @@ const server = createServer(async (req, res) => {
       return { rows: queried.rows, total: count.rows[0]?.total ?? 0 };
     });
     if ("rpc" in result) return respond(result.value);
+    // Match PostgREST JSON numerics; PGlite exposes PostgreSQL numeric as strings.
+    for (const row of result.rows as Record<string, unknown>[]) {
+      for (const key of Object.keys(row)) {
+        if (types.get(`${path}.${key}`) === "numeric" && typeof row[key] === "string")
+          row[key] = Number(row[key]);
+      }
+    }
     res.setHeader("content-range", `0-${Math.max(0, result.rows.length - 1)}/${result.total}`);
     if (req.method === "HEAD") {
       res.writeHead(200);

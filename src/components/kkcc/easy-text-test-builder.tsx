@@ -20,7 +20,13 @@ C) 4
 D) 3
 Answer: A
 Explanation: Subtracting 4 from 10 gives 6.`;
-export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string) => void }) {
+export function EasyTextTestBuilder({
+  onPublished,
+  seriesNames = [],
+}: {
+  onPublished: (id: string) => void;
+  seriesNames?: string[];
+}) {
   const publish = useServerFn(publishEasyTextTest);
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
@@ -97,7 +103,10 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
     }
   };
   return (
-    <section className="my-6 space-y-4 rounded-3xl border bg-card p-5">
+    <section
+      data-testid="easy-test-builder"
+      className="my-6 min-w-0 space-y-4 rounded-3xl border bg-card p-5 [&_button]:h-auto [&_button]:min-h-9 [&_button]:scroll-my-24 [&_button]:whitespace-normal [&_button]:py-2"
+    >
       <h2 className="text-xl font-bold">Easy Text Test · {step}/3</h2>
       <p className="text-sm text-muted-foreground">
         Sirf aapke questions. Koi bank auto-fill nahi. Free ya Paid yahin select karein. 1
@@ -142,13 +151,20 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             <label>
-              Series name / group (optional)
+              Series name (optional)
               <Input
+                list="easy-test-series-names"
+                maxLength={120}
                 value={series}
                 onChange={(e) => setSeries(e.target.value)}
-                placeholder="Existing series bundle access is not changed"
+                placeholder="e.g. Punjab ETT Practice Series"
               />
             </label>
+            <datalist id="easy-test-series-names">
+              {seriesNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
             <label>
               Time (minutes)
               <Input
@@ -276,6 +292,7 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
                 <label>
                   Explanation
                   <Textarea
+                    aria-label={`Q${index + 1} explanation`}
                     value={q.explanation}
                     onChange={(e) => patch(index, { explanation: e.target.value })}
                   />
@@ -311,6 +328,11 @@ export function EasyTextTestBuilder({ onPublished }: { onPublished: (id: string)
       {step === 3 && (
         <>
           <h3 className="font-bold">{payload().title}</h3>
+          {series.trim() && (
+            <p data-testid="easy-series-review">
+              Series: <strong>{series.trim()}</strong>
+            </p>
+          )}
           <p>
             {subject} · {chapter} · {questions?.length} questions · {minutes} minutes ·{" "}
             {isPaid

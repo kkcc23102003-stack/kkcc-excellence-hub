@@ -365,9 +365,9 @@ function TestSeries() {
               <div>
                 <h2 className="text-xl font-bold">Test Series Catalogue</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                  Every series is built for one exam and arranged chapterwise: each chapter gets one{" "}
-                  {QUESTIONS_PER_CHAPTER} question test ({QUESTIONS_PER_CHAPTER} MCQs: 20 Easy → 20
-                  Moderate → 20 Difficult).
+                  Series are arranged by exam, subject and chapter. Question counts follow admin
+                  settings and available matching questions; unrelated questions are never added to
+                  fill a paper.
                 </p>
               </div>
               <Badge variant="secondary" className="rounded-full">
@@ -454,7 +454,11 @@ function TestSeries() {
               {tests
                 .filter((test) => !enrolledTestIds.has(test.id))
                 .map((t) => (
-                  <div key={t.id} className="surface-panel hover-lift p-6">
+                  <div
+                    key={t.id}
+                    data-testid={`test-card-${t.id}`}
+                    className="surface-panel hover-lift p-6"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
                         <ClipboardList className="h-5 w-5" />
@@ -471,6 +475,11 @@ function TestSeries() {
                       </div>
                     </div>
                     <p className="mt-4 font-semibold">{t.title}</p>
+                    {t.series_name && (
+                      <p className="mt-1 break-words text-xs text-muted-foreground">
+                        Series: {t.series_name}
+                      </p>
+                    )}
                     {t.exam_track && (
                       <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-primary">
                         Oriented for: {t.exam_track}
