@@ -1,3 +1,4 @@
+import { StudentAccessRemoval } from "./student-access-removal";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -113,7 +114,10 @@ export function AdminEnrollmentPanel({
             id="enrollment-student"
             className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm"
             value={studentId}
-            onChange={(event) => setStudentId(event.target.value)}
+            onChange={(event) => {
+              setStudentId(event.target.value);
+              grant.reset();
+            }}
           >
             <option value="">Select Student</option>
             {profiles.map((profile) => (
@@ -190,6 +194,17 @@ export function AdminEnrollmentPanel({
           Enrollment verified. Student access is active.
         </p>
       )}
+      <StudentAccessRemoval
+        key={studentId}
+        userId={studentId}
+        onRemoved={() => grant.reset()}
+        studentLabel={profiles.find((p) => p.id === studentId)?.email || studentId}
+        titles={Object.fromEntries([
+          ...courses.map((c) => [`course:${c.id}`, c.title]),
+          ...(tests.data || []).map((t) => [`test:${t.id}`, t.title]),
+          ...allSeries.map((s) => [`series:${s.id}`, s.name]),
+        ])}
+      />
     </section>
   );
 }

@@ -86,6 +86,33 @@ test("Admin assigns Test/Course/Series; actual Student A sees top cards and comp
     await expect(sp.getByRole("link", { name: /View result/i }).first()).toBeVisible();
     await bp.goto("/admin/students");
     await expect(bp).toHaveURL(/\/dashboard/);
+    const removal = ap.getByTestId("student-access-removal");
+    for (const [kind, item] of [
+      ["course", ids.course],
+      ["series", "neet-ug"],
+    ]) {
+      const row = removal.locator(
+        `[data-kind="${kind}"][data-item-id="${item}"][data-status="Active"]`,
+      );
+      await row.getByRole("button", { name: "Remove access", exact: true }).click();
+      await ap
+        .getByRole("dialog")
+        .getByRole("button", { name: "Confirm remove access", exact: true })
+        .click();
+      await expect(
+        removal.locator(`[data-kind="${kind}"][data-item-id="${item}"][data-status="Revoked"]`),
+      ).toBeVisible();
+    }
+    await sp.goto("/learn?course=fixture-paid-course");
+    await expect(sp.getByRole("heading", { name: "Course access required" })).toBeVisible();
+    await sp.goto("/test-series/learn/neet-ug");
+    await expect(
+      sp.getByRole("link", { name: "Contact Admin / Checkout", exact: true }),
+    ).toBeVisible();
+    await expect(sp.getByTestId("learning-subject")).toHaveCount(0);
+    await expect(
+      removal.locator(`[data-kind="test"][data-item-id="${ids.test}"][data-status="Active"]`),
+    ).toBeVisible();
   } finally {
     await admin.close();
     await student.close();

@@ -134,6 +134,28 @@ test("Easy paid publishes correct prices, blocks unpaid student, offline grant u
     await login(op, "studentb");
     await op.goto(`/tests/learn/${id}`);
     await expect(op.getByRole("alert")).toContainText("TEST_ACCESS_REQUIRED");
+    const removal = panel.getByTestId("student-access-removal");
+    const grantRow = removal
+      .getByTestId("student-grant-row")
+      .filter({ hasText: `Paid Math ${stamp}` });
+    await expect(grantRow).toContainText("Active");
+    await grantRow.getByRole("button", { name: "Remove access", exact: true }).click();
+    await ap.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(grantRow).toContainText("Active");
+    await grantRow.getByRole("button", { name: "Remove access", exact: true }).click();
+    await ap
+      .getByRole("dialog")
+      .getByRole("button", { name: "Confirm remove access", exact: true })
+      .click();
+    await expect(grantRow).toContainText("Revoked");
+    await expect(panel.getByText("Enrollment verified. Student access is active.")).toHaveCount(0);
+    await sp.goto(`/tests/learn/${id}`);
+    await expect(sp.getByRole("alert")).toContainText("TEST_ACCESS_REQUIRED");
+    await panel.getByRole("button", { name: "Grant Enrollment", exact: true }).click();
+    await expect(grantRow.filter({ hasText: "test · Active" })).toHaveCount(1);
+    await expect(grantRow.filter({ hasText: "test · Revoked" })).toHaveCount(1);
+    await sp.reload();
+    await expect(sp.getByTestId("learning-subject")).toBeVisible();
   } finally {
     await admin.close();
     await student.close();
@@ -362,5 +384,26 @@ test("1001 own MCQs preview in pages, publish intact, reload in Advanced and pre
     await page.getByRole("button", { name: "Last saved questions", exact: true }).click();
   await expect(page.getByTestId("admin-test-question").last()).toContainText(
     "What is 1000 plus 1?",
+  );
+});
+
+test("Admin storage report checks and refreshes database and bucket usage without cleanup", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/storage");
+  const panel = page.getByTestId("storage-usage-panel");
+  await panel.getByRole("button", { name: "Check storage usage", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Last checked:");
+  await expect(panel).toContainText("Database size");
+  await expect(panel).toContainText("Uploaded file metadata total");
+  await expect(panel).toContainText("course-content");
+  await panel.getByRole("button", { name: "Refresh storage usage", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "Refresh storage usage", exact: true }),
+  ).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(
+    true,
   );
 });

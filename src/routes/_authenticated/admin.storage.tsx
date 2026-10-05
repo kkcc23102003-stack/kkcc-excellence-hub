@@ -1,3 +1,4 @@
+import { StorageUsagePanel } from "@/components/kkcc/storage-usage-panel";
 import { SpaceSaverPanel } from "@/components/kkcc/space-saver-panel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -196,6 +197,7 @@ function AdminStoragePage() {
             Use Supabase Storage
           </Button>
         </div>
+        <StorageUsagePanel />
         <SpaceSaverPanel />
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="surface-panel p-5">

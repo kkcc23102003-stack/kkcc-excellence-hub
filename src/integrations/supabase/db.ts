@@ -668,6 +668,7 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      kkcc_storage_usage: { Args: Record<string, never>; Returns: Json };
       manage_test_outline: {
         Args: {
           p_actor: string;

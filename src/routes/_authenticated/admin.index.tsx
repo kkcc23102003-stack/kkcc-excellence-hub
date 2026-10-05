@@ -173,7 +173,7 @@ function AdminCourses() {
             <Link to="/admin/enquiries">Enquiries</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
-            <Link to="/admin/students">Student access</Link>
+            <Link to="/admin/students">Student access — Grant / Remove</Link>
           </Button>
           <Button asChild size="sm" className="rounded-full">
             <Link to="/admin/security">Security & app controls</Link>
@@ -188,7 +188,7 @@ function AdminCourses() {
             <Link to="/admin/vouchers">Amazon / Flipkart rewards</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
-            <Link to="/admin/storage">Storage</Link>
+            <Link to="/admin/storage">Storage usage</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
             <Link to="/admin/branding">Branding</Link>
