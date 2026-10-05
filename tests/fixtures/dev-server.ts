@@ -451,6 +451,18 @@ if (process.env["KKCC_LIVE_PREVIEW"] === "1" && existsSync(runtime)) {
     doc.tables["materials"] = previous.tables.materials;
 }
 writeFileSync(runtime, JSON.stringify(doc), { mode: 0o600 });
+// Exercise the same managed test tables/RPC as production; other fixture CMS stays local.
+for (const table of ["tests", "test_questions"] as const) {
+  for (const row of doc.tables[table] ?? []) {
+    const columns = Object.keys(row);
+    const quoted = columns.map((key) => `"${key.replace(/"/g, '""')}"`).join(",");
+    await database.query(
+      `INSERT INTO public.kkcc_${table} (${quoted}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(",")}) ON CONFLICT(id) DO NOTHING`,
+      columns.map((key) => row[key]),
+    );
+  }
+}
+
 await database.query(
   "INSERT INTO public.coin_transactions(user_id,amount,source,reason) VALUES($1,1000,'admin_grant','fixture'),($2,1000,'admin_grant','fixture')",
   [ids.studentA, ids.studentB],
@@ -830,6 +842,7 @@ const env = {
   SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
   KKCC_CONTENT_BACKEND: "file",
+  KKCC_TESTS_BACKEND: "supabase",
   KKCC_CONTENT_FILE: runtime,
   KKCC_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
 };

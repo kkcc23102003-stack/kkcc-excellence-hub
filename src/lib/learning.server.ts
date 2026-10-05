@@ -294,17 +294,8 @@ export async function individualTestPlan(test: TestRow) {
     (test.generation_topic && test.generation_topic !== "Mixed"
       ? test.generation_topic
       : "Complete Test");
-  const questions = rawQuestions.filter(
-    (q) =>
-      !isLegacyScienceFallbackForNonScienceSubject(
-        q.question_text,
-        q.subject && q.subject !== "General" ? q.subject : fallbackSubject,
-        fallbackChapter,
-      ),
-  );
-  if (questions.length === 0) {
-    return buildDeterministicPlan();
-  }
+  const questions = rawQuestions;
+  if (questions.length === 0) return [];
   const plan = new Map<string, Set<string>>();
   for (const question of questions) {
     const subject =
@@ -384,14 +375,7 @@ export async function buildSelectedPaper(
       (test.generation_topic && test.generation_topic !== "Mixed"
         ? test.generation_topic
         : "Complete Test");
-    const rows = rawRows.filter(
-      (q) =>
-        !isLegacyScienceFallbackForNonScienceSubject(
-          q.question_text,
-          selection.subject || fallbackSubject,
-          selection.chapter || fallbackChapter,
-        ),
-    );
+    const rows = rawRows;
     const matchedRows = rows.filter(
       (question) =>
         (question.subject && question.subject !== "General"
@@ -400,7 +384,7 @@ export async function buildSelectedPaper(
         ((question as TestQuestionRow & { chapter?: string }).chapter || fallbackChapter) ===
           selection.chapter,
     );
-    const questions = matchedRows.length > 0 ? matchedRows : rows;
+    const questions = matchedRows;
     if (questions.length > 0) {
       return {
         test: {
@@ -411,9 +395,9 @@ export async function buildSelectedPaper(
         questions,
       };
     }
-    if (rawRows.length === 0) {
-      throw new Error("No published questions exist for this test selection.");
-    }
+    throw new Error(
+      "No manual questions match this subject/chapter. Admin must correct the test selection; no bank questions were substituted.",
+    );
   }
   const recipe = learning.test;
   const effectiveSubject =
@@ -481,6 +465,12 @@ export async function buildSelectedPaper(
           .order("sort_order"),
       ) ?? [];
     const filteredRows = rawRows.filter((q) => {
+      const rowChapter =
+        (q as TestQuestionRow & { chapter?: string }).chapter ||
+        learning.test?.syllabus_chapter ||
+        (learning.test?.generation_topic !== "Mixed" ? learning.test?.generation_topic : "") ||
+        "Complete Test";
+      if (rowChapter !== selection.chapter) return false;
       if (
         isLegacyScienceFallbackForNonScienceSubject(
           q.question_text,
@@ -494,7 +484,7 @@ export async function buildSelectedPaper(
       if (!rowSubj || rowSubj === "General") {
         // Only include generic rows when the test itself is explicitly for this subject
         const testSubj = inferSubjectFromTestMetadata(learning.test!);
-        return !testSubj || testSubj.toLowerCase() === effectiveSubject.toLowerCase();
+        return Boolean(testSubj) && testSubj.toLowerCase() === effectiveSubject.toLowerCase();
       }
       return rowSubj.toLowerCase() === effectiveSubject.toLowerCase();
     });
@@ -525,7 +515,7 @@ export async function buildSelectedPaper(
   const allAdminCustom = [...customMapped, ...manualTestRows];
 
   let questions: GeneratedTestQuestion[] = [];
-  if (customChapter?.mode === "custom_only" && allAdminCustom.length > 0) {
+  if (customChapter?.mode === "custom_only") {
     const cap = customChapter.questionCount
       ? Math.min(allAdminCustom.length, customChapter.questionCount)
       : allAdminCustom.length;

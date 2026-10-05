@@ -486,7 +486,7 @@ export const saveTest = createServerFn({ method: "POST" })
         const topics = getExamBankTopicsForExam(subject, exam);
         return targetTopic === "Mixed" ? topics.length > 0 : topics.includes(targetTopic);
       });
-      if (!hasExactBank && !targetSubject.trim()) {
+      if (!hasExactBank) {
         throw new Error("No mapped subject/chapter questions are available for this recipe.");
       }
     }
@@ -984,6 +984,15 @@ export const pullQuestionsFromBank = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
+
+    const preview = generateCustomSyllabusPaper({
+      ...data,
+      seed: `coverage:${data.exam}:${data.subject}:${data.topic}`,
+    });
+    if (preview.length < data.count)
+      throw new Error(
+        `Only ${preview.length} matching questions are available for this exam/subject/chapter and difficulty. Lower the count or add your own questions. No other subject will be substituted.`,
+      );
 
     // IMPORTANT: this no longer generates/inserts question rows. It only saves
     // the small generation recipe on the test. Students get a fresh paper on

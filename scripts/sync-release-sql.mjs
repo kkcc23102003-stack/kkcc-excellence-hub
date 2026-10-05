@@ -1,5 +1,5 @@
 import { copyFileSync, readFileSync } from "node:fs";
-const files = ["PRODUCTION-SQL", "SQL-CLEANER", "NOTES-SUPABASE", "SPACE-SAVER"].map(
+const files = ["PRODUCTION-SQL", "SQL-CLEANER", "NOTES-SUPABASE", "SPACE-SAVER", "EASY-TESTS"].map(
   (name) => `KKCC-Excellence-Hub-${name}.sql`,
 );
 for (const name of files) {

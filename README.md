@@ -1688,3 +1688,24 @@ consume Supabase database space**, and uploaded files consume Supabase Storage.
 Template banks are not copied there. Existing local/S3 JSON documents are not
 available to SQL: export/import them separately before switching if they contain
 important content. Production data itself has not been inspected or modified.
+
+## Easy Text Test + strict subject isolation (5 October 2026)
+
+See **EASY-TEST-GUIDE-HINDI.md**. Admin → Tests defaults to the new three-step
+Easy Text Test tab: metadata/paste → editable preview → explicit publish.
+Advanced workbench remains available unchanged in layout. Easy mode publishes
+only approved pasted questions, without bank fill or generated explanations.
+Publish is atomic and idempotent through the admin server and a service-only RPC.
+
+Existing deployments must apply **KKCC-Excellence-Hub-EASY-TESTS.sql** once and
+redeploy. Tests and authored/published question rows now map to `kkcc_tests` and
+`kkcc_test_questions`; these consume Supabase database space. Static template
+banks remain in source files. Existing legacy SQL rows are copied without
+replacement; existing local/S3 JSON data requires separate export/import first.
+Student RLS/access/purchases are retained. No production migration was run here.
+
+Strict generation no longer defaults empty subjects to SST, broadens exam scope,
+substitutes unrelated chapters, synthesizes generic filler, or returns all manual
+rows when a subject/chapter selection does not match. Exact coverage may be lower
+than requested; the admin must lower the count or add questions. Old mislabeled
+stored content is preserved for admin review, not silently removed.

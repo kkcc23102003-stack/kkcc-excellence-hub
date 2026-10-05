@@ -647,6 +647,7 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      publish_easy_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       kkcc_space_report: {
         Args: { p_cleanup?: boolean; p_before?: string };
         Returns: Json;

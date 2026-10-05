@@ -2124,10 +2124,11 @@ function buildSynthesizedChapterQuestion(input: {
  *    prioritizes exact matching bank chapters + curated topic facts.
  * 2. Pulls from bank templates whose chapter/topic matches the requested chapter (first at the
  *    requested difficulty, then across sibling difficulties of the same chapter).
- * 3. If more questions are needed, pulls from sibling chapters of the SAME resolved subject
+ * 3. Missing coverage is reported; no sibling chapter or synthetic filler is used.
  *    (so Punjabi always pulls from Punjabi templates, Pedagogy from Teaching Aptitude, etc.).
  * 4. Fills any remaining slots with subject-accurate Easy → Moderate → Difficult questions.
  */
+/** Strict bank-only generation: never invent a paper or relabel another chapter. */
 export function generateCustomSyllabusPaper(input: {
   exam: string;
   subject: string;
@@ -2138,195 +2139,64 @@ export function generateCustomSyllabusPaper(input: {
   negative_marks: number;
   seed?: string;
 }): GeneratedTestQuestion[] {
-  const safeSubject = input.subject.trim() || "SST";
-  const safeTopic = input.topic.trim() || "Mixed";
-  const count = Math.max(1, Math.min(1000, Math.floor(input.count || 60)));
-
-  // Only use strict on-demand paper directly when both subject and topic are non-empty, not generic, and not Preamble
-  const isPreambleTopic = safeTopic.toLowerCase().includes("preamble");
+  const subject = input.subject.trim();
+  const topic = input.topic.trim();
   if (
-    !isPreambleTopic &&
-    input.subject.trim() &&
-    input.topic.trim() &&
-    input.topic.trim() !== "Mixed"
-  ) {
-    const strict = generateOnDemandTestPaper(input);
-    if (strict.length >= count) {
-      return strict.map((q, idx) => ({
-        ...q,
-        subject: safeSubject,
-        chapter: safeTopic,
-        topic: safeTopic,
-        sort_order: idx,
-      }));
-    }
-  }
-
+    !subject ||
+    /^(general|mixed|all|all subjects|default)$/i.test(subject) ||
+    !topic ||
+    input.count < 1
+  )
+    return [];
+  const norm = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+  const exact = [...new Set(ACTIVE_TEMPLATES.map((t) => t.subject))].find(
+    (s) => norm(s) === norm(subject),
+  );
+  // Subject aliases may resolve to their own family; chapter words never change the subject.
+  const subjects = exact ? [exact] : resolveCandidateBankSubjects(subject, "");
+  const pairs = [
+    ...new Map(
+      ACTIVE_TEMPLATES.filter(
+        (t) =>
+          subjects.includes(t.subject) &&
+          (input.exam === "All Exams" || t.exams.includes(input.exam)) &&
+          (topic === "Mixed" || norm(t.topic) === norm(topic)),
+      ).map((t) => [`${t.subject}::${t.topic}`, { subject: t.subject, topic: t.topic }]),
+    ).values(),
+  ];
+  const random = seededRandom(input.seed || "kkcc-strict-paper");
+  const seen = new Set<string>();
+  const out: GeneratedTestQuestion[] = [];
   const levels: Difficulty[] =
     input.difficulty === "Mixed" ? ["Easy", "Moderate", "Difficult"] : [input.difficulty];
-  const seed = input.seed || "kkcc-custom-seed";
-  const random = seededRandom(seed);
-  const seen = new Set<string>();
-  const matchedPairs = findMatchingBankPairs(safeSubject, safeTopic);
-  const candidateBankSubjects = resolveCandidateBankSubjects(safeSubject, safeTopic);
-
-  const out: GeneratedTestQuestion[] = [];
-  const base = Math.floor(count / levels.length);
-  const remainder = count % levels.length;
-
-  const pushDrawnQuestions = (
-    target: GeneratedTestQuestion[],
-    drawn: ReturnType<typeof generateQuestionsForTest>,
-    targetLevel: Difficulty,
-    wanted: number,
-  ) => {
-    for (const q of drawn) {
-      if (target.length >= wanted) break;
-      target.push({
-        ...q,
-        id: q.source_id,
-        subject: safeSubject,
-        chapter: safeTopic,
-        topic: safeTopic,
-        difficulty: targetLevel,
-        exam: input.exam,
-        marks: input.marks,
-        negative_marks: input.negative_marks,
-        sort_order: out.length + target.length,
-        created_at: "",
-        updated_at: "",
-      });
-    }
-  };
-
-  for (let i = 0; i < levels.length; i += 1) {
-    const level = levels[i]!;
-    const wanted = base + (i < remainder ? 1 : 0);
-    const levelQuestions: GeneratedTestQuestion[] = [];
-
-    // For Preamble specifically, inject our hand-crafted direct Preamble MCQs first on Easy level
-    if (isPreambleTopic && level === "Easy") {
-      for (
-        let pIdx = 0;
-        pIdx < PREAMBLE_FACT_BANK.length && levelQuestions.length < wanted;
-        pIdx += 1
-      ) {
-        const fact = PREAMBLE_FACT_BANK[pIdx]!;
-        if (seen.has(fact.q)) continue;
-        seen.add(fact.q);
-        const options = shuffledOptions([fact.a, ...fact.d], random);
-        const correct_index = options.indexOf(fact.a);
-        const source_id = `gen:preamble:${slugify(input.exam)}-${level.toLowerCase()}-${pIdx + 1}`;
-        levelQuestions.push({
-          id: source_id,
-          source_id,
-          template_id: `preamble:core:${level.toLowerCase()}`,
-          template_index: pIdx + 1,
-          question_text: fact.q,
-          subject: safeSubject,
-          options,
-          correct_index: correct_index >= 0 ? correct_index : 0,
-          explanation: fact.exp,
+  const count = Math.min(1000, Math.floor(input.count));
+  // Round-robin keeps mixed papers varied without imposing an artificial 60-question quota.
+  for (let round = 0; round < count; round++) {
+    const before = out.length;
+    for (const level of levels)
+      for (const pair of pairs) {
+        if (out.length >= count) break;
+        const drawn = generateQuestionsForTest({
           exam: input.exam,
-          chapter: safeTopic,
-          topic: safeTopic,
+          ...pair,
           difficulty: level,
-          question_type: "single-choice",
-          provenance: "practice",
-          marks: input.marks,
-          negative_marks: input.negative_marks,
-          sort_order: out.length + levelQuestions.length,
-          created_at: "",
-          updated_at: "",
+          count: 1,
+          random,
+          seen,
         });
-      }
-    }
-
-    // Tier 1: Pull from matched bank (subject, topic) pairs at the exact target difficulty
-    for (const pair of matchedPairs) {
-      if (levelQuestions.length >= wanted) break;
-      const bankDrawn = generateQuestionsForTest({
-        exam: "All Exams",
-        subject: pair.bankSubject,
-        topic: pair.bankTopic,
-        difficulty: level,
-        count: wanted - levelQuestions.length,
-        random,
-        seen,
-      });
-      pushDrawnQuestions(levelQuestions, bankDrawn, level, wanted);
-    }
-
-    // Tier 2: If the exact chapter had fewer templates at `level` (e.g. only 10 Easy items),
-    // pull from the SAME matched chapter across sibling difficulties before leaving the chapter
-    if (levelQuestions.length < wanted) {
-      const fallbackDiffs: Difficulty[] = (
-        ["Moderate", "Easy", "Difficult"] as Difficulty[]
-      ).filter((d) => d !== level);
-      for (const fallbackDiff of fallbackDiffs) {
-        if (levelQuestions.length >= wanted) break;
-        for (const pair of matchedPairs) {
-          if (levelQuestions.length >= wanted) break;
-          const bankDrawn = generateQuestionsForTest({
-            exam: "All Exams",
-            subject: pair.bankSubject,
-            topic: pair.bankTopic,
-            difficulty: fallbackDiff,
-            count: wanted - levelQuestions.length,
-            random,
-            seen,
+        for (const question of drawn)
+          out.push({
+            ...question,
+            id: question.source_id,
+            subject,
+            marks: input.marks,
+            negative_marks: input.negative_marks,
+            sort_order: out.length,
+            created_at: "",
+            updated_at: "",
           });
-          pushDrawnQuestions(levelQuestions, bankDrawn, level, wanted);
-        }
       }
-    }
-
-    // Tier 3: If more questions are still needed (e.g. a custom chapter title that didn't match
-    // a specific bank topic name), pull from the SAME candidate bank subject(s) across all chapters
-    // of that subject (skipping Tier 3 only for Preamble so Preamble stays 100% Preamble-specific)
-    if (!isPreambleTopic && levelQuestions.length < wanted && candidateBankSubjects.length > 0) {
-      const diffsToTry: Difficulty[] = [
-        level,
-        ...(["Moderate", "Easy", "Difficult"] as Difficulty[]).filter((d) => d !== level),
-      ];
-      for (const diff of diffsToTry) {
-        if (levelQuestions.length >= wanted) break;
-        for (const bankSubject of candidateBankSubjects) {
-          if (levelQuestions.length >= wanted) break;
-          const bankDrawn = generateQuestionsForTest({
-            exam: "All Exams",
-            subject: bankSubject,
-            topic: "Mixed",
-            difficulty: diff,
-            count: wanted - levelQuestions.length,
-            random,
-            seen,
-          });
-          pushDrawnQuestions(levelQuestions, bankDrawn, level, wanted);
-        }
-      }
-    }
-
-    // Tier 4: Subject-accurate synthesized questions (with dedicated pools for Punjabi, Hindi,
-    // English, Pedagogy, Math, Reasoning, Computer, Punjab GK, Commerce, EVS, Polity, History, etc.)
-    while (levelQuestions.length < wanted) {
-      const levelIndex = levelQuestions.length;
-      const synth = buildSynthesizedChapterQuestion({
-        exam: input.exam,
-        subject: safeSubject,
-        chapter: safeTopic,
-        difficulty: level,
-        index: out.length + levelIndex,
-        levelIndex,
-        seed,
-        marks: input.marks,
-        negative_marks: input.negative_marks,
-      });
-      levelQuestions.push(synth);
-    }
-
-    out.push(...levelQuestions);
+    if (out.length === before || out.length >= count) break;
   }
-
-  return out.map((q, idx) => ({ ...q, sort_order: idx }));
+  return out;
 }

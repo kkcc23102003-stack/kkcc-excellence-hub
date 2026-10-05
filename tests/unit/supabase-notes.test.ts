@@ -55,7 +55,7 @@ test("Supabase notes migration is repeatable, persistent and denies browser acce
 
 test("notes backend does not upload template/test banks to Supabase or hide setup errors", () => {
   assert.equal(MANAGED_CONTENT_TABLES["materials"], "kkcc_materials");
-  assert.equal(MANAGED_CONTENT_TABLES["test_questions"], undefined);
+  assert.equal(MANAGED_CONTENT_TABLES["test_questions"], "kkcc_test_questions");
   const source = readFileSync("src/lib/project-content.server.ts", "utf8");
   assert.ok(source.includes('code: "NOTES_SETUP_REQUIRED"'));
   assert.equal(

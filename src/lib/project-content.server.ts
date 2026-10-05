@@ -1,4 +1,8 @@
-import { MANAGED_CONTENT_TABLES, NOTES_SETUP_ERROR } from "./managed-content-tables";
+import {
+  MANAGED_CONTENT_TABLES,
+  NOTES_SETUP_ERROR,
+  TESTS_SETUP_ERROR,
+} from "./managed-content-tables";
 /**
  * Shared CMS adapter: managed notes/settings/files use dedicated Supabase tables.
  * Explicit file mode supports local fixtures. Other educational tables retain
@@ -607,7 +611,11 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
   }
   private async execute(): Promise<Result<Output>> {
     if (
-      process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" ||
+      (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" &&
+        !(
+          process.env["KKCC_TESTS_BACKEND"] === "supabase" &&
+          ["tests", "test_questions"].includes(this.table)
+        )) ||
       (!MANAGED_CONTENT_TABLES[this.table] && missingRemoteTables.has(this.table))
     ) {
       return this.executeLocal();
@@ -711,7 +719,12 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           if (managed)
             return {
               data: null as Output,
-              error: { message: NOTES_SETUP_ERROR, code: "NOTES_SETUP_REQUIRED" },
+              error: {
+                message: ["tests", "test_questions"].includes(this.table)
+                  ? TESTS_SETUP_ERROR
+                  : NOTES_SETUP_ERROR,
+                code: "NOTES_SETUP_REQUIRED",
+              },
               count: null,
             };
           missingRemoteTables.add(table);
@@ -743,7 +756,12 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
         if (managed)
           return {
             data: null as Output,
-            error: { message: NOTES_SETUP_ERROR, code: "NOTES_SETUP_REQUIRED" },
+            error: {
+              message: ["tests", "test_questions"].includes(this.table)
+                ? TESTS_SETUP_ERROR
+                : NOTES_SETUP_ERROR,
+              code: "NOTES_SETUP_REQUIRED",
+            },
             count: null,
           };
         missingRemoteTables.add(table);

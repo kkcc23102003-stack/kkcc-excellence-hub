@@ -1,3 +1,4 @@
+import { EasyTextTestBuilder } from "@/components/kkcc/easy-text-test-builder";
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
@@ -274,6 +275,7 @@ function TestQuestionWriter() {
   const reorder = useServerFn(reorderTestQuestions);
   const bulkAddFn = useServerFn(bulkAddTestQuestions);
 
+  const [builderMode, setBuilderMode] = useState<"easy" | "advanced">("easy");
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
   const [showBulkPaste, setShowBulkPaste] = useState(false);
@@ -345,15 +347,25 @@ function TestQuestionWriter() {
     const matching = subj
       ? syllabusRows.filter((r) => r.subject.toLowerCase() === subj.toLowerCase())
       : syllabusRows;
-    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.chapter))];
+    return [...new Set(matching.map((r) => r.chapter))];
   }, [syllabusRows, activeTest?.syllabus_subject, activeTest?.subject]);
   const syllabusTopics = useMemo(() => {
     const ch = activeTest?.syllabus_chapter || "";
     const matching = ch
-      ? syllabusRows.filter((r) => r.chapter.toLowerCase() === ch.toLowerCase())
+      ? syllabusRows.filter(
+          (r) =>
+            r.chapter.toLowerCase() === ch.toLowerCase() &&
+            r.subject.toLowerCase() ===
+              (activeTest?.syllabus_subject || activeTest?.subject || "").toLowerCase(),
+        )
       : syllabusRows;
-    return [...new Set((matching.length ? matching : syllabusRows).map((r) => r.topic))];
-  }, [syllabusRows, activeTest?.syllabus_chapter]);
+    return [...new Set(matching.map((r) => r.topic))];
+  }, [
+    syllabusRows,
+    activeTest?.syllabus_chapter,
+    activeTest?.syllabus_subject,
+    activeTest?.subject,
+  ]);
 
   // Pulling straight from the question bank. The lists come from the bank
   // itself, so a chapter can never be offered that has nothing behind it.
@@ -630,1045 +642,1107 @@ function TestQuestionWriter() {
           description="Write your own MCQs for the test series. Each question is stored with the test, so students see exactly what you type."
         />
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-          {/* ------------------------------------------------ test list */}
-          <aside className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Tests ({tests.length})</h2>
-              <Button
-                size="sm"
-                className="rounded-full"
-                onClick={() => createTest.mutate()}
-                disabled={createTest.isPending}
-              >
-                {createTest.isPending ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="mr-1.5 h-4 w-4" />
-                )}
-                New test
-              </Button>
-            </div>
-
-            {testsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading tests…</p>
-            ) : tests.length === 0 ? (
-              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                No test yet. Create one, then start writing questions into it.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {tests.map((test) => (
-                  <li key={test.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTestId(test.id);
-                        setDraft(null);
-                      }}
-                      className={cn(
-                        "w-full rounded-2xl border p-3 text-left transition",
-                        activeTestId === test.id
-                          ? "border-primary bg-primary/5"
-                          : "hover:border-primary/40",
-                      )}
-                    >
-                      <span className="block truncate text-sm font-medium">{test.title}</span>
-                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {test.questions_count} Q
-                        </Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {test.total_marks} marks
-                        </Badge>
-                        <Badge
-                          variant={test.is_published ? "default" : "outline"}
-                          className="text-[10px]"
-                        >
-                          {test.is_published ? "Published" : "Draft"}
-                        </Badge>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </aside>
-
-          {/* --------------------------------------------- question editor */}
-          <section className="space-y-5">
-            {!activeTest ? (
-              <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-                Select a test on the left, or create a new one.
+        {testsQuery.isError && (
+          <p role="alert" className="my-3 rounded-xl border border-destructive p-3 text-sm">
+            {testsQuery.error instanceof Error
+              ? testsQuery.error.message
+              : "Tests could not load. Please retry."}
+          </p>
+        )}
+        <div className="my-4 flex gap-2">
+          <Button
+            variant={builderMode === "easy" ? "default" : "outline"}
+            onClick={() => setBuilderMode("easy")}
+          >
+            Easy Text Test
+          </Button>
+          <Button
+            variant={builderMode === "advanced" ? "default" : "outline"}
+            onClick={() => setBuilderMode("advanced")}
+          >
+            Advanced — existing setup
+          </Button>
+        </div>
+        <div hidden={builderMode !== "easy"}>
+          <EasyTextTestBuilder
+            onPublished={(id) => {
+              setActiveTestId(id);
+              invalidateAll();
+              void invalidateLearningQueries(queryClient);
+              setBuilderMode("advanced");
+              toast.success("Your text test is published — no bank questions added.");
+            }}
+          />
+        </div>
+        <div hidden={builderMode !== "advanced"}>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
+            {/* ------------------------------------------------ test list */}
+            <aside className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Tests ({tests.length})</h2>
+                <Button
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => createTest.mutate()}
+                  disabled={createTest.isPending}
+                >
+                  {createTest.isPending ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-1.5 h-4 w-4" />
+                  )}
+                  New test
+                </Button>
               </div>
-            ) : (
-              <>
-                {/* test settings */}
-                <div className="rounded-3xl border bg-background/60 p-4">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                    <ClipboardList className="h-4 w-4 text-primary" /> Test settings
-                  </h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label>Test title</Label>
-                      <Input
-                        className="mt-1.5"
-                        defaultValue={activeTest.title}
-                        onBlur={(event) => {
-                          const title = event.target.value.trim();
-                          if (title && title !== activeTest.title) {
-                            updateTest.mutate(toTestPayload(activeTest, { title }));
-                          }
+
+              {testsQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading tests…</p>
+              ) : tests.length === 0 ? (
+                <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                  No test yet. Create one, then start writing questions into it.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {tests.map((test) => (
+                    <li key={test.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTestId(test.id);
+                          setDraft(null);
                         }}
-                      />
-                    </div>
-                    <div>
-                      <Label>Subject</Label>
-                      <Input
-                        className="mt-1.5"
-                        defaultValue={activeTest.subject ?? ""}
-                        onBlur={(event) => {
-                          const subject = event.target.value.trim();
-                          if (subject !== (activeTest.subject ?? "")) {
-                            updateTest.mutate(toTestPayload(activeTest, { subject }));
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label>Syllabus subject</Label>
-                        <Link
-                          to="/admin/syllabus"
-                          className="text-[11px] font-medium text-primary hover:underline"
-                        >
-                          Syllabus Builder →
-                        </Link>
-                      </div>
-                      <Input
-                        list="kkcc-syllabus-subjects"
-                        className="mt-1.5"
-                        key={`subj-${activeTest.id}-${activeTest.syllabus_subject ?? ""}`}
-                        defaultValue={activeTest.syllabus_subject ?? activeTest.subject ?? ""}
-                        onBlur={(event) => {
-                          const syllabus_subject = event.target.value.trim();
-                          if (syllabus_subject !== (activeTest.syllabus_subject ?? ""))
-                            updateTest.mutate(toTestPayload(activeTest, { syllabus_subject }));
-                        }}
-                      />
-                      <datalist id="kkcc-syllabus-subjects">
-                        {syllabusSubjects.map((s) => (
-                          <option key={s} value={s} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div>
-                      <Label>Syllabus chapter</Label>
-                      <Input
-                        list="kkcc-syllabus-chapters"
-                        className="mt-1.5"
-                        placeholder="e.g. Life Processes"
-                        key={`chap-${activeTest.id}-${activeTest.syllabus_chapter ?? ""}`}
-                        defaultValue={activeTest.syllabus_chapter ?? ""}
-                        onBlur={(event) => {
-                          const syllabus_chapter = event.target.value.trim();
-                          if (syllabus_chapter !== (activeTest.syllabus_chapter ?? ""))
-                            updateTest.mutate(toTestPayload(activeTest, { syllabus_chapter }));
-                        }}
-                      />
-                      <datalist id="kkcc-syllabus-chapters">
-                        {syllabusChapters.map((c) => (
-                          <option key={c} value={c} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div>
-                      <Label>Syllabus topic</Label>
-                      <Input
-                        list="kkcc-syllabus-topics"
-                        className="mt-1.5"
-                        placeholder="e.g. Nutrition"
-                        key={`top-${activeTest.id}-${activeTest.syllabus_topic ?? ""}`}
-                        defaultValue={activeTest.syllabus_topic ?? ""}
-                        onBlur={(event) => {
-                          const syllabus_topic = event.target.value.trim();
-                          if (syllabus_topic !== (activeTest.syllabus_topic ?? ""))
-                            updateTest.mutate(toTestPayload(activeTest, { syllabus_topic }));
-                        }}
-                      />
-                      <datalist id="kkcc-syllabus-topics">
-                        {syllabusTopics.map((t) => (
-                          <option key={t} value={t} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div>
-                      <Label>Duration (minutes)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        className="mt-1.5"
-                        defaultValue={activeTest.duration_minutes}
-                        onBlur={(event) => {
-                          const duration_minutes = Number(event.target.value || 0);
-                          if (duration_minutes !== activeTest.duration_minutes) {
-                            updateTest.mutate(toTestPayload(activeTest, { duration_minutes }));
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label>Oriented for (exam)</Label>
-                      <Input
-                        className="mt-1.5"
-                        placeholder="e.g. Punjab PCS, PSSSB, UPSC CSE"
-                        defaultValue={activeTest.exam_track ?? ""}
-                        onBlur={(event) => {
-                          const exam_track = event.target.value.trim();
-                          if (exam_track !== (activeTest.exam_track ?? "")) {
-                            updateTest.mutate(toTestPayload(activeTest, { exam_track }));
-                          }
-                        }}
-                      />
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Shown on the test card so students know the paper is for them.
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Series name</Label>
-                      <Input
-                        className="mt-1.5"
-                        placeholder="e.g. Punjab PCS Prelims Power Series"
-                        defaultValue={activeTest.series_name ?? ""}
-                        onBlur={(event) => {
-                          const series_name = event.target.value.trim();
-                          if (series_name !== (activeTest.series_name ?? "")) {
-                            updateTest.mutate(toTestPayload(activeTest, { series_name }));
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label>Level</Label>
-                      <select
-                        className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
-                        value={
-                          activeTest.level === "Easy" ||
-                          activeTest.level === "Moderate" ||
-                          activeTest.level === "Difficult"
-                            ? activeTest.level
-                            : "Mixed"
-                        }
-                        onChange={(event) => {
-                          const level = event.target.value as TestPayload["level"];
-                          updateTest.mutate(toTestPayload(activeTest, { level }));
-                        }}
-                      >
-                        <option value="Easy">Level 1 — Easy</option>
-                        <option value="Moderate">Level 2 — Moderate</option>
-                        <option value="Difficult">Level 3 — Difficult</option>
-                        <option value="Mixed">Mixed (full-length paper)</option>
-                      </select>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Students attempt a series in this order: Easy, then Moderate, then
-                        Difficult.
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Price in rupees</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        className="mt-1.5"
-                        defaultValue={activeTest.price_inr ?? 0}
-                        onBlur={(event) => {
-                          const price_inr = Number(event.target.value || 0);
-                          if (price_inr !== (activeTest.price_inr ?? 0)) {
-                            updateTest.mutate(toTestPayload(activeTest, { price_inr }));
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label>Price in Kit 2 Coins</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        className="mt-1.5"
-                        defaultValue={activeTest.price_coins ?? 0}
-                        onBlur={(event) => {
-                          const price_coins = Number(event.target.value || 0);
-                          if (price_coins !== (activeTest.price_coins ?? 0)) {
-                            updateTest.mutate(toTestPayload(activeTest, { price_coins }));
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-col justify-end">
-                      <Label className="mb-1.5">Access</Label>
-                      <Button
-                        variant={activeTest.is_paid ? "outline" : "default"}
-                        className="rounded-full"
-                        disabled={setFree.isPending}
-                        onClick={() =>
-                          setFree.mutate({ id: activeTest.id, free: activeTest.is_paid })
-                        }
-                      >
-                        {setFree.isPending ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : activeTest.is_paid ? (
-                          <Unlock className="mr-1.5 h-4 w-4" />
-                        ) : (
-                          <Lock className="mr-1.5 h-4 w-4" />
+                        className={cn(
+                          "w-full rounded-2xl border p-3 text-left transition",
+                          activeTestId === test.id
+                            ? "border-primary bg-primary/5"
+                            : "hover:border-primary/40",
                         )}
-                        {activeTest.is_paid ? "Make this free" : "Make this paid"}
-                      </Button>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {activeTest.is_paid
-                          ? "Paid: only students you have granted access can open it."
-                          : "Free: opens directly for everyone, like a free course. No payment step."}
-                      </p>
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <Button
-                        variant={activeTest.is_published ? "secondary" : "default"}
-                        className="rounded-full"
-                        onClick={() =>
-                          updateTest.mutate(
-                            toTestPayload(activeTest, { is_published: !activeTest.is_published }),
-                          )
-                        }
                       >
-                        {activeTest.is_published ? "Unpublish" : "Publish"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="rounded-full text-destructive"
-                        onClick={() => setConfirmDeleteTest(activeTest.id)}
-                      >
-                        <Trash2 className="mr-1.5 h-4 w-4" /> Delete test
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <OfflineAccessPanel testId={activeTest.id} isPaid={activeTest.is_paid} />
-
-                {/* Fill the paper from the question bank instead of typing
-                    every question by hand. Everything pulled stays editable. */}
-                <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        Pull from Question Bank (Priority #1 to Your Added &amp; AI Questions)
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Choose the exam, subject, chapter, level, and any question count (e.g. 10,
-                        20, 30, 60, 100). Questions you added or generated with AI in the Question
-                        Bank always get <strong>First Preference</strong>, and the rest fill from
-                        the template bank.
-                      </p>
-                    </div>
-                    <Button asChild size="sm" variant="outline" className="rounded-full font-bold">
-                      <Link to="/admin/exam-bank">
-                        Open Question Bank (Templates + My Questions + AI)
-                      </Link>
-                    </Button>
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <label className="text-xs font-semibold">
-                      Exam
-                      <select
-                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
-                        value={pullExam}
-                        onChange={(e) => {
-                          setPullExam(e.target.value);
-                          setPullSubject("");
-                          setPullTopic("Mixed");
-                        }}
-                      >
-                        {BANK_EXAMS.map((x) => (
-                          <option key={x} value={x}>
-                            {x}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-xs font-semibold">
-                      Subject
-                      <select
-                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
-                        value={pullSubject}
-                        onChange={(e) => {
-                          setPullSubject(e.target.value);
-                          setPullTopic("Mixed");
-                        }}
-                      >
-                        <option value="">Choose a subject</option>
-                        {pullSubjects.map((x) => (
-                          <option key={x} value={x}>
-                            {x}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-xs font-semibold">
-                      Chapter
-                      <select
-                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
-                        value={pullTopic}
-                        onChange={(e) => setPullTopic(e.target.value)}
-                      >
-                        <option value="Mixed">All chapters mixed</option>
-                        {pullTopics.map((x) => (
-                          <option key={x} value={x}>
-                            {x}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="text-xs font-semibold">
-                      <span>How many questions (1–200)</span>
-                      <Input
-                        className="mt-1"
-                        type="number"
-                        min={1}
-                        max={200}
-                        value={pullCount}
-                        onChange={(e) => setPullCount(e.target.value)}
-                      />
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {[10, 15, 20, 25, 30, 50, 60, 100].map((num) => (
-                          <button
-                            key={num}
-                            type="button"
-                            onClick={() => setPullCount(String(num))}
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-bold transition",
-                              Number(pullCount) === num
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : "bg-background hover:border-primary/50",
-                            )}
+                        <span className="block truncate text-sm font-medium">{test.title}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {test.questions_count} Q
+                          </Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {test.total_marks} marks
+                          </Badge>
+                          <Badge
+                            variant={test.is_published ? "default" : "outline"}
+                            className="text-[10px]"
                           >
-                            {num}
-                          </button>
-                        ))}
+                            {test.is_published ? "Published" : "Draft"}
+                          </Badge>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </aside>
+
+            {/* --------------------------------------------- question editor */}
+            <section className="space-y-5">
+              {!activeTest ? (
+                <div className="rounded-3xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                  Select a test on the left, or create a new one.
+                </div>
+              ) : (
+                <>
+                  {/* test settings */}
+                  <div className="rounded-3xl border bg-background/60 p-4">
+                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                      <ClipboardList className="h-4 w-4 text-primary" /> Test settings
+                    </h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Test title</Label>
+                        <Input
+                          className="mt-1.5"
+                          defaultValue={activeTest.title}
+                          onBlur={(event) => {
+                            const title = event.target.value.trim();
+                            if (title && title !== activeTest.title) {
+                              updateTest.mutate(toTestPayload(activeTest, { title }));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Subject</Label>
+                        <Input
+                          className="mt-1.5"
+                          defaultValue={activeTest.subject ?? ""}
+                          onBlur={(event) => {
+                            const subject = event.target.value.trim();
+                            if (subject !== (activeTest.subject ?? "")) {
+                              updateTest.mutate(
+                                toTestPayload(activeTest, {
+                                  subject,
+                                  syllabus_subject: subject,
+                                  generation_subject: subject,
+                                  syllabus_chapter: "",
+                                  syllabus_topic: "",
+                                  generation_topic: "Mixed",
+                                }),
+                              );
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Label>Syllabus subject</Label>
+                          <Link
+                            to="/admin/syllabus"
+                            className="text-[11px] font-medium text-primary hover:underline"
+                          >
+                            Syllabus Builder →
+                          </Link>
+                        </div>
+                        <Input
+                          list="kkcc-syllabus-subjects"
+                          className="mt-1.5"
+                          key={`subj-${activeTest.id}-${activeTest.syllabus_subject ?? ""}`}
+                          defaultValue={activeTest.syllabus_subject ?? activeTest.subject ?? ""}
+                          onBlur={(event) => {
+                            const syllabus_subject = event.target.value.trim();
+                            if (syllabus_subject !== (activeTest.syllabus_subject ?? ""))
+                              updateTest.mutate(
+                                toTestPayload(activeTest, {
+                                  syllabus_subject,
+                                  subject: syllabus_subject,
+                                  generation_subject: syllabus_subject,
+                                  syllabus_chapter: "",
+                                  syllabus_topic: "",
+                                  generation_topic: "Mixed",
+                                }),
+                              );
+                          }}
+                        />
+                        <datalist id="kkcc-syllabus-subjects">
+                          {syllabusSubjects.map((s) => (
+                            <option key={s} value={s} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <Label>Syllabus chapter</Label>
+                        <Input
+                          list="kkcc-syllabus-chapters"
+                          className="mt-1.5"
+                          placeholder="e.g. Life Processes"
+                          key={`chap-${activeTest.id}-${activeTest.syllabus_chapter ?? ""}`}
+                          defaultValue={activeTest.syllabus_chapter ?? ""}
+                          onBlur={(event) => {
+                            const syllabus_chapter = event.target.value.trim();
+                            if (syllabus_chapter !== (activeTest.syllabus_chapter ?? ""))
+                              updateTest.mutate(toTestPayload(activeTest, { syllabus_chapter }));
+                          }}
+                        />
+                        <datalist id="kkcc-syllabus-chapters">
+                          {syllabusChapters.map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <Label>Syllabus topic</Label>
+                        <Input
+                          list="kkcc-syllabus-topics"
+                          className="mt-1.5"
+                          placeholder="e.g. Nutrition"
+                          key={`top-${activeTest.id}-${activeTest.syllabus_topic ?? ""}`}
+                          defaultValue={activeTest.syllabus_topic ?? ""}
+                          onBlur={(event) => {
+                            const syllabus_topic = event.target.value.trim();
+                            if (syllabus_topic !== (activeTest.syllabus_topic ?? ""))
+                              updateTest.mutate(toTestPayload(activeTest, { syllabus_topic }));
+                          }}
+                        />
+                        <datalist id="kkcc-syllabus-topics">
+                          {syllabusTopics.map((t) => (
+                            <option key={t} value={t} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <Label>Duration (minutes)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="mt-1.5"
+                          defaultValue={activeTest.duration_minutes}
+                          onBlur={(event) => {
+                            const duration_minutes = Number(event.target.value || 0);
+                            if (duration_minutes !== activeTest.duration_minutes) {
+                              updateTest.mutate(toTestPayload(activeTest, { duration_minutes }));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Oriented for (exam)</Label>
+                        <Input
+                          className="mt-1.5"
+                          placeholder="e.g. Punjab PCS, PSSSB, UPSC CSE"
+                          defaultValue={activeTest.exam_track ?? ""}
+                          onBlur={(event) => {
+                            const exam_track = event.target.value.trim();
+                            if (exam_track !== (activeTest.exam_track ?? "")) {
+                              updateTest.mutate(toTestPayload(activeTest, { exam_track }));
+                            }
+                          }}
+                        />
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Shown on the test card so students know the paper is for them.
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Series name</Label>
+                        <Input
+                          className="mt-1.5"
+                          placeholder="e.g. Punjab PCS Prelims Power Series"
+                          defaultValue={activeTest.series_name ?? ""}
+                          onBlur={(event) => {
+                            const series_name = event.target.value.trim();
+                            if (series_name !== (activeTest.series_name ?? "")) {
+                              updateTest.mutate(toTestPayload(activeTest, { series_name }));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Level</Label>
+                        <select
+                          className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={
+                            activeTest.level === "Easy" ||
+                            activeTest.level === "Moderate" ||
+                            activeTest.level === "Difficult"
+                              ? activeTest.level
+                              : "Mixed"
+                          }
+                          onChange={(event) => {
+                            const level = event.target.value as TestPayload["level"];
+                            updateTest.mutate(toTestPayload(activeTest, { level }));
+                          }}
+                        >
+                          <option value="Easy">Level 1 — Easy</option>
+                          <option value="Moderate">Level 2 — Moderate</option>
+                          <option value="Difficult">Level 3 — Difficult</option>
+                          <option value="Mixed">Mixed (full-length paper)</option>
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Students attempt a series in this order: Easy, then Moderate, then
+                          Difficult.
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Price in rupees</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="mt-1.5"
+                          defaultValue={activeTest.price_inr ?? 0}
+                          onBlur={(event) => {
+                            const price_inr = Number(event.target.value || 0);
+                            if (price_inr !== (activeTest.price_inr ?? 0)) {
+                              updateTest.mutate(toTestPayload(activeTest, { price_inr }));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Price in Kit 2 Coins</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="mt-1.5"
+                          defaultValue={activeTest.price_coins ?? 0}
+                          onBlur={(event) => {
+                            const price_coins = Number(event.target.value || 0);
+                            if (price_coins !== (activeTest.price_coins ?? 0)) {
+                              updateTest.mutate(toTestPayload(activeTest, { price_coins }));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col justify-end">
+                        <Label className="mb-1.5">Access</Label>
+                        <Button
+                          variant={activeTest.is_paid ? "outline" : "default"}
+                          className="rounded-full"
+                          disabled={setFree.isPending}
+                          onClick={() =>
+                            setFree.mutate({ id: activeTest.id, free: activeTest.is_paid })
+                          }
+                        >
+                          {setFree.isPending ? (
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          ) : activeTest.is_paid ? (
+                            <Unlock className="mr-1.5 h-4 w-4" />
+                          ) : (
+                            <Lock className="mr-1.5 h-4 w-4" />
+                          )}
+                          {activeTest.is_paid ? "Make this free" : "Make this paid"}
+                        </Button>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {activeTest.is_paid
+                            ? "Paid: only students you have granted access can open it."
+                            : "Free: opens directly for everyone, like a free course. No payment step."}
+                        </p>
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <Button
+                          variant={activeTest.is_published ? "secondary" : "default"}
+                          className="rounded-full"
+                          onClick={() =>
+                            updateTest.mutate(
+                              toTestPayload(activeTest, { is_published: !activeTest.is_published }),
+                            )
+                          }
+                        >
+                          {activeTest.is_published ? "Unpublish" : "Publish"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-full text-destructive"
+                          onClick={() => setConfirmDeleteTest(activeTest.id)}
+                        >
+                          <Trash2 className="mr-1.5 h-4 w-4" /> Delete test
+                        </Button>
                       </div>
                     </div>
-                    <label className="text-xs font-semibold">
-                      Level
-                      <select
-                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
-                        value={pullLevel}
-                        onChange={(e) =>
-                          setPullLevel(
-                            e.target.value as "Easy" | "Moderate" | "Difficult" | "Mixed",
-                          )
-                        }
-                      >
-                        <option value="Difficult">Difficult — High-Yield / exam oriented</option>
-                        <option value="Moderate">Moderate — practice</option>
-                        <option value="Easy">Easy — foundation</option>
-                        <option value="Mixed">Mixed — all three levels</option>
-                      </select>
-                    </label>
-                    <div className="flex items-end">
-                      <Button
-                        className="w-full rounded-full"
-                        disabled={!pullSubject || pull.isPending}
-                        onClick={() =>
-                          pull.mutate({
-                            data: {
-                              test_id: activeTest.id,
-                              exam: pullExam,
-                              subject: pullSubject,
-                              topic: pullTopic,
-                              difficulty: pullLevel,
-                              count: Math.max(1, Math.min(200, Number(pullCount || 20))),
-                              marks: 1,
-                              negative_marks: 0,
-                            },
-                          })
-                        }
-                      >
-                        {pull.isPending
-                          ? "Configuring…"
-                          : `Set Up (${Math.max(1, Math.min(200, Number(pullCount || 20)))} Questions)`}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                {/* write / edit a question + bulk paste */}
-                <div className="rounded-3xl border bg-background/60 p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        {draft?.id ? "Edit question" : "Write or Paste Your Own Questions"}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        Mode:{" "}
-                        <strong>
-                          {activeTest.question_source === "manual"
-                            ? "Only Your Custom Questions (Manual)"
-                            : "Your Custom Questions First + Auto Bank Fill"}
-                        </strong>
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant={activeTest.question_source === "manual" ? "default" : "outline"}
-                        className="rounded-full text-xs"
-                        onClick={() =>
-                          updateTest.mutate(
-                            toTestPayload(activeTest, {
-                              question_source:
-                                activeTest.question_source === "manual"
-                                  ? "deterministic"
-                                  : "manual",
-                            }),
-                          )
-                        }
-                      >
-                        {activeTest.question_source === "manual"
-                          ? "Mode: Only My Questions"
-                          : "Switch to Only My Questions"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={showBulkPaste ? "secondary" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setShowBulkPaste((v) => !v)}
-                      >
-                        <ClipboardList className="mr-1.5 h-4 w-4" />
-                        {showBulkPaste ? "Close Bulk Paste" : "Bulk Paste MCQs"}
-                      </Button>
-                      {draft ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full"
-                          onClick={() => setDraft(null)}
-                        >
-                          <X className="mr-1.5 h-4 w-4" /> Cancel
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="rounded-full"
-                          onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
-                        >
-                          <Plus className="mr-1.5 h-4 w-4" /> Add question
-                        </Button>
-                      )}
-                    </div>
                   </div>
 
-                  {showBulkPaste ? (
-                    <div className="mb-4 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-xs font-bold">
-                          {bulkStep === 1
-                            ? "Step 1 of 2 · Paste MCQs (question + explanation)"
-                            : `Step 2 of 2 · Preview & publish — ${approvedQuestions.length} question${approvedQuestions.length === 1 ? "" : "s"}`}
+                  <OfflineAccessPanel testId={activeTest.id} isPaid={activeTest.is_paid} />
+
+                  {/* Fill the paper from the question bank instead of typing
+                    every question by hand. Everything pulled stays editable. */}
+                  <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold">
+                          Pull from Question Bank (Priority #1 to Your Added &amp; AI Questions)
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Choose the exam, subject, chapter, level, and any question count (e.g. 10,
+                          20, 30, 60, 100). Questions you added or generated with AI in the Question
+                          Bank always get <strong>First Preference</strong>, and the rest fill from
+                          the template bank.
                         </p>
-                        <div className="flex items-center gap-2 text-xs">
-                          <label className="flex items-center gap-1">
-                            Marks:
-                            <input
-                              type="number"
-                              min={1}
-                              value={bulkMarks}
-                              onChange={(e) => setBulkMarks(e.target.value)}
-                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
-                            />
-                          </label>
-                          <label className="flex items-center gap-1">
-                            Negative:
-                            <input
-                              type="number"
-                              min={0}
-                              value={bulkNegativeMarks}
-                              onChange={(e) => setBulkNegativeMarks(e.target.value)}
-                              className="w-14 rounded border bg-background px-2 py-1 text-xs"
-                            />
-                          </label>
+                      </div>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full font-bold"
+                      >
+                        <Link to="/admin/exam-bank">
+                          Open Question Bank (Templates + My Questions + AI)
+                        </Link>
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <label className="text-xs font-semibold">
+                        Exam
+                        <select
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                          value={pullExam}
+                          onChange={(e) => {
+                            setPullExam(e.target.value);
+                            setPullSubject("");
+                            setPullTopic("Mixed");
+                          }}
+                        >
+                          {BANK_EXAMS.map((x) => (
+                            <option key={x} value={x}>
+                              {x}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-semibold">
+                        Subject
+                        <select
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                          value={pullSubject}
+                          onChange={(e) => {
+                            setPullSubject(e.target.value);
+                            setPullTopic("Mixed");
+                          }}
+                        >
+                          <option value="">Choose a subject</option>
+                          {pullSubjects.map((x) => (
+                            <option key={x} value={x}>
+                              {x}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-semibold">
+                        Chapter
+                        <select
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                          value={pullTopic}
+                          onChange={(e) => setPullTopic(e.target.value)}
+                        >
+                          <option value="Mixed">All chapters mixed</option>
+                          {pullTopics.map((x) => (
+                            <option key={x} value={x}>
+                              {x}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="text-xs font-semibold">
+                        <span>How many questions (1–200)</span>
+                        <Input
+                          className="mt-1"
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={pullCount}
+                          onChange={(e) => setPullCount(e.target.value)}
+                        />
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {[10, 15, 20, 25, 30, 50, 60, 100].map((num) => (
+                            <button
+                              key={num}
+                              type="button"
+                              onClick={() => setPullCount(String(num))}
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[10px] font-bold transition",
+                                Number(pullCount) === num
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "bg-background hover:border-primary/50",
+                              )}
+                            >
+                              {num}
+                            </button>
+                          ))}
                         </div>
                       </div>
+                      <label className="text-xs font-semibold">
+                        Level
+                        <select
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal"
+                          value={pullLevel}
+                          onChange={(e) =>
+                            setPullLevel(
+                              e.target.value as "Easy" | "Moderate" | "Difficult" | "Mixed",
+                            )
+                          }
+                        >
+                          <option value="Difficult">Difficult — High-Yield / exam oriented</option>
+                          <option value="Moderate">Moderate — practice</option>
+                          <option value="Easy">Easy — foundation</option>
+                          <option value="Mixed">Mixed — all three levels</option>
+                        </select>
+                      </label>
+                      <div className="flex items-end">
+                        <Button
+                          className="w-full rounded-full"
+                          disabled={!pullSubject || pull.isPending}
+                          onClick={() =>
+                            pull.mutate({
+                              data: {
+                                test_id: activeTest.id,
+                                exam: pullExam,
+                                subject: pullSubject,
+                                topic: pullTopic,
+                                difficulty: pullLevel,
+                                count: Math.max(1, Math.min(200, Number(pullCount || 20))),
+                                marks: 1,
+                                negative_marks: 0,
+                              },
+                            })
+                          }
+                        >
+                          {pull.isPending
+                            ? "Configuring…"
+                            : `Set Up (${Math.max(1, Math.min(200, Number(pullCount || 20)))} Questions)`}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {/* write / edit a question + bulk paste */}
+                  <div className="rounded-3xl border bg-background/60 p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold">
+                          {draft?.id ? "Edit question" : "Write or Paste Your Own Questions"}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Mode:{" "}
+                          <strong>
+                            {activeTest.question_source === "manual"
+                              ? "Only Your Custom Questions (Manual)"
+                              : "Your Custom Questions First + Auto Bank Fill"}
+                          </strong>
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant={activeTest.question_source === "manual" ? "default" : "outline"}
+                          className="rounded-full text-xs"
+                          onClick={() =>
+                            updateTest.mutate(
+                              toTestPayload(activeTest, {
+                                question_source:
+                                  activeTest.question_source === "manual"
+                                    ? "deterministic"
+                                    : "manual",
+                              }),
+                            )
+                          }
+                        >
+                          {activeTest.question_source === "manual"
+                            ? "Mode: Only My Questions"
+                            : "Switch to Only My Questions"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={showBulkPaste ? "secondary" : "outline"}
+                          className="rounded-full"
+                          onClick={() => setShowBulkPaste((v) => !v)}
+                        >
+                          <ClipboardList className="mr-1.5 h-4 w-4" />
+                          {showBulkPaste ? "Close Bulk Paste" : "Bulk Paste MCQs"}
+                        </Button>
+                        {draft ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-full"
+                            onClick={() => setDraft(null)}
+                          >
+                            <X className="mr-1.5 h-4 w-4" /> Cancel
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="rounded-full"
+                            onClick={() => setDraft(emptyDraft(activeTest.subject ?? ""))}
+                          >
+                            <Plus className="mr-1.5 h-4 w-4" /> Add question
+                          </Button>
+                        )}
+                      </div>
+                    </div>
 
-                      {bulkStep === 1 ? (
-                        <>
-                          <Textarea
-                            rows={7}
-                            value={bulkText}
-                            onChange={(e) => setBulkText(e.target.value)}
-                            placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
-                            className="font-mono text-xs"
-                          />
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              size="sm"
-                              className="rounded-full font-bold"
-                              disabled={!bulkText.trim()}
-                              onClick={openBulkPreview}
-                            >
-                              <ArrowRight className="mr-1.5 h-4 w-4" />
-                              Preview questions (1/2)
-                            </Button>
-                            <span className="text-[11px] text-muted-foreground">
-                              {bulkText.trim()
-                                ? `${parseBulkMcqText(bulkText).length} question(s) detected — preview ke baad hi publish hoga.`
-                                : "Paste karke Preview dabayein. Explanation likhne par wahi explanation student ko dikhegi."}
-                            </span>
+                    {showBulkPaste ? (
+                      <div className="mb-4 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold">
+                            {bulkStep === 1
+                              ? "Step 1 of 2 · Paste MCQs (question + explanation)"
+                              : `Step 2 of 2 · Preview & publish — ${approvedQuestions.length} question${approvedQuestions.length === 1 ? "" : "s"}`}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <label className="flex items-center gap-1">
+                              Marks:
+                              <input
+                                type="number"
+                                min={1}
+                                value={bulkMarks}
+                                onChange={(e) => setBulkMarks(e.target.value)}
+                                className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1">
+                              Negative:
+                              <input
+                                type="number"
+                                min={0}
+                                value={bulkNegativeMarks}
+                                onChange={(e) => setBulkNegativeMarks(e.target.value)}
+                                className="w-14 rounded border bg-background px-2 py-1 text-xs"
+                              />
+                            </label>
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                            <Badge variant="secondary" className="rounded-full">
-                              {approvedQuestions.length} selected
-                            </Badge>
-                            <Badge variant="outline" className="rounded-full">
-                              {
-                                approvedQuestions.filter((q) => q.explanation_source === "paste")
-                                  .length
-                              }{" "}
-                              explanation aapki
-                            </Badge>
-                            {missingExplanations > 0 ? (
-                              <Badge variant="destructive" className="rounded-full">
-                                {missingExplanations} me explanation nahi — auto banegi
-                              </Badge>
-                            ) : null}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 rounded-full px-2 text-[11px]"
-                              onClick={() => setBulkStep(1)}
-                            >
-                              <ArrowLeft className="mr-1 h-3 w-3" />
-                              Edit paste
-                            </Button>
-                          </div>
+                        </div>
 
-                          <div className="max-h-[26rem] space-y-3 overflow-y-auto pr-1">
-                            {bulkPreview.map((question, index) => (
-                              <div
-                                key={`bulk-${index}`}
-                                className="rounded-xl border bg-background/80 p-3"
+                        {bulkStep === 1 ? (
+                          <>
+                            <Textarea
+                              rows={7}
+                              value={bulkText}
+                              onChange={(e) => setBulkText(e.target.value)}
+                              placeholder={`Q1. With which words does the Preamble to the Indian Constitution begin?\nA) We, the People of India\nB) In the Name of Parliament\nC) By Order of the President\nD) We, the Citizens of India\nAnswer: A\nExplanation: The Preamble begins with 'We, the People of India'.`}
+                              className="font-mono text-xs"
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="rounded-full font-bold"
+                                disabled={!bulkText.trim()}
+                                onClick={openBulkPreview}
                               >
-                                <div className="flex items-start justify-between gap-2">
-                                  <label className="flex items-start gap-2 text-xs font-bold">
-                                    <input
-                                      type="checkbox"
-                                      className="mt-0.5 h-3.5 w-3.5 accent-primary"
-                                      checked={bulkPreviewChecked[index] !== false}
-                                      onChange={(event) =>
-                                        setBulkPreviewChecked((current) =>
-                                          current.map((value, position) =>
-                                            position === index ? event.target.checked : value,
-                                          ),
-                                        )
-                                      }
-                                    />
-                                    Q{index + 1}
-                                  </label>
-                                  <div className="flex items-center gap-1">
-                                    {question.explanation_source === "paste" ? (
-                                      <Badge
-                                        variant="secondary"
-                                        className="rounded-full text-[10px]"
-                                      >
-                                        Your explanation
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="outline" className="rounded-full text-[10px]">
-                                        Auto explanation
-                                      </Badge>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 rounded-full p-0"
-                                      onClick={() =>
-                                        setBulkPreview((current) =>
-                                          current.filter((_, position) => position !== index),
-                                        )
-                                      }
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <Textarea
-                                  rows={2}
-                                  className="mt-2 text-xs"
-                                  value={question.question_text}
-                                  onChange={(event) =>
-                                    patchPreview(index, { question_text: event.target.value })
-                                  }
-                                />
-                                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                                  {question.options.map((option, optionPosition) => (
-                                    <label
-                                      key={`opt-${index}-${optionPosition}`}
-                                      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
-                                        question.correct_index === optionPosition
-                                          ? "border-emerald-500 bg-emerald-500/10 font-bold"
-                                          : ""
-                                      }`}
-                                    >
+                                <ArrowRight className="mr-1.5 h-4 w-4" />
+                                Preview questions (1/2)
+                              </Button>
+                              <span className="text-[11px] text-muted-foreground">
+                                {bulkText.trim()
+                                  ? `${parseBulkMcqText(bulkText).length} question(s) detected — preview ke baad hi publish hoga.`
+                                  : "Paste karke Preview dabayein. Explanation likhne par wahi explanation student ko dikhegi."}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                              <Badge variant="secondary" className="rounded-full">
+                                {approvedQuestions.length} selected
+                              </Badge>
+                              <Badge variant="outline" className="rounded-full">
+                                {
+                                  approvedQuestions.filter((q) => q.explanation_source === "paste")
+                                    .length
+                                }{" "}
+                                explanation aapki
+                              </Badge>
+                              {missingExplanations > 0 ? (
+                                <Badge variant="destructive" className="rounded-full">
+                                  {missingExplanations} me explanation nahi — auto banegi
+                                </Badge>
+                              ) : null}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 rounded-full px-2 text-[11px]"
+                                onClick={() => setBulkStep(1)}
+                              >
+                                <ArrowLeft className="mr-1 h-3 w-3" />
+                                Edit paste
+                              </Button>
+                            </div>
+
+                            <div className="max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+                              {bulkPreview.map((question, index) => (
+                                <div
+                                  key={`bulk-${index}`}
+                                  className="rounded-xl border bg-background/80 p-3"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <label className="flex items-start gap-2 text-xs font-bold">
                                       <input
-                                        type="radio"
-                                        name={`answer-${index}`}
-                                        className="h-3.5 w-3.5"
-                                        checked={question.correct_index === optionPosition}
-                                        onChange={() =>
-                                          patchPreview(index, { correct_index: optionPosition })
-                                        }
-                                      />
-                                      <span className="shrink-0 text-muted-foreground">
-                                        {String.fromCharCode(65 + optionPosition)}.
-                                      </span>
-                                      <input
-                                        className="min-w-0 flex-1 bg-transparent outline-none"
-                                        value={option}
+                                        type="checkbox"
+                                        className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                                        checked={bulkPreviewChecked[index] !== false}
                                         onChange={(event) =>
-                                          patchPreview(index, {
-                                            options: question.options.map((value, position) =>
-                                              position === optionPosition
-                                                ? event.target.value
-                                                : value,
+                                          setBulkPreviewChecked((current) =>
+                                            current.map((value, position) =>
+                                              position === index ? event.target.checked : value,
                                             ),
-                                          })
+                                          )
                                         }
                                       />
+                                      Q{index + 1}
                                     </label>
-                                  ))}
-                                </div>
-                                <div className="mt-2">
-                                  <div className="mb-1 flex items-center justify-between">
-                                    <Label className="text-[11px]">
-                                      Explanation (student isse dekhega)
-                                    </Label>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 rounded-full px-2 text-[10px]"
-                                      onClick={() =>
-                                        patchPreview(index, {
-                                          explanation: buildFallbackExplanation(
-                                            question,
-                                            activeTest?.subject ?? "",
-                                          ),
-                                          explanation_source: "auto",
-                                        })
-                                      }
-                                    >
-                                      <Sparkles className="mr-1 h-3 w-3" />
-                                      Generate
-                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                      {question.explanation_source === "paste" ? (
+                                        <Badge
+                                          variant="secondary"
+                                          className="rounded-full text-[10px]"
+                                        >
+                                          Your explanation
+                                        </Badge>
+                                      ) : (
+                                        <Badge
+                                          variant="outline"
+                                          className="rounded-full text-[10px]"
+                                        >
+                                          Auto explanation
+                                        </Badge>
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 rounded-full p-0"
+                                        onClick={() =>
+                                          setBulkPreview((current) =>
+                                            current.filter((_, position) => position !== index),
+                                          )
+                                        }
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
                                   </div>
                                   <Textarea
                                     rows={2}
-                                    className="text-xs"
-                                    value={question.explanation}
-                                    placeholder="Explanation paste karein ya Generate dabayein"
+                                    className="mt-2 text-xs"
+                                    value={question.question_text}
                                     onChange={(event) =>
-                                      patchPreview(index, {
-                                        explanation: event.target.value,
-                                        explanation_source: event.target.value.trim()
-                                          ? "paste"
-                                          : "auto",
-                                      })
+                                      patchPreview(index, { question_text: event.target.value })
                                     }
                                   />
+                                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                                    {question.options.map((option, optionPosition) => (
+                                      <label
+                                        key={`opt-${index}-${optionPosition}`}
+                                        className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs ${
+                                          question.correct_index === optionPosition
+                                            ? "border-emerald-500 bg-emerald-500/10 font-bold"
+                                            : ""
+                                        }`}
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`answer-${index}`}
+                                          className="h-3.5 w-3.5"
+                                          checked={question.correct_index === optionPosition}
+                                          onChange={() =>
+                                            patchPreview(index, { correct_index: optionPosition })
+                                          }
+                                        />
+                                        <span className="shrink-0 text-muted-foreground">
+                                          {String.fromCharCode(65 + optionPosition)}.
+                                        </span>
+                                        <input
+                                          className="min-w-0 flex-1 bg-transparent outline-none"
+                                          value={option}
+                                          onChange={(event) =>
+                                            patchPreview(index, {
+                                              options: question.options.map((value, position) =>
+                                                position === optionPosition
+                                                  ? event.target.value
+                                                  : value,
+                                              ),
+                                            })
+                                          }
+                                        />
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <div className="mt-2">
+                                    <div className="mb-1 flex items-center justify-between">
+                                      <Label className="text-[11px]">
+                                        Explanation (student isse dekhega)
+                                      </Label>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 rounded-full px-2 text-[10px]"
+                                        onClick={() =>
+                                          patchPreview(index, {
+                                            explanation: buildFallbackExplanation(
+                                              question,
+                                              activeTest?.subject ?? "",
+                                            ),
+                                            explanation_source: "auto",
+                                          })
+                                        }
+                                      >
+                                        <Sparkles className="mr-1 h-3 w-3" />
+                                        Generate
+                                      </Button>
+                                    </div>
+                                    <Textarea
+                                      rows={2}
+                                      className="text-xs"
+                                      value={question.explanation}
+                                      placeholder="Explanation paste karein ya Generate dabayein"
+                                      onChange={(event) =>
+                                        patchPreview(index, {
+                                          explanation: event.target.value,
+                                          explanation_source: event.target.value.trim()
+                                            ? "paste"
+                                            : "auto",
+                                        })
+                                      }
+                                    />
+                                  </div>
                                 </div>
+                              ))}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                className="rounded-full font-bold"
+                                disabled={!approvedQuestions.length || bulkAdd.isPending}
+                                onClick={() =>
+                                  bulkAdd.mutate({ switchToManual: true, publish: true })
+                                }
+                              >
+                                {bulkAdd.isPending ? (
+                                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                                )}
+                                Next → Publish ({approvedQuestions.length}) · Use Only My Questions
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-full font-bold"
+                                disabled={!approvedQuestions.length || bulkAdd.isPending}
+                                onClick={() =>
+                                  bulkAdd.mutate({ switchToManual: false, publish: true })
+                                }
+                              >
+                                Next → Publish ({approvedQuestions.length}) · Keep Auto Bank Fill
+                              </Button>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Jab tak Next → Publish na dabayein, test me kuch add nahi hota. Jo
+                              preview me dikh raha hai, bilkul wahi questions aur explanation
+                              publish honge.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {draft ? (
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Question</Label>
+                          <Textarea
+                            rows={3}
+                            className="mt-1.5"
+                            placeholder="e.g. The Constitution of India came into force on which date?"
+                            value={draft.question_text}
+                            onChange={(event) =>
+                              setDraft({ ...draft, question_text: event.target.value })
+                            }
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="mb-1.5 block">
+                            Options — tap the circle to mark the correct answer
+                          </Label>
+                          <div className="space-y-2">
+                            {draft.options.map((option, index) => (
+                              <div key={index} className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  aria-label={`Mark option ${OPTION_LABELS[index]} correct`}
+                                  onClick={() => setDraft({ ...draft, correct_index: index })}
+                                  className={cn(
+                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition",
+                                    draft.correct_index === index
+                                      ? "border-emerald-500 bg-emerald-500 text-white"
+                                      : "hover:border-primary",
+                                  )}
+                                >
+                                  {draft.correct_index === index ? (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  ) : (
+                                    OPTION_LABELS[index]
+                                  )}
+                                </button>
+                                <Input
+                                  placeholder={`Option ${OPTION_LABELS[index]}`}
+                                  value={option}
+                                  onChange={(event) => {
+                                    const options = [...draft.options];
+                                    options[index] = event.target.value;
+                                    setDraft({ ...draft, options });
+                                  }}
+                                />
+                                {draft.options.length > 2 ? (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={`Remove option ${OPTION_LABELS[index]}`}
+                                    onClick={() => {
+                                      const options = draft.options.filter((_, i) => i !== index);
+                                      setDraft({
+                                        ...draft,
+                                        options,
+                                        correct_index:
+                                          draft.correct_index >= options.length
+                                            ? 0
+                                            : draft.correct_index,
+                                      });
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
                               </div>
                             ))}
                           </div>
+                          {draft.options.length < 6 ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="mt-2 rounded-full"
+                              onClick={() =>
+                                setDraft({ ...draft, options: [...draft.options, ""] })
+                              }
+                            >
+                              <Plus className="mr-1.5 h-4 w-4" /> Add option
+                            </Button>
+                          ) : null}
+                        </div>
 
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              className="rounded-full font-bold"
-                              disabled={!approvedQuestions.length || bulkAdd.isPending}
-                              onClick={() =>
-                                bulkAdd.mutate({ switchToManual: true, publish: true })
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <Label>Subject tag</Label>
+                            <Input
+                              className="mt-1.5"
+                              value={draft.subject}
+                              onChange={(event) =>
+                                setDraft({ ...draft, subject: event.target.value })
                               }
-                            >
-                              {bulkAdd.isPending ? (
-                                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                              )}
-                              Next → Publish ({approvedQuestions.length}) · Use Only My Questions
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full font-bold"
-                              disabled={!approvedQuestions.length || bulkAdd.isPending}
-                              onClick={() =>
-                                bulkAdd.mutate({ switchToManual: false, publish: true })
-                              }
-                            >
-                              Next → Publish ({approvedQuestions.length}) · Keep Auto Bank Fill
-                            </Button>
+                            />
                           </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            Jab tak Next → Publish na dabayein, test me kuch add nahi hota. Jo
-                            preview me dikh raha hai, bilkul wahi questions aur explanation publish
-                            honge.
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  ) : null}
+                          <div>
+                            <Label>Marks</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="mt-1.5"
+                              value={draft.marks}
+                              onChange={(event) =>
+                                setDraft({ ...draft, marks: Number(event.target.value || 0) })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Negative marks</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="mt-1.5"
+                              value={draft.negative_marks}
+                              onChange={(event) =>
+                                setDraft({
+                                  ...draft,
+                                  negative_marks: Number(event.target.value || 0),
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
 
-                  {draft ? (
-                    <div className="space-y-4">
-                      <div>
-                        <Label>Question</Label>
-                        <Textarea
-                          rows={3}
-                          className="mt-1.5"
-                          placeholder="e.g. The Constitution of India came into force on which date?"
-                          value={draft.question_text}
-                          onChange={(event) =>
-                            setDraft({ ...draft, question_text: event.target.value })
-                          }
-                        />
+                        <div>
+                          <Label>Explanation (shown after submit)</Label>
+                          <Textarea
+                            rows={2}
+                            className="mt-1.5"
+                            placeholder="Why this answer is correct."
+                            value={draft.explanation}
+                            onChange={(event) =>
+                              setDraft({ ...draft, explanation: event.target.value })
+                            }
+                          />
+                        </div>
+
+                        <Button
+                          className="rounded-full"
+                          onClick={submitDraft}
+                          disabled={saveQuestion.isPending}
+                        >
+                          {saveQuestion.isPending ? (
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="mr-1.5 h-4 w-4" />
+                          )}
+                          {draft.id ? "Save changes" : "Add to test"}
+                        </Button>
                       </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Tap <strong>Add question</strong> to write a new MCQ for this test.
+                      </p>
+                    )}
+                  </div>
 
-                      <div>
-                        <Label className="mb-1.5 block">
-                          Options — tap the circle to mark the correct answer
-                        </Label>
-                        <div className="space-y-2">
-                          {draft.options.map((option, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                aria-label={`Mark option ${OPTION_LABELS[index]} correct`}
-                                onClick={() => setDraft({ ...draft, correct_index: index })}
-                                className={cn(
-                                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition",
-                                  draft.correct_index === index
-                                    ? "border-emerald-500 bg-emerald-500 text-white"
-                                    : "hover:border-primary",
-                                )}
-                              >
-                                {draft.correct_index === index ? (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                ) : (
-                                  OPTION_LABELS[index]
-                                )}
-                              </button>
-                              <Input
-                                placeholder={`Option ${OPTION_LABELS[index]}`}
-                                value={option}
-                                onChange={(event) => {
-                                  const options = [...draft.options];
-                                  options[index] = event.target.value;
-                                  setDraft({ ...draft, options });
-                                }}
-                              />
-                              {draft.options.length > 2 ? (
+                  {/* existing questions */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">
+                      Questions in this test ({questions.length})
+                    </h3>
+                    {questionsQuery.isLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading questions…</p>
+                    ) : questions.length === 0 ? (
+                      <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                        No question written yet for this test.
+                      </p>
+                    ) : (
+                      <ol className="space-y-3">
+                        {questions.map((question, index) => (
+                          <li key={question.id} className="rounded-3xl border bg-background/60 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium">
+                                {index + 1}. {question.question_text}
+                              </p>
+                              <div className="flex shrink-0 items-center gap-1">
                                 <Button
-                                  type="button"
                                   size="icon"
                                   variant="ghost"
-                                  aria-label={`Remove option ${OPTION_LABELS[index]}`}
-                                  onClick={() => {
-                                    const options = draft.options.filter((_, i) => i !== index);
-                                    setDraft({
-                                      ...draft,
-                                      options,
-                                      correct_index:
-                                        draft.correct_index >= options.length
-                                          ? 0
-                                          : draft.correct_index,
-                                    });
-                                  }}
+                                  aria-label="Move up"
+                                  disabled={index === 0}
+                                  onClick={() => move(index, -1)}
                                 >
-                                  <X className="h-4 w-4" />
+                                  <ChevronUp className="h-4 w-4" />
                                 </Button>
-                              ) : null}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Move down"
+                                  disabled={index === questions.length - 1}
+                                  onClick={() => move(index, 1)}
+                                >
+                                  <ChevronDown className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="Correct question, options, answer and explanation (including generated questions)"
+                                  aria-label="Edit question"
+                                  onClick={() => startEdit(question)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Delete question"
+                                  className="text-destructive"
+                                  onClick={() => setConfirmDeleteQuestion(question.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                        {draft.options.length < 6 ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="mt-2 rounded-full"
-                            onClick={() => setDraft({ ...draft, options: [...draft.options, ""] })}
-                          >
-                            <Plus className="mr-1.5 h-4 w-4" /> Add option
-                          </Button>
-                        ) : null}
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <Label>Subject tag</Label>
-                          <Input
-                            className="mt-1.5"
-                            value={draft.subject}
-                            onChange={(event) =>
-                              setDraft({ ...draft, subject: event.target.value })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Marks</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            className="mt-1.5"
-                            value={draft.marks}
-                            onChange={(event) =>
-                              setDraft({ ...draft, marks: Number(event.target.value || 0) })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Negative marks</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            className="mt-1.5"
-                            value={draft.negative_marks}
-                            onChange={(event) =>
-                              setDraft({
-                                ...draft,
-                                negative_marks: Number(event.target.value || 0),
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label>Explanation (shown after submit)</Label>
-                        <Textarea
-                          rows={2}
-                          className="mt-1.5"
-                          placeholder="Why this answer is correct."
-                          value={draft.explanation}
-                          onChange={(event) =>
-                            setDraft({ ...draft, explanation: event.target.value })
-                          }
-                        />
-                      </div>
-
-                      <Button
-                        className="rounded-full"
-                        onClick={submitDraft}
-                        disabled={saveQuestion.isPending}
-                      >
-                        {saveQuestion.isPending ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-1.5 h-4 w-4" />
-                        )}
-                        {draft.id ? "Save changes" : "Add to test"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Tap <strong>Add question</strong> to write a new MCQ for this test.
-                    </p>
-                  )}
-                </div>
-
-                {/* existing questions */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold">
-                    Questions in this test ({questions.length})
-                  </h3>
-                  {questionsQuery.isLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading questions…</p>
-                  ) : questions.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                      No question written yet for this test.
-                    </p>
-                  ) : (
-                    <ol className="space-y-3">
-                      {questions.map((question, index) => (
-                        <li key={question.id} className="rounded-3xl border bg-background/60 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="text-sm font-medium">
-                              {index + 1}. {question.question_text}
+                            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                              {question.options.map((option, optionIndex) => (
+                                <li
+                                  key={optionIndex}
+                                  className={cn(
+                                    "rounded-xl border px-3 py-1.5 text-xs",
+                                    optionIndex === question.correct_index
+                                      ? "border-emerald-500/60 bg-emerald-500/10 font-semibold"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  {OPTION_LABELS[optionIndex]}) {option}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-[11px] text-muted-foreground">
+                              +{question.marks} / -{question.negative_marks}
+                              {question.explanation ? ` · ${question.explanation}` : ""}
                             </p>
-                            <div className="flex shrink-0 items-center gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                aria-label="Move up"
-                                disabled={index === 0}
-                                onClick={() => move(index, -1)}
-                              >
-                                <ChevronUp className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                aria-label="Move down"
-                                disabled={index === questions.length - 1}
-                                onClick={() => move(index, 1)}
-                              >
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Correct question, options, answer and explanation (including generated questions)"
-                                aria-label="Edit question"
-                                onClick={() => startEdit(question)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                aria-label="Delete question"
-                                className="text-destructive"
-                                onClick={() => setConfirmDeleteQuestion(question.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-                            {question.options.map((option, optionIndex) => (
-                              <li
-                                key={optionIndex}
-                                className={cn(
-                                  "rounded-xl border px-3 py-1.5 text-xs",
-                                  optionIndex === question.correct_index
-                                    ? "border-emerald-500/60 bg-emerald-500/10 font-semibold"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {OPTION_LABELS[optionIndex]}) {option}
-                              </li>
-                            ))}
-                          </ul>
-                          <p className="mt-2 text-[11px] text-muted-foreground">
-                            +{question.marks} / -{question.negative_marks}
-                            {question.explanation ? ` · ${question.explanation}` : ""}
-                          </p>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              </>
-            )}
-          </section>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
         </div>
       </div>
 
