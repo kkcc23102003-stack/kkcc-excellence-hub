@@ -1751,9 +1751,15 @@ Easy and Advanced workflows remain available. See `TEST-FOLDERS-GUIDE-HINDI.md`.
 Apply **KKCC-Excellence-Hub-TEST-FOLDERS.sql** once (includes previous Publish Fix),
 then redeploy. Folder paths are in a service-only Supabase table; questions remain
 saved manual test snapshots, not an imported template bank. No production migration
-was executed. Combined papers are independent, with max 50 source sets / 200 unique
-questions and explicit preview + confirm before publish.
+was executed. Combined papers are independent, without a fixed own-question count quota; hosting resource limits still apply. Questions and explicit preview + confirm before publish.
 
-The expandable accordion update reuses the installed Test Folders SQL; no additional migration is required.
+The large-question update requires `KKCC-Excellence-Hub-TEST-SCALE-FIX.sql` on an existing Test Folders installation. Latest combined Test Folders and Production SQL include it.
 
 Series-first workflow: Continue → Subjects → Save subject → Chapters → save chapter list → Topics / Skip → paste MCQ text → preview → save/publish. Empty series drafts persist only after their first subject is saved.
+
+## Own-question scale and Advanced publish repair
+- Fixed partial-setting validation injecting default manual mode/prices/recipe values into unrelated edits.
+- Manual add/edit/paste selects manual-only; bank setup must be explicit. Strict generated subject aliases do not infer other subjects from arbitrary names.
+- Removed 200 own-question, 50 child-list/source-set and 1000 answer-count caps. There is no product count quota on authored folders/MCQs; platform memory, request, timeout and storage constraints still apply. Per-field validity limits remain. Generated-bank count/coverage limits remain explicit.
+- Reads page past Supabase row caps; list writes use repeat-safe batches. Easy previews show 25/page; Advanced saved questions show 50/page.
+- Verified: **101 unit/database tests and the complete 80-test browser suite passed**, including a 1001-question paid manual paper and a bank-to-manual transition. See `docs/audit/TEST-SCALE-2026-10-05.md`.

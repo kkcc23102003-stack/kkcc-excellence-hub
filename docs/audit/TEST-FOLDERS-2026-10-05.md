@@ -1,3 +1,5 @@
+> Historical accordion/series-first report. Superseded for current limits and verification by TEST-SCALE-2026-10-05.md.
+
 # Test folder organiser — verification
 
 ## Current change verification

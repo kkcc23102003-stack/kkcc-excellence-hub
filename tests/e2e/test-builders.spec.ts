@@ -239,6 +239,9 @@ test("Advanced bank recipe keeps exam/subject/chapter and admin count through st
   await page.getByRole("button", { name: "New test", exact: true }).click();
   const settings = page.getByTestId("advanced-test-settings");
   await expect(settings.getByLabel("Test title", { exact: true })).toHaveValue("New test");
+  const bankTitle = `Bank isolation ${stamp}`;
+  await settings.getByLabel("Test title", { exact: true }).fill(bankTitle);
+  await settings.getByLabel("Test title", { exact: true }).press("Tab");
   await page.getByRole("combobox", { name: "Exam", exact: true }).selectOption("NEET");
   await page.getByRole("combobox", { name: "Subject", exact: true }).selectOption("Physics");
   const chapter = page.getByRole("combobox", { name: "Chapter", exact: true });
@@ -251,8 +254,9 @@ test("Advanced bank recipe keeps exam/subject/chapter and admin count through st
     page.getByText("3 fresh questions configured — 0 question rows saved"),
   ).toBeVisible();
   await expect(settings.getByLabel("Subject", { exact: true })).toHaveValue("Physics");
-  const publish = settings.getByRole("button", { name: "Publish", exact: true });
-  if (await publish.isVisible()) await publish.click();
+  const unpublish = settings.getByRole("button", { name: "Unpublish", exact: true });
+  if (await unpublish.isVisible()) await unpublish.click();
+  await settings.getByRole("button", { name: "Publish", exact: true }).click();
   await expect(settings.getByRole("button", { name: "Unpublish", exact: true })).toBeVisible();
   const id = await settings.getAttribute("data-test-id");
   await page.goto(`/tests/learn/${id}`);
@@ -266,4 +270,97 @@ test("Advanced bank recipe keeps exam/subject/chapter and admin count through st
   await page.getByTestId("answer-option").first().click();
   await page.getByRole("button", { name: "Submit Test", exact: true }).last().click();
   await expect(page.getByRole("heading", { name: "Result", exact: true })).toBeVisible();
+  // Authoring a question on an old bank recipe must disable automatic bank fill.
+  await page.goto("/admin/tests");
+  await page.getByRole("button", { name: "Advanced — existing setup" }).click();
+  await page.getByRole("button", { name: new RegExp(bankTitle) }).click();
+  await page.getByRole("button", { name: "Add question", exact: true }).click();
+  await page
+    .getByLabel("Question text", { exact: true })
+    .fill("Which is my own force unit question?");
+  for (const [label, value] of [
+    ["A", "Newton"],
+    ["B", "Joule"],
+    ["C", "Watt"],
+    ["D", "Pascal"],
+  ])
+    await page.getByPlaceholder(`Option ${label}`, { exact: true }).fill(value!);
+  await page.getByRole("button", { name: "Add to test", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Mode: Only My Questions", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("admin-test-question")).toHaveCount(1);
+  await page.goto(`/tests/learn/${id}`);
+  await page.getByTestId("learning-subject").filter({ hasText: "Physics" }).click();
+  await page.getByTestId("learning-chapter").filter({ hasText: selected }).click();
+  await page.getByTestId("start-test").click();
+  await expect(page.getByTestId("test-question")).toContainText(
+    "Which is my own force unit question?",
+  );
+});
+
+test("1001 own MCQs preview in pages, publish intact, reload in Advanced and preserve paid settings", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  await login(page);
+  await page.goto("/admin/tests");
+  const editor = page.getByTestId("easy-test-builder");
+  const title = `Large own Maths ${Date.now()}`;
+  await editor.getByLabel("Subject", { exact: true }).fill("Mathematics");
+  await editor.getByLabel("Chapter", { exact: true }).fill("Addition");
+  await editor.getByLabel("Test title (optional)").fill(title);
+  await editor.getByRole("radio", { name: "Paid", exact: true }).check();
+  await editor.getByLabel("Price (₹)", { exact: true }).fill("99");
+  await editor
+    .getByLabel("Your question text")
+    .fill(
+      Array.from(
+        { length: 1001 },
+        (_, i) =>
+          `Q${i + 1}. What is ${i} plus 1?\nA) ${i + 1}\nB) ${i + 2}\nAnswer: A\nExplanation: Own explanation ${i}.`,
+      ).join("\n\n"),
+    );
+  await editor.getByRole("button", { name: /Preview questions/ }).click();
+  await expect(editor.getByText(/1001 questions ready/)).toBeVisible();
+  await expect(editor.getByLabel("Q26 explanation", { exact: true })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Next questions", exact: true }).click();
+  await editor.getByLabel("Q26 explanation", { exact: true }).fill("Edited on page two.");
+  await editor.getByRole("button", { name: "Next → Review publish", exact: true }).click();
+  await editor.getByRole("checkbox").check();
+  await editor.getByRole("button", { name: "Publish my test", exact: true }).click();
+  const settings = page.getByTestId("advanced-test-settings");
+  await expect(settings.getByLabel("Test title", { exact: true })).toHaveValue(title);
+  await expect(
+    page.getByRole("heading", { name: "Questions in this test (1001)", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId("admin-test-question")).toHaveCount(50);
+  await expect(page.getByTestId("admin-test-question").nth(25)).toContainText(
+    "Edited on page two.",
+  );
+  await page.getByRole("button", { name: "Last saved questions", exact: true }).click();
+  await expect(page.getByTestId("admin-test-question")).toHaveCount(1);
+  if (await page.getByRole("button", { name: "Last saved questions", exact: true }).isEnabled())
+    await page.getByRole("button", { name: "Last saved questions", exact: true }).click();
+  await expect(page.getByTestId("admin-test-question").last()).toContainText(
+    "What is 1000 plus 1?",
+  );
+  await settings.getByRole("button", { name: "Unpublish", exact: true }).click();
+  await settings.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(settings.getByRole("button", { name: "Unpublish", exact: true })).toBeVisible();
+  await expect(settings.getByLabel("Price in rupees", { exact: true })).toHaveValue("99");
+  await page.reload();
+  await page.getByRole("button", { name: "Advanced — existing setup" }).click();
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(
+    page.getByRole("heading", { name: "Questions in this test (1001)", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId("admin-test-question")).toHaveCount(50);
+  await page.getByRole("button", { name: "Last saved questions", exact: true }).click();
+  await expect(page.getByTestId("admin-test-question")).toHaveCount(1);
+  if (await page.getByRole("button", { name: "Last saved questions", exact: true }).isEnabled())
+    await page.getByRole("button", { name: "Last saved questions", exact: true }).click();
+  await expect(page.getByTestId("admin-test-question").last()).toContainText(
+    "What is 1000 plus 1?",
+  );
 });

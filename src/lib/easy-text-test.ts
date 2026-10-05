@@ -17,7 +17,7 @@ export const easyTestSchema = z
   .object({
     publish: z.boolean().default(true),
     topic: z.string().trim().max(120).default(""),
-    assembly_source_ids: z.array(z.string().uuid()).max(50).default([]),
+    assembly_source_ids: z.array(z.string().uuid()).default([]),
     is_paid: z.boolean().default(false),
     price_inr: z.number().int().min(0).max(100000).default(0),
     price_coins: z.number().int().min(0).max(1000000).default(0),
@@ -27,7 +27,7 @@ export const easyTestSchema = z
     chapter: z.string().trim().min(1).max(120),
     series_name: z.string().trim().max(120).default(""),
     duration_minutes: z.number().int().min(1).max(300),
-    questions: z.array(easyQuestionSchema).min(1).max(200),
+    questions: z.array(easyQuestionSchema).min(1),
   })
   .superRefine((test, ctx) => {
     if (test.is_paid && test.price_inr <= 0 && test.price_coins <= 0)

@@ -57,15 +57,17 @@ badalne par uski folder location update hoti hai. Empty folder metadata alag reh
 - Same question/options/answer/explanation duplicate ho toh ek copy rakhi jaati hai.
   Answer/explanation conflict par error; koi answer silently choose nahi hota.
 - Different subject/series mix nahi hote. Unrelated bank auto-fill nahi hota.
-- Limit: 50 original sets / 200 unique questions per combined paper. Extra content
-  silently cut nahi hota; limit cross hone par fewer sets select karne ko kahega.
+- Subject/chapter/topic aur own-question counts par fixed product quota nahi hai.
+- 50-name list, 50-source combination aur 200-question caps removed hain. Lists 100-row write batches mein save hoti hain; large reads paginated hain.
+- Easy preview mein 25 questions/page aur Advanced saved list mein 50/page dikhte hain. Ye display pages hain, question-count limits nahi.
+- Hosting memory, storage, request-size aur timeout limits phir bhi apply hoti hain. Bahut bade paste ko chhote saved sets mein same chapter ke andar save karo; app unrelated bank fill nahi karega.
 
 Series name yahan grouping label hai, paid catalogue bundle/enrollment product
 banane ka shortcut nahi. Students existing test cards se published tests open karte
 hain; admin folder tree student permissions bypass nahi karta.
 
 ## One-time Supabase setup
-Accordion UI ke liye **koi naya SQL nahi**. Neeche wala SQL pehle run kiya hai toh dobara zaroori nahi.
+**Large-question update ke liye SQL required hai.** Pehle Test Folders setup installed hai toh `KKCC-Excellence-Hub-TEST-SCALE-FIX.sql` run karo. Nayi installation ke liye latest combined Test Folders file use karo; usmein scale fix included hai.
 **KKCC-Excellence-Hub-TEST-FOLDERS.sql** SQL Editor mein run karo, phir updated app
 redeploy karo. Is file mein previous Notes + Publish Fix bhi included hai; alag
 Cleaner run karne ki zaroorat nahi. Back up first. Service-role key server-only rahe.
@@ -78,3 +80,8 @@ Production SQL/deployment assistant ne execute nahi ki.
 Combined paper Easy scoring defaults use karta hai: 1 mark/question, no negative
 marking. Source sets ke marks/prices/timers automatically copy nahi hote; combined
 paper ki settings preview aur Advanced mein check/edit karo.
+
+## Advanced publish aur bank-mixing repair
+Advanced partial updates ab sirf aapke changed fields save karte hain—bank/manual mode, price aur generation recipe default values se reset nahi hote.
+Apna question add/edit ya bulk paste karne se test **Only My Questions** mode mein aata hai. Auto-bank generation ke liye separately Set Up button use karo; paste-publish par Keep Auto Bank Fill option hata diya hai.
+Generated bank papers exact subject/chapter/exam aur documented aliases tak scoped hain. Unknown/custom subject ko dusre subject se silently fill nahi kiya jayega.

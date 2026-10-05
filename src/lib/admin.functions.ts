@@ -1,15 +1,10 @@
-import { getExamBankExams, getExamBankTopicsForExam } from "@/lib/exam-bank";
+import { testSchema, parseTestSettingsPatch } from "./test-settings";
+import { getExamBankExams } from "@/lib/exam-bank";
 import {
   generateCustomSyllabusPaper,
-  generateOnDemandTestPaper,
   isLegacyScienceFallbackForNonScienceSubject,
 } from "@/lib/generated-test";
-import {
-  allExamSubjects,
-  CUSTOM_SERIES_CATALOG_KEY,
-  readCustomSeriesCatalog,
-  unwrap,
-} from "@/lib/learning.server";
+import { CUSTOM_SERIES_CATALOG_KEY, readCustomSeriesCatalog, unwrap } from "@/lib/learning.server";
 import {
   getChapterQuestionCount,
   getCustomChapterConfig,
@@ -420,39 +415,6 @@ export const deleteMaterial = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-const testSchema = z.object({
-  id: z.string().uuid().optional(),
-  course_id: z.string().uuid().nullable().optional(),
-  lecture_id: z.string().uuid().nullable().optional(),
-  title: z.string().trim().min(2).max(200),
-  instructions: z.string().trim().max(4000),
-  subject: z.string().trim().max(80),
-  duration_minutes: z.number().int().min(0).max(1000),
-  question_timer_seconds: z.number().int().min(0).max(7200).default(0),
-  timer_mode: z.enum(["test", "question", "unlimited"]).default("test"),
-  questions_count: z.number().int().min(0).max(1000),
-  total_marks: z.number().int().min(0).max(10000),
-  is_published: z.boolean(),
-  sort_order: z.number().int().min(0).max(10000),
-  // Paid test series fields. Every test states the exam it is oriented for
-  // and which rung of the Easy/Moderate/Difficult ladder it sits on.
-  exam_track: z.string().trim().max(80).default(""),
-  level: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).default("Mixed"),
-  series_name: z.string().trim().max(120).default(""),
-  is_paid: z.boolean().default(false),
-  price_inr: z.number().int().min(0).max(100000).default(0),
-  price_coins: z.number().int().min(0).max(1000000).default(0),
-  question_source: z.enum(["manual", "deterministic"]).default("manual"),
-  generation_exam: z.string().trim().max(80).default("All Exams"),
-  generation_subject: z.string().trim().max(80).default(""),
-  generation_topic: z.string().trim().max(160).default("Mixed"),
-  generation_difficulty: z.enum(["Easy", "Moderate", "Difficult", "Mixed"]).default("Difficult"),
-  generation_count: z.number().int().min(0).max(1000).default(0),
-  syllabus_subject: z.string().trim().max(120).default(""),
-  syllabus_chapter: z.string().trim().max(200).default(""),
-  syllabus_topic: z.string().trim().max(240).default(""),
-});
-
 async function persistTest(
   data: z.infer<typeof testSchema>,
   context: AdminContext,
@@ -482,13 +444,21 @@ async function persistTest(
       data.generation_topic && data.generation_topic !== "Mixed"
         ? data.generation_topic
         : data.syllabus_chapter || data.generation_topic || "Mixed";
-    const subjects = targetSubject ? [targetSubject] : allExamSubjects(exam);
-    const hasExactBank = subjects.some((subject) => {
-      const topics = getExamBankTopicsForExam(subject, exam);
-      return targetTopic === "Mixed" ? topics.length > 0 : topics.includes(targetTopic);
+    const count = data.generation_count || data.questions_count;
+    const preview = generateCustomSyllabusPaper({
+      exam,
+      subject: targetSubject,
+      topic: targetTopic,
+      difficulty: data.generation_difficulty,
+      count,
+      marks: 1,
+      negative_marks: 0,
+      seed: `publish:${data.id || "new"}`,
     });
-    if (!hasExactBank) {
-      throw new Error("No mapped subject/chapter questions are available for this recipe.");
+    if (preview.length < count) {
+      throw new Error(
+        `Only ${preview.length} matching bank questions are available for this subject/chapter. Lower the target or use your own questions; unrelated questions will not be added.`,
+      );
     }
   }
   if (data.is_published && data.question_source === "manual") {
@@ -529,7 +499,7 @@ export const saveTest = createServerFn({ method: "POST" })
 /** Update only fields changed by the admin, so overlapping blur saves cannot erase each other. */
 export const patchTestSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((input: unknown) => testSchema.partial().required({ id: true }).parse(input))
+  .validator(parseTestSettingsPatch)
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { id, ...changes } = data;
@@ -655,7 +625,7 @@ const testQuestionSchema = z.object({
   marks: z.number().int().min(0).max(100).default(4),
   negative_marks: z.number().int().min(0).max(100).default(1),
   explanation: z.string().trim().max(4000).default(""),
-  sort_order: z.number().int().min(0).max(10000).default(0),
+  sort_order: z.number().int().min(0).default(0),
 });
 
 /** Every test with its course title, newest first. */
@@ -756,6 +726,14 @@ export const saveTestQuestion = createServerFn({ method: "POST" })
           .select("*")
           .single();
     if (error) throw new Error(error.message);
+    const mode = await projectContent
+      .from("tests")
+      .update({ question_source: "manual" })
+      .eq("id", data.test_id);
+    if (mode.error)
+      throw new Error(
+        `Question saved, but switching to manual failed: ${mode.error.message}. Do not re-add; switch to Only My Questions.`,
+      );
     await syncTestQuestionStats(data.test_id);
     return row;
   });
@@ -787,7 +765,7 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
         subject: z.string().trim().max(80).default(""),
         marks: z.number().int().min(1).max(100).default(4),
         negative_marks: z.number().int().min(0).max(100).default(1),
-        text: z.string().trim().min(5).max(100000),
+        text: z.string().trim().min(5),
         /**
          * The exact rows the admin approved in the preview step. When present
          * these are published verbatim — the pasted text is only the fallback.
@@ -803,7 +781,6 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
               negative_marks: z.number().int().min(0).max(100).optional(),
             }),
           )
-          .max(300)
           .optional(),
         switchToManual: z.boolean().optional(),
         publish: z.boolean().default(false),
@@ -851,7 +828,7 @@ export const bulkAddTestQuestions = createServerFn({ method: "POST" })
     const saved = await projectContent
       .from("tests")
       .update({
-        ...(data.switchToManual ? { question_source: "manual" as const } : {}),
+        question_source: "manual" as const,
         ...(data.publish ? { is_published: true } : {}),
         updated_at: new Date().toISOString(),
       })
@@ -875,7 +852,7 @@ export const reorderTestQuestions = createServerFn({ method: "POST" })
     z
       .object({
         test_id: z.string().uuid(),
-        ids: z.array(z.string().uuid()).max(1000),
+        ids: z.array(z.string().uuid()),
       })
       .parse(input),
   )
@@ -929,7 +906,7 @@ export const adminSaveSeriesOverride = createServerFn({ method: "POST" })
         summary: z.string().trim().min(10).max(2000).nullable().optional(),
         price_inr: z.number().int().min(0).max(100000).nullable().optional(),
         price_coins: z.number().int().min(0).max(10000000).nullable().optional(),
-        sort_order: z.number().int().min(0).max(10000).nullable().optional(),
+        sort_order: z.number().int().min(0).nullable().optional(),
       })
       .parse(input),
   )
@@ -1502,7 +1479,7 @@ export const adminBulkImportCustomChapterQuestions = createServerFn({ method: "P
         mode: z.enum(["custom_only", "custom_plus_bank"]).optional(),
         marks: z.number().int().min(0).max(100).optional().default(1),
         negative_marks: z.number().int().min(0).max(100).optional().default(0),
-        text: z.string().trim().min(5).max(100000),
+        text: z.string().trim().min(5),
       })
       .parse(input),
   )
@@ -1834,9 +1811,7 @@ function synthesizeQuestionsFromPromptAndBank(input: {
       negative_marks: input.negative_marks,
       seed: `ai-gen:${Date.now()}:${input.subject}:${input.chapter}:${input.prompt.slice(0, 40)}`,
     };
-    const strictPaper = isPreamble ? [] : generateOnDemandTestPaper(recipe);
-    const candidates =
-      strictPaper.length >= needed ? strictPaper : generateCustomSyllabusPaper(recipe);
+    const candidates = generateCustomSyllabusPaper(recipe);
 
     for (const cand of candidates) {
       if (results.length >= input.count) break;

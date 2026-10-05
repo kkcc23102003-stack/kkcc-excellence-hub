@@ -62,6 +62,9 @@ export function EasyTextTestBuilder({
   const [topic, setTopic] = useState(initial.topic || "");
   const [sourceIds, setSourceIds] = useState(initial.assembly_source_ids || []);
   const [questions, setQuestions] = useState<EasyQuestion[] | null>(null);
+  const [previewPage, setPreviewPage] = useState(0);
+  const pageStart =
+    Math.min(previewPage, Math.max(0, Math.ceil((questions?.length || 0) / 25) - 1)) * 25;
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,6 +110,7 @@ export function EasyTextTestBuilder({
     }
     setId(next.id);
     setQuestions(result.questions);
+    setPreviewPage(0);
     setStep(2);
   };
   const submit = async (shouldPublish = true) => {
@@ -285,7 +289,6 @@ export function EasyTextTestBuilder({
             <Textarea
               aria-label="Your question text"
               rows={14}
-              maxLength={500000}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={EXAMPLE}
@@ -300,53 +303,80 @@ export function EasyTextTestBuilder({
             {questions?.length} questions ready. Question, answer aur explanation check/edit kar lo.
           </p>
           <div className="max-h-[65vh] space-y-4 overflow-auto">
-            {questions?.map((q, index) => (
-              <div key={index} className="space-y-2 rounded-xl border p-3">
-                <label>
-                  Q{index + 1}
-                  <Textarea
-                    value={q.question_text}
-                    onChange={(e) => patch(index, { question_text: e.target.value })}
-                  />
-                </label>
-                {q.options.map((option, oi) => (
-                  <label key={oi} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`${editorId}-answer-${index}`}
-                      aria-label={`Q${index + 1} correct answer ${String.fromCharCode(65 + oi)}`}
-                      checked={q.correct_index === oi}
-                      onChange={() => patch(index, { correct_index: oi })}
-                    />
-                    <span>{String.fromCharCode(65 + oi)}</span>
-                    <Input
-                      aria-label={`Q${index + 1} option ${oi + 1}`}
-                      value={option}
-                      onChange={(e) =>
-                        patch(index, {
-                          options: q.options.map((o, i) => (i === oi ? e.target.value : o)),
-                        })
-                      }
+            {questions?.slice(pageStart, pageStart + 25).map((q, offset) => {
+              const index = pageStart + offset;
+              return (
+                <div key={index} className="space-y-2 rounded-xl border p-3">
+                  <label>
+                    Q{index + 1}
+                    <Textarea
+                      value={q.question_text}
+                      onChange={(e) => patch(index, { question_text: e.target.value })}
                     />
                   </label>
-                ))}
-                <label>
-                  Explanation
-                  <Textarea
-                    aria-label={`Q${index + 1} explanation`}
-                    value={q.explanation}
-                    onChange={(e) => patch(index, { explanation: e.target.value })}
-                  />
-                </label>
-                <Button
-                  variant="outline"
-                  onClick={() => setQuestions((current) => current!.filter((_, i) => i !== index))}
-                >
-                  Remove Q{index + 1}
-                </Button>
-              </div>
-            ))}
+                  {q.options.map((option, oi) => (
+                    <label key={oi} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name={`${editorId}-answer-${index}`}
+                        aria-label={`Q${index + 1} correct answer ${String.fromCharCode(65 + oi)}`}
+                        checked={q.correct_index === oi}
+                        onChange={() => patch(index, { correct_index: oi })}
+                      />
+                      <span>{String.fromCharCode(65 + oi)}</span>
+                      <Input
+                        aria-label={`Q${index + 1} option ${oi + 1}`}
+                        value={option}
+                        onChange={(e) =>
+                          patch(index, {
+                            options: q.options.map((o, i) => (i === oi ? e.target.value : o)),
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    Explanation
+                    <Textarea
+                      aria-label={`Q${index + 1} explanation`}
+                      value={q.explanation}
+                      onChange={(e) => patch(index, { explanation: e.target.value })}
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setQuestions((current) => current!.filter((_, i) => i !== index))
+                    }
+                  >
+                    Remove Q{index + 1}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
+          {(questions?.length || 0) > 25 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                disabled={pageStart === 0}
+                onClick={() => setPreviewPage(pageStart / 25 - 1)}
+              >
+                Previous questions
+              </Button>
+              <span>
+                Questions {pageStart + 1}–{Math.min(pageStart + 25, questions!.length)} of{" "}
+                {questions!.length}
+              </span>
+              <Button
+                variant="outline"
+                disabled={pageStart + 25 >= questions!.length}
+                onClick={() => setPreviewPage(pageStart / 25 + 1)}
+              >
+                Next questions
+              </Button>
+            </div>
+          )}
           <Button variant="outline" onClick={() => setStep(1)}>
             Back to paste
           </Button>{" "}

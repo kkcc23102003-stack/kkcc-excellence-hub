@@ -11,14 +11,13 @@ export const publishEasyTextTest = createServerFn({ method: "POST" })
       _role: "admin",
     });
     if (role.error || !role.data) throw new Error("Admin access required");
-    if (data.assembly_source_ids.length) {
-      const sources = await projectContent
-        .from("tests")
-        .select("*")
-        .in("id", data.assembly_source_ids);
+    const sourceIds = [...new Set(data.assembly_source_ids)];
+    for (let offset = 0; offset < sourceIds.length; offset += 50) {
+      const batch = sourceIds.slice(offset, offset + 50);
+      const sources = await projectContent.from("tests").select("*").in("id", batch);
       if (sources.error) throw new Error(sources.error.message);
       if (
-        sources.data.length !== new Set(data.assembly_source_ids).size ||
+        sources.data.length !== batch.length ||
         sources.data.some(
           (test) =>
             (test.syllabus_subject || test.subject) !== data.subject ||

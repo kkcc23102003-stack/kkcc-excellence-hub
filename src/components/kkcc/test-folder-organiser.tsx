@@ -466,15 +466,17 @@ export function TestFolderOrganiser({
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Complete/combined tests use only your selected original sets (max 50 sets / 200 unique
-        questions), without bank auto-fill. Existing saved subjects, chapters, topics and tests are
+        No fixed subject/chapter/topic or own-question count quota. Large chapter/topic lists save
+        in batches. Complete/combined tests use only your selected original sets, without bank
+        auto-fill. Very large pastes remain subject to server memory/request limits; save smaller
+        sets in the same chapter if needed. Existing saved subjects, chapters, topics and tests are
         retained.
       </p>
       <details className="rounded border p-3 text-xs">
         <summary>Setup help</summary>
         <p>
-          Same existing Test Folders SQL—no new SQL for this accordion update. Series name is a
-          grouping label, not a new paid catalogue bundle.
+          Run the latest Test Folders SQL for the large-question update. Series name is a grouping
+          label, not a new paid catalogue bundle.
         </p>
         <a href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download className="underline">
           Download Test Folders SQL if not installed yet

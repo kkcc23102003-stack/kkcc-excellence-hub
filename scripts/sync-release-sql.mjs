@@ -7,6 +7,7 @@ const files = [
   "EASY-TESTS",
   "PUBLISH-FIX",
   "TEST-FOLDERS",
+  "TEST-SCALE-FIX",
 ].map((name) => `KKCC-Excellence-Hub-${name}.sql`);
 for (const name of files) {
   if (process.argv.includes("--check")) {

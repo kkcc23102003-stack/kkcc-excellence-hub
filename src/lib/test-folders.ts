@@ -85,10 +85,6 @@ export function combineOwnQuestions(sources: { test: FolderTest; questions: Easy
     }
   }
   if (!seen.size) throw new Error("Selected folders have no questions yet.");
-  if (seen.size > 200)
-    throw new Error(
-      `${seen.size} questions selected; maximum 200 per test. Select fewer sets. Nothing was truncated.`,
-    );
   return { questions: [...seen.values()], duplicates };
 }
 
@@ -106,7 +102,7 @@ export function parseOutlineNames(text: string): string[] {
 export const childListSchema = z
   .object({
     parent: folderPathSchema,
-    names: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
+    names: z.array(z.string().trim().min(1).max(120)).min(1),
   })
   .refine((data) => !data.parent.topic, "Topics cannot contain another topic level.");
 export function childListPaths(parent: FolderPath, names: string[]): FolderPath[] {

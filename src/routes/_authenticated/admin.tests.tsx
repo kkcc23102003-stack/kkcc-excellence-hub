@@ -327,6 +327,12 @@ function TestQuestionWriter() {
   });
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
+  const [questionPages, setQuestionPages] = useState<Record<string, number>>({});
+  const lastQuestionPage = Math.max(0, Math.ceil(questions.length / 50) - 1);
+  const questionPage = Math.min(questionPages[activeTestId || ""] || 0, lastQuestionPage);
+  const questionStart = questionPage * 50;
+  const setQuestionPage = (page: number) =>
+    setQuestionPages((current) => ({ ...current, [activeTestId || ""]: page }));
 
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["admin", "tests"] });
@@ -1166,14 +1172,12 @@ function TestQuestionWriter() {
                         <Button
                           size="sm"
                           variant={activeTest.question_source === "manual" ? "default" : "outline"}
+                          disabled={activeTest.question_source === "manual" || updateTest.isPending}
                           className="rounded-full text-xs"
                           onClick={() =>
                             updateTest.mutate(
                               toTestPayload(activeTest, {
-                                question_source:
-                                  activeTest.question_source === "manual"
-                                    ? "deterministic"
-                                    : "manual",
+                                question_source: "manual",
                               }),
                             )
                           }
@@ -1455,17 +1459,6 @@ function TestQuestionWriter() {
                                 )}
                                 Next → Publish ({approvedQuestions.length}) · Use Only My Questions
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-full font-bold"
-                                disabled={!approvedQuestions.length || bulkAdd.isPending}
-                                onClick={() =>
-                                  bulkAdd.mutate({ switchToManual: false, publish: true })
-                                }
-                              >
-                                Next → Publish ({approvedQuestions.length}) · Keep Auto Bank Fill
-                              </Button>
                             </div>
                             <p className="text-[11px] text-muted-foreground">
                               Jab tak Next → Publish na dabayein, test me kuch add nahi hota. Jo
@@ -1648,6 +1641,41 @@ function TestQuestionWriter() {
                     <h3 className="text-sm font-semibold">
                       Questions in this test ({questions.length})
                     </h3>
+                    {questions.length > 50 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={!questionPage}
+                          onClick={() => setQuestionPage(0)}
+                        >
+                          First saved questions
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={!questionPage}
+                          onClick={() => setQuestionPage(questionPage - 1)}
+                        >
+                          Previous saved questions
+                        </Button>
+                        <span>
+                          Page {questionPage + 1} of {lastQuestionPage + 1}
+                        </span>
+                        <Button
+                          variant="outline"
+                          disabled={questionPage === lastQuestionPage}
+                          onClick={() => setQuestionPage(questionPage + 1)}
+                        >
+                          Next saved questions
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={questionPage === lastQuestionPage}
+                          onClick={() => setQuestionPage(lastQuestionPage)}
+                        >
+                          Last saved questions
+                        </Button>
+                      </div>
+                    )}
                     {questionsQuery.isLoading ? (
                       <p className="text-sm text-muted-foreground">Loading questions…</p>
                     ) : questions.length === 0 ? (
@@ -1656,96 +1684,101 @@ function TestQuestionWriter() {
                       </p>
                     ) : (
                       <ol className="space-y-3">
-                        {questions.map((question, index) => (
-                          <li
-                            key={question.id}
-                            data-testid="admin-test-question"
-                            className="rounded-3xl border bg-background/60 p-4"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-sm font-medium">
-                                {index + 1}. {question.question_text}
-                              </p>
-                              <div className="flex shrink-0 items-center gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Move up"
-                                  disabled={
-                                    index === 0 ||
-                                    saveQuestion.isPending ||
-                                    moveQuestion.isPending ||
-                                    bulkAdd.isPending
-                                  }
-                                  onClick={() => move(index, -1)}
-                                >
-                                  <ChevronUp className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Move down"
-                                  disabled={
-                                    index === questions.length - 1 ||
-                                    saveQuestion.isPending ||
-                                    moveQuestion.isPending ||
-                                    bulkAdd.isPending
-                                  }
-                                  onClick={() => move(index, 1)}
-                                >
-                                  <ChevronDown className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  title="Correct question, options, answer and explanation (including generated questions)"
-                                  aria-label="Edit question"
-                                  disabled={
-                                    saveQuestion.isPending ||
-                                    moveQuestion.isPending ||
-                                    bulkAdd.isPending
-                                  }
-                                  onClick={() => startEdit(question)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Delete question"
-                                  disabled={
-                                    saveQuestion.isPending ||
-                                    moveQuestion.isPending ||
-                                    bulkAdd.isPending
-                                  }
-                                  className="text-destructive"
-                                  onClick={() => setConfirmDeleteQuestion(question.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-                              {question.options.map((option, optionIndex) => (
-                                <li
-                                  key={optionIndex}
-                                  className={cn(
-                                    "rounded-xl border px-3 py-1.5 text-xs",
-                                    optionIndex === question.correct_index
-                                      ? "border-emerald-500/60 bg-emerald-500/10 font-semibold"
-                                      : "text-muted-foreground",
-                                  )}
-                                >
-                                  {OPTION_LABELS[optionIndex]}) {option}
-                                </li>
-                              ))}
-                            </ul>
-                            <p className="mt-2 text-[11px] text-muted-foreground">
-                              +{question.marks} / -{question.negative_marks}
-                              {question.explanation ? ` · ${question.explanation}` : ""}
-                            </p>
-                          </li>
-                        ))}
+                        {questions
+                          .slice(questionStart, questionStart + 50)
+                          .map((question, offset) => {
+                            const index = questionStart + offset;
+                            return (
+                              <li
+                                key={question.id}
+                                data-testid="admin-test-question"
+                                className="rounded-3xl border bg-background/60 p-4"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <p className="text-sm font-medium">
+                                    {index + 1}. {question.question_text}
+                                  </p>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label="Move up"
+                                      disabled={
+                                        index === 0 ||
+                                        saveQuestion.isPending ||
+                                        moveQuestion.isPending ||
+                                        bulkAdd.isPending
+                                      }
+                                      onClick={() => move(index, -1)}
+                                    >
+                                      <ChevronUp className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label="Move down"
+                                      disabled={
+                                        index === questions.length - 1 ||
+                                        saveQuestion.isPending ||
+                                        moveQuestion.isPending ||
+                                        bulkAdd.isPending
+                                      }
+                                      onClick={() => move(index, 1)}
+                                    >
+                                      <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      title="Correct question, options, answer and explanation (including generated questions)"
+                                      aria-label="Edit question"
+                                      disabled={
+                                        saveQuestion.isPending ||
+                                        moveQuestion.isPending ||
+                                        bulkAdd.isPending
+                                      }
+                                      onClick={() => startEdit(question)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label="Delete question"
+                                      disabled={
+                                        saveQuestion.isPending ||
+                                        moveQuestion.isPending ||
+                                        bulkAdd.isPending
+                                      }
+                                      className="text-destructive"
+                                      onClick={() => setConfirmDeleteQuestion(question.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                                  {question.options.map((option, optionIndex) => (
+                                    <li
+                                      key={optionIndex}
+                                      className={cn(
+                                        "rounded-xl border px-3 py-1.5 text-xs",
+                                        optionIndex === question.correct_index
+                                          ? "border-emerald-500/60 bg-emerald-500/10 font-semibold"
+                                          : "text-muted-foreground",
+                                      )}
+                                    >
+                                      {OPTION_LABELS[optionIndex]}) {option}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="mt-2 text-[11px] text-muted-foreground">
+                                  +{question.marks} / -{question.negative_marks}
+                                  {question.explanation ? ` · ${question.explanation}` : ""}
+                                </p>
+                              </li>
+                            );
+                          })}
                       </ol>
                     )}
                   </div>

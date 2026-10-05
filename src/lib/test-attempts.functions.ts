@@ -1,3 +1,4 @@
+import { testAnswersSchema as responses } from "./test-answer-schema";
 import { randomUUID } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -17,10 +18,6 @@ const selection = z.object({
 const attemptId = z.object({
   attempt_id: z.string().uuid(),
 });
-
-const responses = z
-  .record(z.string().max(300), z.number().int().min(0).max(5))
-  .refine((values) => Object.keys(values).length <= 1000, "Too many answers.");
 
 const answerMap = (value: unknown) => responses.parse(value ?? {});
 

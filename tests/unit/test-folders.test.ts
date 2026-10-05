@@ -67,18 +67,17 @@ test("combine only one subject, preserve answers/explanations, remove exact dupl
       combineOwnQuestions([source, { test: base, questions: [{ ...question, correct_index: 0 }] }]),
     /different answer/,
   );
-  assert.throws(
-    () =>
-      combineOwnQuestions([
-        {
-          test: base,
-          questions: Array.from({ length: 201 }, (_, i) => ({
-            ...question,
-            question_text: `Unique question ${i}?`,
-          })),
-        },
-      ]),
-    /Nothing was truncated/,
+  assert.equal(
+    combineOwnQuestions([
+      {
+        test: base,
+        questions: Array.from({ length: 1201 }, (_, i) => ({
+          ...question,
+          question_text: `Unique question ${i}?`,
+        })),
+      },
+    ]).questions.length,
+    1201,
   );
 });
 test("folder SQL persists topic drafts privately and independently publishes combined snapshots", async () => {
@@ -182,4 +181,51 @@ test("accordion lists accept multiline names and inherit only their selected par
     false,
   );
   assert.equal(childListSchema.safeParse({ parent, names: [] }).success, false);
+});
+
+test("own questions exceed 200 and lists exceed 50 without truncation", async () => {
+  const { easyTestSchema } = await import("../../src/lib/easy-text-test");
+  const { childListSchema } = await import("../../src/lib/test-folders");
+  const data = {
+    id: base.id,
+    title: "Large own paper",
+    subject: "Mathematics",
+    chapter: "Addition",
+    duration_minutes: 30,
+    publish: true,
+    questions: Array.from({ length: 1001 }, (_, i) => ({
+      ...question,
+      question_text: `What is ${i} plus 1?`,
+    })),
+  };
+  assert.equal(easyTestSchema.parse(data).questions.length, 1001);
+  assert.equal(
+    childListSchema.parse({
+      parent: { series_name: "Large", subject: "Mathematics", chapter: "", topic: "" },
+      names: Array.from({ length: 101 }, (_, i) => `Chapter ${i}`),
+    }).names.length,
+    101,
+  );
+  const db = await createFixtureDatabase();
+  try {
+    await seedFixtureUsers(db);
+    await asRole(db, "service_role");
+    await db.query("SELECT public.publish_easy_text_test_v3($1,$2::jsonb)", [
+      fixtureIds.admin,
+      JSON.stringify(data),
+    ]);
+    const count = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM public.kkcc_test_questions WHERE test_id=$1",
+      [data.id],
+    );
+    assert.equal(count.rows[0]!.n, 1001);
+    const test = await db.query<{ questions_count: number; is_published: boolean }>(
+      "SELECT questions_count,is_published FROM public.kkcc_tests WHERE id=$1",
+      [data.id],
+    );
+    assert.equal(test.rows[0]!.questions_count, 1001);
+    assert.equal(test.rows[0]!.is_published, true);
+  } finally {
+    await db.close();
+  }
 });

@@ -2129,6 +2129,32 @@ function buildSynthesizedChapterQuestion(input: {
  * 4. Fills any remaining slots with subject-accurate Easy → Moderate → Difficult questions.
  */
 /** Strict bank-only generation: never invent a paper or relabel another chapter. */
+export function strictBankSubjects(subject: string): string[] {
+  const norm = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+  const available = [...new Set(ACTIVE_TEMPLATES.map((t) => t.subject))];
+  const exact = available.find((s) => norm(s) === norm(subject));
+  if (exact) return [exact];
+  const aliases: Record<string, string[]> = {
+    maths: ["Mathematics"],
+    math: ["Mathematics"],
+    गणित: ["Mathematics"],
+    hindi: ["Hindi Grammar", "Hindi Literature"],
+    हिंदी: ["Hindi Grammar", "Hindi Literature"],
+    punjabi: ["Punjabi Grammar", "Punjabi Literature", "Punjabi Paper A", "Punjabi Paper B"],
+    ਪੰਜਾਬੀ: ["Punjabi Grammar", "Punjabi Literature", "Punjabi Paper A", "Punjabi Paper B"],
+    english: ["English Grammar", "English Language", "English Core"],
+    "social science": ["SST"],
+    "social studies": ["SST"],
+    cdp: ["Teaching Aptitude", "Psychology"],
+    "child development and pedagogy": ["Teaching Aptitude", "Psychology"],
+    gk: ["General Awareness"],
+    "general knowledge": ["General Awareness"],
+    computer: ["Computer Awareness"],
+    computers: ["Computer Awareness"],
+  };
+  return (aliases[norm(subject)] || []).filter((s) => available.includes(s));
+}
+
 export function generateCustomSyllabusPaper(input: {
   exam: string;
   subject: string;
@@ -2149,11 +2175,7 @@ export function generateCustomSyllabusPaper(input: {
   )
     return [];
   const norm = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-  const exact = [...new Set(ACTIVE_TEMPLATES.map((t) => t.subject))].find(
-    (s) => norm(s) === norm(subject),
-  );
-  // Subject aliases may resolve to their own family; chapter words never change the subject.
-  const subjects = exact ? [exact] : resolveCandidateBankSubjects(subject, "");
+  const subjects = strictBankSubjects(subject);
   const pairs = [
     ...new Map(
       ACTIVE_TEMPLATES.filter(

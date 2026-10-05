@@ -8,6 +8,7 @@ import {
   expandFolderPaths,
   combineOwnQuestions,
   type FolderTest,
+  type FolderPath,
 } from "./test-folders";
 import { projectContent } from "./project-content.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -32,9 +33,18 @@ export const listTestFolders = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const db = await admin(context);
-    const result = await db.from("kkcc_test_folders").select("*").order("created_at");
-    check(result.error);
-    return result.data || [];
+    const rows: FolderPath[] = [];
+    for (;;) {
+      const result = await db
+        .from("kkcc_test_folders")
+        .select("*")
+        .order("id")
+        .range(rows.length, rows.length + 499);
+      check(result.error);
+      if (!result.data?.length) break;
+      rows.push(...result.data);
+    }
+    return rows;
   });
 export const createTestFolder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -50,32 +60,37 @@ export const createTestFolder = createServerFn({ method: "POST" })
   });
 export const prepareFolderTest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((input: unknown) =>
-    z.object({ ids: z.array(z.string().uuid()).min(1).max(50) }).parse(input),
-  )
+  .validator((input: unknown) => z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(input))
   .handler(async ({ context, data }) => {
     await admin(context);
-    const tests = await projectContent.from("tests").select("*").in("id", data.ids);
-    check(tests.error);
-    if (new Set(data.ids).size !== tests.data.length)
-      throw new Error("A selected test was deleted. Reload folders.");
-    const questions = await projectContent
-      .from("test_questions")
-      .select("*")
-      .in("test_id", data.ids)
-      .order("sort_order");
-    check(questions.error);
-    const sources = data.ids.map((id) => ({
-      test: tests.data.find((t) => t.id === id)! as FolderTest,
-      questions: questions.data
-        .filter((q) => q.test_id === id)
-        .map((q) => ({
-          question_text: q.question_text,
-          options: q.options,
-          correct_index: q.correct_index,
-          explanation: q.explanation || "",
+    const sources = [];
+    const unique = [...new Set(data.ids)];
+    for (let offset = 0; offset < unique.length; offset += 50) {
+      const batch = unique.slice(offset, offset + 50);
+      const tests = await projectContent.from("tests").select("*").in("id", batch);
+      check(tests.error);
+      if (tests.data.length !== batch.length)
+        throw new Error("A selected test was deleted. Reload folders.");
+      const questions = await projectContent
+        .from("test_questions")
+        .select("*")
+        .in("test_id", batch)
+        .order("sort_order");
+      check(questions.error);
+      sources.push(
+        ...batch.map((id) => ({
+          test: tests.data.find((t) => t.id === id)! as FolderTest,
+          questions: questions.data
+            .filter((q) => q.test_id === id)
+            .map((q) => ({
+              question_text: q.question_text,
+              options: q.options,
+              correct_index: q.correct_index,
+              explanation: q.explanation || "",
+            })),
         })),
-    }));
+      );
+    }
     return { ...combineOwnQuestions(sources), source_ids: data.ids };
   });
 
@@ -86,10 +101,13 @@ export const addTestOutlineList = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const db = await admin(context);
     const paths = childListPaths(data.parent, data.names);
-    const result = await db.from("kkcc_test_folders").upsert(expandFolderPaths(paths), {
-      onConflict: "series_name,subject,chapter,topic",
-      ignoreDuplicates: true,
-    });
-    check(result.error);
+    const rows = expandFolderPaths(paths);
+    for (let offset = 0; offset < rows.length; offset += 100) {
+      const result = await db.from("kkcc_test_folders").upsert(rows.slice(offset, offset + 100), {
+        onConflict: "series_name,subject,chapter,topic",
+        ignoreDuplicates: true,
+      });
+      check(result.error);
+    }
     return paths;
   });

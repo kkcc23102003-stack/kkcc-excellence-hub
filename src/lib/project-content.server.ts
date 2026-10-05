@@ -712,7 +712,33 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       if (this.cardinality === "single") query = query.single();
       else if (this.cardinality === "maybe") query = query.maybeSingle();
 
+      const paginate =
+        this.operation === "select" &&
+        this.cardinality !== "single" &&
+        this.cardinality !== "maybe" &&
+        !this.head &&
+        this.cap === Infinity &&
+        ["tests", "test_questions"].includes(this.table);
+      // Stable ID tie-breaker is needed for duplicate sort_order/created_at values.
+      if (paginate)
+        query = query.order("id", { ascending: true }).range(this.offset, this.offset + 499);
       const result = await query;
+      if (paginate && !result.error && Array.isArray(result.data)) {
+        const rows = [...result.data];
+        while (result.data.length > 0 && (result.count == null || rows.length < result.count)) {
+          const page = await query.range(
+            this.offset + rows.length,
+            this.offset + rows.length + 499,
+          );
+          if (page.error) {
+            result.error = page.error;
+            break;
+          }
+          if (!Array.isArray(page.data) || !page.data.length) break;
+          rows.push(...page.data);
+        }
+        result.data = rows;
+      }
       // Clear again after commit; reads during a write must not survive that write.
       if (!cacheKey) {
         invalidateProjectContentCache(table);
