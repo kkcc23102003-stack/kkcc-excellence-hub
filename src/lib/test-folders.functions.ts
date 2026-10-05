@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   folderPathSchema,
+  outlineMutationSchema,
   childListSchema,
   childListPaths,
   expandFolderPaths,
@@ -10,7 +11,7 @@ import {
   type FolderTest,
   type FolderPath,
 } from "./test-folders";
-import { projectContent } from "./project-content.server";
+import { projectContent, invalidateProjectContentCache } from "./project-content.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DB } from "@/integrations/supabase/db";
 async function admin(context: { supabase: SupabaseClient<DB>; userId: string }) {
@@ -110,4 +111,34 @@ export const addTestOutlineList = createServerFn({ method: "POST" })
       check(result.error);
     }
     return paths;
+  });
+
+export const manageTestOutline = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => outlineMutationSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const db = await admin(context);
+    const result = await db.rpc("manage_test_outline", {
+      p_actor: context.userId,
+      p_level: data.level,
+      p_action: data.action,
+      p_path: {
+        ...data.path,
+        encoded_old: encodeURIComponent(
+          data.level === "series" ? data.path.series_name : data.path[data.level],
+        ),
+        encoded_new: encodeURIComponent(data.name),
+      },
+      p_name: data.name,
+      p_expected_ids: data.expected_ids,
+    });
+    if (result.error)
+      throw new Error(
+        ["PGRST202", "42883"].includes(result.error.code)
+          ? "Run KKCC-Excellence-Hub-TEST-OUTLINE-EDIT.sql in Supabase, then retry."
+          : result.error.message,
+      );
+    invalidateProjectContentCache("tests");
+    invalidateProjectContentCache("test_questions");
+    return { ok: true };
   });

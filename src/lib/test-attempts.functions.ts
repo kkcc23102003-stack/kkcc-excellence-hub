@@ -49,8 +49,8 @@ function getAttemptMeta(row: LearningAttemptRow) {
   const cached = attemptSelectionCache.get(row.id);
   const decoded = decodeMetaRef(row.source_refs);
   return {
-    subject: row.subject || cached?.subject || decoded.subject || "",
-    chapter: row.chapter || cached?.chapter || decoded.chapter || "",
+    subject: decoded.subject || row.subject || cached?.subject || "",
+    chapter: decoded.chapter || row.chapter || cached?.chapter || "",
     seed: row.seed || cached?.seed || decoded.seed || row.id,
   };
 }

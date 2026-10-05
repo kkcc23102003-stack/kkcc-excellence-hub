@@ -179,8 +179,115 @@ test("Subject/chapter/topic drafts persist; complete subject combines own questi
     await expect(sp.getByRole("heading", { name: "Result", exact: true })).toBeVisible();
     await sp.reload();
     await expect(sp.getByRole("heading", { name: "Result", exact: true })).toBeVisible();
+    // Existing submitted results keep their question IDs after subject/chapter rename.
+    await seriesPanel
+      .getByRole("button", { name: "Edit subject Mathematics", exact: true })
+      .click();
+    await ap.getByRole("dialog").getByLabel("New name", { exact: true }).fill("Maths renamed");
+    await ap.getByRole("dialog").getByRole("button", { name: "Save name", exact: true }).click();
+    await expect(ap.getByRole("dialog")).not.toBeVisible();
+    await sp.reload();
+    await expect(sp.getByRole("heading", { name: "Result", exact: true })).toBeVisible();
+    await seriesPanel
+      .getByRole("button", { name: `Subject: Maths renamed — ${series}`, exact: true })
+      .click();
+    await seriesPanel
+      .getByRole("button", { name: "Edit chapter Complete Test", exact: true })
+      .click();
+    await ap.getByRole("dialog").getByLabel("New name", { exact: true }).fill("Final Paper");
+    await ap.getByRole("dialog").getByRole("button", { name: "Save name", exact: true }).click();
+    await expect(ap.getByRole("dialog")).not.toBeVisible();
+    await sp.reload();
+    await expect(sp.getByRole("heading", { name: "Result", exact: true })).toBeVisible();
   } finally {
     await admin.close();
     await student.close();
   }
+});
+
+test("outline edit/remove/back controls persist changes and protect cancelled deletes", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/tests");
+  await page.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
+  const organiser = page.getByTestId("test-folder-organiser"),
+    series = `Manage ${Date.now()}`;
+  await organiser.getByLabel("Series name", { exact: true }).fill(series);
+  await organiser.getByRole("button", { name: "Continue → Subjects", exact: true }).click();
+  const group = organiser
+    .getByTestId("outline-series")
+    .filter({ has: page.getByRole("heading", { name: series, exact: true }) });
+  await group.getByLabel(`Subject name in ${series}`, { exact: true }).fill("Maths");
+  await group.getByRole("button", { name: "Save subject", exact: true }).click();
+  await group.getByRole("button", { name: `Subject: Maths — ${series}`, exact: true }).click();
+  await group.getByLabel("Chapters list for Maths").fill("Addition\nSubtraction");
+  await group.getByRole("button", { name: "Add chapters", exact: true }).click();
+  await group.getByRole("button", { name: "Chapter: Addition", exact: true }).click();
+  await group.getByLabel("Topics list for Addition").fill("Basics");
+  await group.getByRole("button", { name: "Add topics", exact: true }).click();
+  await group.getByRole("button", { name: "Topic: Basics", exact: true }).click();
+  await group.getByRole("button", { name: "← Back to chapter", exact: true }).click();
+  await expect(group.getByRole("button", { name: "Topic: Basics", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  const rename = async (label: string, name: string) => {
+    await organiser.getByRole("button", { name: label, exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("New name", { exact: true }).fill(name);
+    await dialog.getByRole("button", { name: "Save name", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+  };
+  await rename("Edit topic Basics", "Fundamentals");
+  await group.getByRole("button", { name: `Subject: Maths — ${series}`, exact: true }).click();
+  await group.getByRole("button", { name: "Chapter: Addition", exact: true }).click();
+  await expect(
+    group.getByRole("button", { name: "Topic: Fundamentals", exact: true }),
+  ).toBeVisible();
+  await rename("Edit chapter Addition", "Numbers");
+  await rename("Edit subject Maths", "Mathematics");
+  await rename(`Edit series ${series}`, `${series} renamed`);
+  const renamed = organiser
+    .getByTestId("outline-series")
+    .filter({ has: page.getByRole("heading", { name: `${series} renamed`, exact: true }) });
+  await page.reload();
+  await page.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
+  await expect(renamed).toBeVisible();
+  await renamed
+    .getByRole("button", { name: `Subject: Mathematics — ${series} renamed`, exact: true })
+    .click();
+  await expect(
+    renamed.getByRole("button", { name: "Chapter: Numbers", exact: true }),
+  ).toBeVisible();
+  await renamed.getByRole("button", { name: "Remove chapter Subtraction", exact: true }).click();
+  await expect(
+    page.getByRole("dialog").getByRole("button", { name: "Delete permanently", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    renamed.getByRole("button", { name: "Chapter: Subtraction", exact: true }),
+  ).toBeVisible();
+  await renamed.getByRole("button", { name: "Remove chapter Subtraction", exact: true }).click();
+  await page.getByRole("dialog").getByRole("checkbox").check();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete permanently", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    renamed.getByRole("button", { name: "Chapter: Subtraction", exact: true }),
+  ).toHaveCount(0);
+  await renamed
+    .getByRole("button", { name: `Remove series ${series} renamed`, exact: true })
+    .click();
+  await page.getByRole("dialog").getByRole("checkbox").check();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete permanently", exact: true })
+    .click();
+  await expect(renamed).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Subjects & Chapters", exact: true }).click();
+  await expect(renamed).toHaveCount(0);
 });

@@ -668,6 +668,17 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      manage_test_outline: {
+        Args: {
+          p_actor: string;
+          p_level: string;
+          p_action: string;
+          p_path: Json;
+          p_name: string;
+          p_expected_ids: string[];
+        };
+        Returns: Json;
+      };
       publish_easy_text_test_v3: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       publish_easy_text_test_v2: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       publish_easy_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };

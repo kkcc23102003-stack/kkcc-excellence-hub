@@ -3,16 +3,28 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 import { Textarea } from "@/components/ui/textarea";
 import { EasyTextTestBuilder, type EasyTestSeed } from "./easy-text-test-builder";
 import {
   listTestFolders,
+  manageTestOutline,
   createTestFolder,
   prepareFolderTest,
   addTestOutlineList,
 } from "@/lib/test-folders.functions";
 import {
   expandFolderPaths,
+  outlineContains,
+  type OutlineMutation,
   pathContains,
   pathKey,
   testPath,
@@ -113,11 +125,18 @@ export function TestFolderOrganiser({
   const load = useServerFn(listTestFolders),
     create = useServerFn(createTestFolder),
     assemble = useServerFn(prepareFolderTest),
-    addList = useServerFn(addTestOutlineList);
+    addList = useServerFn(addTestOutlineList),
+    manageOutline = useServerFn(manageTestOutline);
   const folders = useQuery({ queryKey: ["admin", "test-folders"], queryFn: () => load() });
   const [series, setSeries] = useState("");
   const [pendingSeries, setPendingSeries] = useState<string[]>([]);
   const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [closedSeries, setClosedSeries] = useState<Record<string, boolean>>({});
+  const [management, setManagement] = useState<
+    (OutlineMutation & { folders: number; published: number; confirmed: boolean }) | null
+  >(null);
+  const [managementError, setManagementError] = useState("");
+
   const [selected, setSelected] = useState<FolderPath | null>(null),
     [ids, setIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<{ key: string; location: string; seed: EasyTestSeed } | null>(
@@ -129,6 +148,110 @@ export function TestFolderOrganiser({
   const manual = tests.filter((t) => t.question_source === "manual");
   const originals = manual.filter((t) => !t.assembly_source_ids?.length && t.questions_count > 0);
   const nodes = expandFolderPaths([...(folders.data || []), ...manual.map(testPath)]);
+  const openManagement = (
+    path: FolderPath,
+    level: OutlineMutation["level"],
+    action: OutlineMutation["action"],
+  ) => {
+    const affected = manual.filter((test) => outlineContains(path, testPath(test)));
+    setManagementError("");
+    setManagement({
+      path,
+      level,
+      action,
+      name: level === "series" ? path.series_name : path[level],
+      expected_ids: affected.map((test) => test.id),
+      published: affected.filter((test) => test.is_published).length,
+      folders: nodes.filter((node) => outlineContains(path, node)).length,
+      confirmed: false,
+    });
+  };
+  const applyManagement = async () => {
+    if (!management || busy) return;
+    const change = management;
+    if (change.action === "delete" && !change.confirmed) return;
+    if (
+      draft &&
+      !window.confirm(
+        "This change will close your unsaved question editor. Discard that unsaved draft and continue?",
+      )
+    )
+      return;
+    setBusy(true);
+    setManagementError("");
+    try {
+      const localOnly =
+        change.level === "series" &&
+        change.folders === 0 &&
+        change.expected_ids.length === 0 &&
+        pendingSeries.includes(change.path.series_name);
+      if (localOnly) {
+        if (
+          change.action === "rename" &&
+          (!change.name.trim() ||
+            [...pendingSeries, ...nodes.map((p) => p.series_name)].some(
+              (name) => name === change.name.trim() && name !== change.path.series_name,
+            ))
+        )
+          throw new Error("Choose a different, non-empty series name.");
+      } else {
+        await manageOutline({
+          data: {
+            level: change.level,
+            action: change.action,
+            path: change.path,
+            name: change.name,
+            expected_ids: change.expected_ids,
+          },
+        });
+      }
+      if (change.level === "series")
+        setPendingSeries((current) =>
+          change.action === "delete"
+            ? current.filter((name) => name !== change.path.series_name)
+            : current.map((name) => (name === change.path.series_name ? change.name.trim() : name)),
+        );
+      setDraft(null);
+      setSelected(null);
+      setIds([]);
+      setOpened({});
+      await invalidateLearningQueries(queryClient);
+      await refresh();
+      setManagement(null);
+      setNotice(
+        change.action === "rename"
+          ? "Name updated. Saved questions, prices and publication settings are preserved."
+          : "Removed the selected section and its saved tests/questions. Other sections are unchanged.",
+      );
+    } catch (e) {
+      setManagementError(e instanceof Error ? e.message : "Change failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  function managementButtons(path: FolderPath, level: OutlineMutation["level"], name: string) {
+    return (
+      <div className="flex flex-wrap gap-2 px-3 pb-2">
+        <Button
+          variant="outline"
+          disabled={busy}
+          aria-label={`Edit ${level} ${name}`}
+          onClick={() => openManagement(path, level, "rename")}
+        >
+          Edit name
+        </Button>
+        <Button
+          variant="outline"
+          className="text-destructive"
+          disabled={busy}
+          aria-label={`Remove ${level} ${name}`}
+          onClick={() => openManagement(path, level, "delete")}
+        >
+          Remove
+        </Button>
+      </div>
+    );
+  }
   const choose = (path: FolderPath) => {
     if (!selected || pathKey(selected) !== pathKey(path)) {
       setIds([]);
@@ -372,7 +495,18 @@ export function TestFolderOrganiser({
             </span>
           </button>
         </h3>
+        {managementButtons(path, path.topic ? "topic" : path.chapter ? "chapter" : "subject", name)}
         <div id={panelId} hidden={!isOpen} className="min-w-0 space-y-4 border-t p-2 sm:p-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setOpened((current) => ({ ...current, [key]: false }));
+              if (path.topic) choose({ ...path, topic: "" });
+              else if (path.chapter) choose({ ...path, chapter: "", topic: "" });
+            }}
+          >
+            ← Back to {path.topic ? "chapter" : path.chapter ? "subject" : "series"}
+          </Button>
           {!path.topic && (
             <ChildListEditor
               parent={path}
@@ -406,6 +540,96 @@ export function TestFolderOrganiser({
       data-testid="test-folder-organiser"
       className="my-5 min-w-0 space-y-4 [&_button]:h-auto [&_button]:min-h-9 [&_button]:whitespace-normal"
     >
+      <Dialog
+        open={Boolean(management)}
+        onOpenChange={(open) => {
+          if (!open && !busy) setManagement(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {management?.action === "delete" ? "Remove" : "Edit"} {management?.level}
+            </DialogTitle>
+            <DialogDescription>
+              {management &&
+                [
+                  management.path.series_name || "Unassigned series",
+                  management.path.subject,
+                  management.path.chapter,
+                  management.path.topic,
+                ]
+                  .filter(Boolean)
+                  .join(" → ")}
+            </DialogDescription>
+          </DialogHeader>
+          <p>
+            {management?.folders || 0} folder paths · {management?.expected_ids.length || 0} saved
+            tests ({management?.published || 0} published).
+          </p>
+          {management?.action === "rename" ? (
+            <>
+              <label>
+                New name
+                <Input
+                  autoFocus
+                  aria-label="New name"
+                  value={management.name}
+                  maxLength={management.level === "subject" ? 80 : 120}
+                  onChange={(event) => setManagement({ ...management, name: event.target.value })}
+                />
+              </label>
+              <p className="text-sm">
+                Names and saved test locations update together. Questions, test titles, prices and
+                publish status are retained. Existing names cannot be merged.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-destructive">
+                This permanently removes this section, all its children and their saved
+                tests/questions, including published tests. Existing attempts linked to deleted
+                tests may no longer open. Separate combined snapshots elsewhere are not deleted.
+                This does not delete a paid catalogue product or student accounts.
+              </p>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={management?.confirmed || false}
+                  onChange={(event) =>
+                    management && setManagement({ ...management, confirmed: event.target.checked })
+                  }
+                />
+                I understand: permanently delete this section and its saved tests/questions.
+              </label>
+            </>
+          )}
+          {managementError && (
+            <p role="alert" className="text-destructive">
+              {managementError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={busy} onClick={() => setManagement(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={management?.action === "delete" ? "destructive" : "default"}
+              disabled={
+                busy ||
+                (management?.action === "delete" ? !management.confirmed : !management?.name.trim())
+              }
+              onClick={() => void applyManagement()}
+            >
+              {busy
+                ? "Saving…"
+                : management?.action === "delete"
+                  ? "Delete permanently"
+                  : "Save name"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <h2 className="text-xl font-bold">Series → Subjects → Chapters → Optional topics</h2>
       <p className="text-sm text-muted-foreground">
         Series name likho → neeche subjects save karo → subject ke aage Chapters → chapter ke aage
@@ -455,9 +679,25 @@ export function TestFolderOrganiser({
               className="min-w-0 space-y-3 rounded-xl border-2 border-primary/30 p-2 sm:p-4"
             >
               <h3 className="break-words text-lg font-bold">{seriesName || "Unassigned series"}</h3>
-              <p className="text-sm font-semibold">2. Subjects list</p>
-              {nodes.filter((path) => !path.chapter && path.series_name === seriesName).map(node)}
-              <SubjectEntry series={seriesName} busy={busy} onSave={makeSubject} />
+              {managementButtons(
+                { series_name: seriesName, subject: "", chapter: "", topic: "" },
+                "series",
+                seriesName || "Unassigned series",
+              )}
+              <Button
+                variant="outline"
+                aria-expanded={!closedSeries[seriesName]}
+                onClick={() =>
+                  setClosedSeries((current) => ({ ...current, [seriesName]: !current[seriesName] }))
+                }
+              >
+                {closedSeries[seriesName] ? "Subjects →" : "← Back to series list"}
+              </Button>
+              <div hidden={Boolean(closedSeries[seriesName])} className="space-y-3">
+                <p className="text-sm font-semibold">2. Subjects list</p>
+                {nodes.filter((path) => !path.chapter && path.series_name === seriesName).map(node)}
+                <SubjectEntry series={seriesName} busy={busy} onSave={makeSubject} />
+              </div>
             </section>
           ),
         )}
@@ -475,9 +715,12 @@ export function TestFolderOrganiser({
       <details className="rounded border p-3 text-xs">
         <summary>Setup help</summary>
         <p>
-          Run the latest Test Folders SQL for the large-question update. Series name is a grouping
-          label, not a new paid catalogue bundle.
+          Run the latest Test Folders SQL, or the Test Outline Edit SQL if folders are already
+          installed. Series name is a grouping label, not a new paid catalogue bundle.
         </p>
+        <a href="/KKCC-Excellence-Hub-TEST-OUTLINE-EDIT.sql" download className="block underline">
+          Download Edit / Remove upgrade SQL
+        </a>
         <a href="/KKCC-Excellence-Hub-TEST-FOLDERS.sql" download className="underline">
           Download Test Folders SQL if not installed yet
         </a>

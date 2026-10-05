@@ -85,3 +85,14 @@ paper ki settings preview aur Advanced mein check/edit karo.
 Advanced partial updates ab sirf aapke changed fields save karte hain—bank/manual mode, price aur generation recipe default values se reset nahi hote.
 Apna question add/edit ya bulk paste karne se test **Only My Questions** mode mein aata hai. Auto-bank generation ke liye separately Set Up button use karo; paste-publish par Keep Auto Bank Fill option hata diya hai.
 Generated bank papers exact subject/chapter/exam aur documented aliases tak scoped hain. Unknown/custom subject ko dusre subject se silently fill nahi kiya jayega.
+
+## Series / subject / chapter / topic edit, remove aur back
+- Har row par **Edit name** aur **Remove** controls hain, collapsed row par bhi.
+- Edit name → naya naam → **Save name**. Children aur saved test locations saath update hote hain; question text, answers, test titles, prices, Free/Paid aur publish status nahi badalte.
+- Same parent mein existing naam se merge allowed nahi hai. Subject/chapter rename par persisted attempt selection metadata bhi update hoti hai; IDs/answers unchanged.
+- **Remove** dialog mein folder-path count, saved-test count aur published-test count check karo. Checkbox tick karke **Delete permanently** dabao. Cancel se kuch remove nahi hota.
+- Delete poora selected subtree aur uske manual tests/questions hataata hai, including published tests. Deleted tests ke purane attempts dobara open na ho sakein; deletion undo nahi hoti. Dusri branches aur unmein saved independent combined snapshots untouched hain.
+- Ye organiser grouping hai: paid catalogue products, payment records, student accounts aur bank recipes delete nahi hote.
+- **Back to chapter / subject / series / series list** controls panels collapse karte hain, unsaved pasted text nahi mitate. Rename/remove karte waqt open unsaved editor discard karne ki alag confirmation hai.
+- Dialog open hone ke baad saved-test list badal jaaye toh server operation reject karta hai; reload karke warning dobara check karo.
+- Pehle folder setup installed hai toh **KKCC-Excellence-Hub-TEST-OUTLINE-EDIT.sql** run karke redeploy karo. Latest combined Test Folders / Production SQL mein included hai. App khud production SQL run nahi karti.

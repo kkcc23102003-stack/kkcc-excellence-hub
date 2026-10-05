@@ -113,3 +113,40 @@ export function childListPaths(parent: FolderPath, names: string[]): FolderPath[
       : { ...input.parent, chapter: name, topic: "" },
   );
 }
+
+export const outlineMutationSchema = z
+  .object({
+    level: z.enum(["series", "subject", "chapter", "topic"]),
+    action: z.enum(["rename", "delete"]),
+    path: z.object({
+      series_name: z.string().max(120),
+      subject: z.string().max(80),
+      chapter: z.string().max(120),
+      topic: z.string().max(120),
+    }),
+    name: z.string().trim().max(120).default(""),
+    expected_ids: z.array(z.string().uuid()),
+  })
+  .superRefine((value, ctx) => {
+    const p = value.path;
+    const valid =
+      value.level === "series"
+        ? !p.subject && !p.chapter && !p.topic
+        : value.level === "subject"
+          ? !!p.subject && !p.chapter && !p.topic
+          : value.level === "chapter"
+            ? !!p.subject && !!p.chapter && !p.topic
+            : !!p.subject && !!p.chapter && !!p.topic;
+    if (!valid) ctx.addIssue({ code: "custom", message: "Invalid outline path" });
+    if (
+      value.action === "rename" &&
+      (!value.name || value.name.length > (value.level === "subject" ? 80 : 120))
+    )
+      ctx.addIssue({ code: "custom", message: "Enter a valid new name" });
+  });
+export type OutlineMutation = z.infer<typeof outlineMutationSchema>;
+export function outlineContains(parent: FolderPath, child: FolderPath) {
+  return (
+    parent.series_name === child.series_name && (!parent.subject || pathContains(parent, child))
+  );
+}
