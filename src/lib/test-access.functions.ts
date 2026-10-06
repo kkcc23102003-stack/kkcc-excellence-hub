@@ -326,7 +326,10 @@ export const getLearningPlan = createServerFn({ method: "GET" })
   .validator((input: unknown) => selectionSchema.parse(input))
   .handler(async ({ context, data }) => {
     const learning = await learningPlan(context, data);
+    const { readTestRetention } = await import("./test-retention.server");
+    const retention = await readTestRetention(context.supabase);
     return {
+      save_results: retention.save_results,
       kind: learning.kind,
       id: learning.id,
       title: learning.title,

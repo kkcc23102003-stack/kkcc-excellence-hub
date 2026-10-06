@@ -1,3 +1,5 @@
+import { readTemporaryTest, clearTemporaryTest } from "@/lib/temporary-test-memory";
+import { updateTemporaryTest } from "@/lib/temporary-test.functions";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { z } from "zod";
@@ -40,7 +42,12 @@ const OPTION_STYLE = {
 
 export const Route = createFileRoute("/test/$id")({
   ssr: false,
-  validateSearch: z.object({ attempt: z.string().uuid().optional() }),
+  validateSearch: z.object({
+    attempt: z.string().uuid().optional(),
+    temporary: z.boolean().optional(),
+  }),
+  staleTime: 0,
+  gcTime: 0,
   beforeLoad: async ({ location }) => {
     if (!isSupabaseConfigured())
       throw redirect({ to: "/login", search: { redirectTo: location.href } });
@@ -48,13 +55,15 @@ export const Route = createFileRoute("/test/$id")({
     if (error || !data.user)
       throw redirect({ to: "/login", search: { redirectTo: location.href } });
   },
-  loaderDeps: ({ search }) => ({ attempt: search.attempt }),
+  loaderDeps: ({ search }) => ({ attempt: search.attempt, temporary: search.temporary }),
   loader: async ({ params, deps }) => {
     if (!deps.attempt) {
       if (params.id === "series") throw redirect({ to: "/test-series" });
       throw redirect({ to: "/tests/learn/$testId", params: { testId: params.id } });
     }
-    const paper = await getLearningAttempt({ data: { attempt_id: deps.attempt } });
+    const paper = deps.temporary
+      ? readTemporaryTest(deps.attempt)
+      : await getLearningAttempt({ data: { attempt_id: deps.attempt } });
     if (
       (paper.attempt.test_id && paper.attempt.test_id !== params.id) ||
       (!paper.attempt.test_id && params.id !== "series")
@@ -98,7 +107,38 @@ function TestRunner() {
 }
 
 function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[] }) {
-  const { test, attempt, server_now } = Route.useLoaderData();
+  const { test, attempt, server_now, temporary, token } = Route.useLoaderData();
+  const temporaryFn = useServerFn(updateTemporaryTest);
+  const temporaryToken = useRef(token);
+  const temporaryQueue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(
+    () => () => {
+      if (temporary) {
+        clearTemporaryTest();
+        temporaryToken.current = null;
+      }
+    },
+    [temporary],
+  );
+
+  const syncTemporary = useCallback(
+    (values: Record<string, number>, finish: boolean) => {
+      const task = temporaryQueue.current.then(async () => {
+        if (!temporaryToken.current) throw new Error("Temporary session is missing. Start again.");
+        const response = await temporaryFn({
+          data: { token: temporaryToken.current, answers: values, submit: finish },
+        });
+        temporaryToken.current = response.token;
+        return response;
+      });
+      temporaryQueue.current = task.then(
+        () => undefined,
+        () => undefined,
+      );
+      return task;
+    },
+    [temporaryFn],
+  );
   const [paperQuestions, setPaperQuestions] = useState<TestAttemptQuestion[]>(dbQuestions);
   const [result, setResult] = useState<LearningAttemptRow | null>(
     attempt.status === "submitted" ? attempt : null,
@@ -151,16 +191,23 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
   const submitFn = useServerFn(submitLearningAttempt);
   const saveFn = useServerFn(saveLearningAttemptAnswers);
   const submit = useMutation({
-    mutationFn: () => submitFn({ data: { attempt_id: attempt.id, answers } }),
+    mutationFn: async () => {
+      if (!temporary) return submitFn({ data: { attempt_id: attempt.id, answers } });
+      const response = await syncTemporary(answers, true);
+      if (!response.attempt || !response.questions)
+        throw new Error("Result could not be calculated. Retry.");
+      return { attempt: response.attempt, questions: response.questions };
+    },
     onSuccess: (data) => {
       setResult(data.attempt);
       setPaperQuestions(data.questions);
       setAnswers(data.attempt.answers as Record<string, number>);
       setSubmitted(true);
+      if (temporary) clearTemporaryTest();
     },
     onError: (error) =>
       toast.error(
-        `Result was not saved: ${error instanceof Error ? error.message : String(error)}. Please retry Submit Test.`,
+        `${temporary ? "Result could not be calculated" : "Result was not saved"}: ${error instanceof Error ? error.message : String(error)}. Please retry Submit Test.`,
       ),
   });
   const mutateSubmit = submit.mutate;
@@ -171,7 +218,11 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
     const revision = ++saveRevision.current;
     const timeout = setTimeout(
       () => {
-        void saveFn({ data: { attempt_id: attempt.id, answers, revision } })
+        void (
+          temporary
+            ? syncTemporary(answers, false)
+            : saveFn({ data: { attempt_id: attempt.id, answers, revision } })
+        )
           .then((result) => {
             if (revision !== saveRevision.current) return;
             setSaveError(
@@ -194,7 +245,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       questionSeconds > 0 ? 0 : 250,
     );
     return () => clearTimeout(timeout);
-  }, [answers, attempt.id, saveFn, started, submitted, questionSeconds]);
+  }, [answers, attempt.id, saveFn, started, submitted, questionSeconds, temporary, syncTemporary]);
   useEffect(() => {
     if (!started || submitted || isUnlimited) return;
     const timer = setInterval(() => setElapsed(serverElapsed()), 250);
@@ -230,7 +281,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
   const timerDescription = isUnlimited
     ? "No timer: move when you click Next."
     : timerMode === "question"
-      ? `${questionSeconds} seconds per question; earlier questions lock. Remaining test time is shown. Reload does not reset the server timer.`
+      ? `${questionSeconds} seconds per question; earlier questions lock. Remaining test time is shown. ${temporary ? "Reload loses this temporary session." : "Reload does not reset the server timer."}`
       : "The timer starts immediately and auto-submits at zero.";
 
   if (!questions.length) {
@@ -287,7 +338,9 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           <CheckCircle2 className="h-10 w-10 text-primary" />
           <h1 className="mt-4 text-2xl font-bold">Result</h1>
           <p className="mt-2 text-sm font-semibold text-primary">
-            Test submitted · Saved to your account
+            {temporary
+              ? "Temporary result · Not saved to your account · Refresh/close loses this result"
+              : "Test submitted · Saved to your account"}
           </p>
           <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
 
@@ -350,7 +403,9 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
           <div className="mt-8 flex gap-3">
             <Button asChild className="rounded-lg bg-primary font-semibold text-primary-foreground">
-              <Link to="/dashboard/tests">Go to results</Link>
+              <Link to={temporary ? "/test-series" : "/dashboard/tests"}>
+                {temporary ? "Back to Test Series" : "Go to results"}
+              </Link>
             </Button>
             <Button asChild variant="outline" className="rounded-lg border-border">
               <Link to="/test-series">More tests</Link>
@@ -378,6 +433,17 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <main className="min-w-0">
+          {temporary && (
+            <p
+              role="status"
+              data-testid="temporary-test-notice"
+              className="mb-4 rounded-xl border border-primary/30 p-3 text-sm"
+            >
+              Temporary test · Answers, score and history are not saved to the database.
+              Refresh/close loses this session. Session checks are kept only in browser memory.
+            </p>
+          )}
+
           <p
             data-testid="attempt-context"
             className="mb-4 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-border px-3.5 py-1 text-xs font-semibold text-primary"
@@ -390,8 +456,8 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
               role="alert"
               className="mb-4 rounded-xl border border-border bg-primary/10 p-3 text-sm text-primary"
             >
-              Answers not yet saved: {saveError}. Submit Test will retry saving your current
-              answers.
+              {temporary ? "Session checkpoint failed" : "Answers not yet saved"}: {saveError}.
+              Submit Test will retry your current answers.
             </p>
           )}
           {submit.isError && (
@@ -404,7 +470,8 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           )}
           {submit.isPending && (
             <p role="status" className="mb-3 flex items-center gap-2 text-primary">
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving result…
+              <Loader2 className="h-4 w-4 animate-spin" />{" "}
+              {temporary ? "Calculating result…" : "Saving result…"}
             </p>
           )}
 
@@ -496,7 +563,11 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
                 disabled={submit.isPending}
                 onClick={() => submit.mutate()}
               >
-                {submit.isPending ? "Saving result…" : "Submit Test"}
+                {submit.isPending
+                  ? temporary
+                    ? "Calculating result…"
+                    : "Saving result…"
+                  : "Submit Test"}
               </Button>
             )}
           </div>
@@ -567,7 +638,11 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             disabled={submit.isPending}
             onClick={() => submit.mutate()}
           >
-            {submit.isPending ? "Saving result…" : "Submit Test"}
+            {submit.isPending
+              ? temporary
+                ? "Calculating result…"
+                : "Saving result…"
+              : "Submit Test"}
           </Button>
         </aside>
       </div>

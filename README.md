@@ -1778,3 +1778,12 @@ Install `KKCC-Excellence-Hub-TEST-OUTLINE-EDIT.sql` on an existing folder setup,
 ## Clean single-accent test design — 2026-10-06
 The test-taking and result screens now use a single teal accent with neutral light/dark surfaces. This replaces the earlier neon/rainbow design. Per-answer colours, gradients and glow are removed; selection, flags and results remain identifiable by labels/icons/borders. No test/scoring/access logic changed and no new SQL is required.
 Verified with 104 unit/database tests and 10 targeted browser tests, including 320px/390px layout and keyboard focus. Screenshots and current evidence: `docs/audit/TEST-PAPER-SINGLE-ACCENT-2026-10-06.md`.
+
+## Admin test-result retention — 2026-10-06
+Admin → Storage → **Test result storage** (also under Admin → Tests) now has an ON/OFF switch. **ON is the installation default** and preserves saved autosave/results/history. OFF creates stateless, encrypted temporary tests: answers/token/results remain in browser RAM only, no attempt rows or local/session/IndexedDB persistence; refresh/close loses progress/result. Server grading/access checks/timers remain active. Existing history is unchanged until separately cleaned.
+
+Existing installations must run **`KKCC-Excellence-Hub-TEST-PRIVACY.sql`**, then redeploy. Requires the existing server-only `SUPABASE_SERVICE_ROLE_KEY`; never expose it with a VITE_ prefix. New combined Production / student-only schemas include the migration. Rerunning it preserves the current setting and does not delete history.
+
+To remove old results: OFF → refresh counts → type **DELETE TEST HISTORY** → confirm deletion. Only `learning_attempts` are removed, up to 5000 previewed records per batch; repeat as needed. Profiles/accounts, payments, access grants, admin questions/tests, folders and notes remain. Backups/exports/provider logs are not erased. Nothing was deleted in production by the agent.
+
+Verification: **107 unit/database + 84 full browser cases passed**, plus a follow-up temporary flow with an independent Student A login. See [Hindi setup](docs/TEST-PRIVACY-HINDI.md) and [verification](docs/audit/TEST-RETENTION-2026-10-06.md). Live downloads: `/downloads/` (Privacy SQL, Production SQL, Cleaner and ZIP).

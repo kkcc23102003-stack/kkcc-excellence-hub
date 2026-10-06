@@ -668,6 +668,16 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      get_test_retention: { Args: Record<string, never>; Returns: Json };
+      admin_test_retention: {
+        Args: {
+          p_action?: string;
+          p_enabled?: boolean;
+          p_before?: string;
+          p_confirmation?: string;
+        };
+        Returns: Json;
+      };
       kkcc_storage_usage: { Args: Record<string, never>; Returns: Json };
       manage_test_outline: {
         Args: {

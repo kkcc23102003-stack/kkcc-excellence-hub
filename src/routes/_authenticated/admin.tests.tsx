@@ -1,3 +1,4 @@
+import { TestRetentionPanel } from "@/components/kkcc/test-retention-panel";
 import { TestFolderOrganiser } from "@/components/kkcc/test-folder-organiser";
 import { EasyTextTestBuilder } from "@/components/kkcc/easy-text-test-builder";
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
@@ -603,6 +604,14 @@ function TestQuestionWriter() {
             Advanced — existing setup
           </Button>
         </div>
+        <details className="my-4 rounded-xl border p-3">
+          <summary className="cursor-pointer font-semibold">
+            Test result storage — ON / OFF & old history cleanup
+          </summary>
+          <div className="mt-3">
+            <TestRetentionPanel />
+          </div>
+        </details>
         <div hidden={builderMode !== "folders"}>
           <TestFolderOrganiser
             tests={tests}

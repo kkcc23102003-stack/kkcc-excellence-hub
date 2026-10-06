@@ -98,6 +98,23 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const learning = await learningPlan(context, data);
     const id = data.request_id ?? randomUUID();
+    const { readTestRetention } = await import("./test-retention.server");
+    const policy = await readTestRetention(context.supabase);
+    if (!policy.save_results) {
+      const { startTemporaryTest } = await import("./temporary-test.server");
+      return startTemporaryTest(
+        context,
+        {
+          test_id: data.test_id,
+          series_id: data.series_id,
+          subject: data.subject,
+          chapter: data.chapter,
+        },
+        id,
+        policy.epoch,
+        learning.access.is_admin,
+      );
+    }
 
     const existing = unwrap(
       await context.supabase
@@ -127,6 +144,8 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
         questions:
           existing.status === "submitted" ? paper.questions : publicQuestions(paper.questions),
         server_now: new Date().toISOString(),
+        temporary: false as const,
+        token: null as string | null,
       };
     }
 
@@ -225,6 +244,8 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
       test: paper.test,
       questions: publicQuestions(paper.questions),
       server_now: new Date().toISOString(),
+      temporary: false as const,
+      token: null as string | null,
     };
   });
 
@@ -261,6 +282,8 @@ export const getLearningAttempt = createServerFn({ method: "GET" })
       test: paper.test,
       questions: row.status === "submitted" ? paper.questions : publicQuestions(paper.questions),
       server_now: new Date().toISOString(),
+      temporary: false as const,
+      token: null as string | null,
     };
   });
 
@@ -275,6 +298,9 @@ export const saveLearningAttemptAnswers = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
+    const { requireSavedTestMode } = await import("./test-retention.server");
+    await requireSavedTestMode(context.supabase);
+
     const row = unwrap(
       await context.supabase
         .from("learning_attempts")
@@ -349,6 +375,9 @@ export const submitLearningAttempt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => attemptId.extend({ answers: responses }).parse(input))
   .handler(async ({ context, data }) => {
+    const { requireSavedTestMode } = await import("./test-retention.server");
+    await requireSavedTestMode(context.supabase);
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     for (let retry = 0; retry < 3; retry += 1) {
