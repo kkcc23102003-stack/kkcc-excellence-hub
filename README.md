@@ -1774,3 +1774,7 @@ Install `KKCC-Excellence-Hub-TEST-OUTLINE-EDIT.sql` on an existing folder setup,
 - Admin → Student access — Grant / Remove → Enrollment student → Remove student access: revoke course/test/series grants in place with confirmation and history preserved. Free content/other entitlements are not a global ban.
 - Existing installations run `KKCC-Excellence-Hub-STORAGE-USAGE.sql` for the new storage RPC, then redeploy. The access-removal UI reuses existing revoke endpoints and needs no additional migration. Latest combined Production SQL includes storage inspection.
 - Verification: **104 unit/database tests + 82 full browser tests passed**. Guide: `STORAGE-ACCESS-GUIDE-HINDI.md`; evidence: `docs/audit/STORAGE-ACCESS-2026-10-05.md`.
+
+## Clean single-accent test design — 2026-10-06
+The test-taking and result screens now use a single teal accent with neutral light/dark surfaces. This replaces the earlier neon/rainbow design. Per-answer colours, gradients and glow are removed; selection, flags and results remain identifiable by labels/icons/borders. No test/scoring/access logic changed and no new SQL is required.
+Verified with 104 unit/database tests and 10 targeted browser tests, including 320px/390px layout and keyboard focus. Screenshots and current evidence: `docs/audit/TEST-PAPER-SINGLE-ACCENT-2026-10-06.md`.

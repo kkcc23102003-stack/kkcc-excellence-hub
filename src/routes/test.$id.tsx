@@ -31,40 +31,12 @@ type TestAttemptQuestion = Omit<ScorableQuestion, "correct_index" | "explanation
   explanation?: string;
 };
 
-const NEON_OPTION_STYLES = [
-  {
-    idle: "border-cyan-400/40 bg-cyan-500/[0.06] hover:border-cyan-300 hover:bg-cyan-500/15 hover:shadow-[0_0_18px_rgba(34,211,238,0.22)]",
-    active:
-      "border-cyan-300 bg-gradient-to-r from-cyan-500/25 via-cyan-500/15 to-teal-500/20 shadow-[0_0_24px_rgba(34,211,238,0.38)] ring-1 ring-cyan-300/70",
-    badgeIdle: "border-cyan-400/60 bg-cyan-500/20 text-cyan-700 dark:text-cyan-200",
-    badgeActive:
-      "border-cyan-200 bg-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.8)]",
-  },
-  {
-    idle: "border-violet-400/40 bg-violet-500/[0.06] hover:border-violet-300 hover:bg-violet-500/15 hover:shadow-[0_0_18px_rgba(167,139,250,0.22)]",
-    active:
-      "border-violet-300 bg-gradient-to-r from-violet-500/25 via-purple-500/15 to-fuchsia-500/20 shadow-[0_0_24px_rgba(167,139,250,0.38)] ring-1 ring-violet-300/70",
-    badgeIdle: "border-violet-400/60 bg-violet-500/20 text-violet-700 dark:text-violet-200",
-    badgeActive:
-      "border-violet-200 bg-violet-400 text-slate-950 shadow-[0_0_12px_rgba(167,139,250,0.8)]",
-  },
-  {
-    idle: "border-pink-400/40 bg-pink-500/[0.06] hover:border-pink-300 hover:bg-pink-500/15 hover:shadow-[0_0_18px_rgba(244,114,182,0.22)]",
-    active:
-      "border-pink-300 bg-gradient-to-r from-pink-500/25 via-fuchsia-500/15 to-rose-500/20 shadow-[0_0_24px_rgba(244,114,182,0.38)] ring-1 ring-pink-300/70",
-    badgeIdle: "border-pink-400/60 bg-pink-500/20 text-pink-700 dark:text-pink-200",
-    badgeActive:
-      "border-pink-200 bg-pink-400 text-slate-950 shadow-[0_0_12px_rgba(244,114,182,0.8)]",
-  },
-  {
-    idle: "border-emerald-400/40 bg-emerald-500/[0.06] hover:border-emerald-300 hover:bg-emerald-500/15 hover:shadow-[0_0_18px_rgba(52,211,153,0.22)]",
-    active:
-      "border-emerald-300 bg-gradient-to-r from-emerald-500/25 via-teal-500/15 to-cyan-500/20 shadow-[0_0_24px_rgba(52,211,153,0.38)] ring-1 ring-emerald-300/70",
-    badgeIdle: "border-emerald-400/60 bg-emerald-500/20 text-emerald-700 dark:text-emerald-200",
-    badgeActive:
-      "border-emerald-200 bg-emerald-400 text-slate-950 shadow-[0_0_12px_rgba(52,211,153,0.8)]",
-  },
-];
+const OPTION_STYLE = {
+  idle: "border-border bg-card hover:border-primary/50 hover:bg-primary/5",
+  active: "border-primary bg-primary/10 ring-1 ring-primary",
+  badgeIdle: "border-border bg-muted text-muted-foreground",
+  badgeActive: "border-primary bg-primary text-primary-foreground",
+};
 
 export const Route = createFileRoute("/test/$id")({
   ssr: false,
@@ -269,7 +241,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           Questions for this test have not been published yet. Please check again later or contact
           KKCC support.
         </p>
-        <Button asChild variant="outline" className="mt-8 w-fit rounded-full">
+        <Button asChild variant="outline" className="mt-8 w-fit rounded-lg">
           <Link to="/test-series">Back to tests</Link>
         </Button>
       </div>
@@ -297,10 +269,10 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           <li>{timerDescription}</li>
         </ul>
         <div className="mt-8 flex gap-3">
-          <Button className="rounded-full" onClick={() => setStarted(true)}>
+          <Button className="rounded-lg" onClick={() => setStarted(true)}>
             Start test
           </Button>
-          <Button asChild variant="outline" className="rounded-full">
+          <Button asChild variant="outline" className="rounded-lg">
             <Link to="/test-series">Back</Link>
           </Button>
         </div>
@@ -310,107 +282,97 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
   if (submitted) {
     return (
-      <div data-testid="test-result" className="mx-auto max-w-2xl px-4 py-16">
-        <CheckCircle2 className="h-10 w-10 text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)]" />
-        <h1 className="mt-4 text-2xl font-bold">Result</h1>
-        <p className="mt-2 text-sm font-semibold text-cyan-500 dark:text-cyan-300">
-          Test submitted · Saved to your account
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
+      <div className="test-paper min-h-screen bg-background">
+        <div data-testid="test-result" className="mx-auto max-w-3xl px-4 py-12">
+          <CheckCircle2 className="h-10 w-10 text-primary" />
+          <h1 className="mt-4 text-2xl font-bold">Result</h1>
+          <p className="mt-2 text-sm font-semibold text-primary">
+            Test submitted · Saved to your account
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          {[
-            {
-              label: "Score",
-              value: `${score}`,
-              tone: "border-cyan-400/50 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.18)]",
-            },
-            {
-              label: "Correct",
-              value: `${correct}/${questions.length}`,
-              tone: "border-emerald-400/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.18)]",
-            },
-            {
-              label: "Attempted",
-              value: `${attempted}/${questions.length}`,
-              tone: "border-violet-400/50 bg-violet-500/10 text-violet-600 dark:text-violet-300 shadow-[0_0_20px_rgba(167,139,250,0.18)]",
-            },
-          ].map((s) => (
-            <div key={s.label} className={cn("rounded-2xl border p-5", s.tone)}>
-              <p className="text-2xl font-black">{s.value}</p>
-              <p className="text-xs font-semibold opacity-80">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <h2 className="mt-10 text-lg font-bold">Answer review</h2>
-        <div className="mt-4 space-y-4">
-          {questions.map((question, i) => {
-            const chosen = answers[question.id];
-            const isCorrect = chosen !== undefined && chosen === question.answer;
-            return (
-              <div
-                key={question.id}
-                className={cn(
-                  "rounded-2xl border p-5",
-                  chosen === undefined
-                    ? "border-violet-400/30 bg-violet-500/[0.04]"
-                    : isCorrect
-                      ? "border-emerald-400/50 bg-emerald-500/[0.07]"
-                      : "border-pink-400/50 bg-pink-500/[0.07]",
-                )}
-              >
-                <p className="text-sm font-medium">
-                  {i + 1}. {question.text}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Your answer: {chosen === undefined ? "Not attempted" : question.options[chosen]}
-                </p>
-                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
-                  Correct answer:{" "}
-                  {question.answer === undefined
-                    ? "Unavailable"
-                    : question.options[question.answer]}
-                </p>
-                {question.explanation && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Explanation: {question.explanation}
-                  </p>
-                )}
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                label: "Score",
+                value: `${score}`,
+                tone: "border-border bg-card text-foreground",
+              },
+              {
+                label: "Correct",
+                value: `${correct}/${questions.length}`,
+                tone: "border-border bg-card text-foreground",
+              },
+              {
+                label: "Attempted",
+                value: `${attempted}/${questions.length}`,
+                tone: "border-border bg-card text-foreground",
+              },
+            ].map((s) => (
+              <div key={s.label} className={cn("rounded-2xl border p-5", s.tone)}>
+                <p className="text-2xl font-semibold">{s.value}</p>
+                <p className="text-xs font-semibold opacity-80">{s.label}</p>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
 
-        <div className="mt-8 flex gap-3">
-          <Button
-            asChild
-            className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-500 font-bold text-slate-950"
-          >
-            <Link to="/dashboard/tests">Go to results</Link>
-          </Button>
-          <Button asChild variant="outline" className="rounded-full border-cyan-400/50">
-            <Link to="/test-series">More tests</Link>
-          </Button>
+          <h2 className="mt-10 text-lg font-bold">Answer review</h2>
+          <div className="mt-4 space-y-4">
+            {questions.map((question, i) => {
+              const chosen = answers[question.id];
+              const isCorrect = chosen !== undefined && chosen === question.answer;
+              return (
+                <div key={question.id} className="rounded-xl border border-border bg-card p-5">
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                    {chosen === undefined ? "Not attempted" : isCorrect ? "Correct" : "Incorrect"}
+                  </p>
+                  <p className="text-sm font-medium">
+                    {i + 1}. {question.text}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Your answer: {chosen === undefined ? "Not attempted" : question.options[chosen]}
+                  </p>
+                  <p className="text-xs font-semibold text-primary">
+                    Correct answer:{" "}
+                    {question.answer === undefined
+                      ? "Unavailable"
+                      : question.options[question.answer]}
+                  </p>
+                  {question.explanation && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Explanation: {question.explanation}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 flex gap-3">
+            <Button asChild className="rounded-lg bg-primary font-semibold text-primary-foreground">
+              <Link to="/dashboard/tests">Go to results</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-lg border-border">
+              <Link to="/test-series">More tests</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-20 border-b border-cyan-400/30 bg-background/95 shadow-[0_0_24px_rgba(34,211,238,0.12)] backdrop-blur">
+    <div className="test-paper min-h-screen bg-background" data-testid="test-paper">
+      <header className="sticky top-0 z-20 border-b border-border bg-background">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:px-6">
-          <p className="truncate bg-gradient-to-r from-cyan-400 via-violet-400 to-fuchsia-400 bg-clip-text text-sm font-black text-transparent">
-            {test.title}
-          </p>
-          <span className="flex shrink-0 items-center gap-2 rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-500/20 via-emerald-500/15 to-violet-500/20 px-3.5 py-1.5 text-sm font-bold text-cyan-600 shadow-[0_0_16px_rgba(34,211,238,0.28)] tabular-nums dark:text-cyan-300">
-            <Timer className="h-4 w-4 text-cyan-400" /> {clock}
+          <p className="truncate text-sm font-semibold">{test.title}</p>
+          <span className="flex shrink-0 items-center gap-2 rounded-lg border border-border px-3.5 py-1.5 text-sm font-bold text-primary tabular-nums">
+            <Timer className="h-4 w-4 text-primary" /> {clock}
           </span>
         </div>
         <Progress
           value={((index + 1) / questions.length) * 100}
-          className="h-1.5 rounded-none bg-violet-500/20 [&>div]:bg-gradient-to-r [&>div]:from-cyan-400 [&>div]:via-fuchsia-500 [&>div]:to-emerald-400"
+          className="h-1.5 rounded-none bg-primary/10"
         />
       </header>
 
@@ -418,15 +380,15 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
         <main className="min-w-0">
           <p
             data-testid="attempt-context"
-            className="mb-4 inline-flex flex-wrap items-center gap-1.5 rounded-full border border-violet-400/40 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/10 to-cyan-500/15 px-3.5 py-1 text-xs font-semibold text-violet-700 shadow-[0_0_14px_rgba(167,139,250,0.16)] dark:text-violet-200"
+            className="mb-4 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-border px-3.5 py-1 text-xs font-semibold text-primary"
           >
-            <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
             {attempt.exam} · {attempt.subject} · {attempt.chapter}
           </p>
           {saveError && (
             <p
               role="alert"
-              className="mb-4 rounded-xl border border-amber-400/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200"
+              className="mb-4 rounded-xl border border-border bg-primary/10 p-3 text-sm text-primary"
             >
               Answers not yet saved: {saveError}. Submit Test will retry saving your current
               answers.
@@ -441,17 +403,17 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </p>
           )}
           {submit.isPending && (
-            <p role="status" className="mb-3 flex items-center gap-2 text-cyan-400">
+            <p role="status" className="mb-3 flex items-center gap-2 text-primary">
               <Loader2 className="h-4 w-4 animate-spin" /> Saving result…
             </p>
           )}
 
-          <div className="rounded-2xl border border-cyan-400/35 bg-gradient-to-br from-cyan-500/[0.07] via-violet-500/[0.06] to-fuchsia-500/[0.05] p-5 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+          <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-cyan-400/50 bg-cyan-500/20 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-cyan-700 dark:text-cyan-200">
+              <span className="rounded-lg border border-border bg-primary/10 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
                 Question {index + 1} of {questions.length}
               </span>
-              <span className="rounded-full border border-fuchsia-400/50 bg-fuchsia-500/20 px-3 py-0.5 text-[11px] font-black uppercase tracking-wider text-fuchsia-700 dark:text-fuchsia-200">
+              <span className="rounded-lg border border-border bg-primary/10 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
                 {q.subject}
               </span>
             </div>
@@ -466,7 +428,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           <div className="mt-6 space-y-3.5">
             {q.options.map((opt, i) => {
               const selected = answers[q.id] === i;
-              const palette = NEON_OPTION_STYLES[i % NEON_OPTION_STYLES.length]!;
+              const palette = OPTION_STYLE;
               return (
                 <button
                   key={opt}
@@ -476,19 +438,22 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
                   disabled={questionLocked || submit.isPending || (!isUnlimited && seconds <= 0)}
                   onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
                   className={cn(
-                    "flex w-full min-w-0 items-center gap-3.5 break-words rounded-2xl border p-4 text-left text-sm font-medium transition-all duration-200",
+                    "flex w-full min-w-0 items-center gap-3.5 break-words rounded-2xl border p-4 text-left text-sm font-medium transition-colors duration-200",
                     selected ? palette.active : palette.idle,
                   )}
                 >
                   <span
                     className={cn(
-                      "grid h-7 w-7 shrink-0 place-items-center rounded-full border text-xs font-black transition-all",
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-xs font-semibold transition-colors",
                       selected ? palette.badgeActive : palette.badgeIdle,
                     )}
                   >
                     {String.fromCharCode(65 + i)}
                   </span>
                   <span className="min-w-0 flex-1">{opt}</span>
+                  {selected && (
+                    <CheckCircle2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
+                  )}
                 </button>
               );
             })}
@@ -497,7 +462,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           <div className="mt-8 flex flex-wrap gap-3">
             <Button
               variant="outline"
-              className="rounded-full border-violet-400/60 bg-violet-500/15 font-bold text-violet-700 shadow-[0_0_14px_rgba(167,139,250,0.2)] hover:bg-violet-500/25 dark:text-violet-200"
+              className="rounded-lg border-border bg-card font-medium text-foreground hover:bg-muted"
               disabled={index === 0 || timerMode === "question"}
               onClick={() => setIndex((i) => i - 1)}
             >
@@ -506,10 +471,10 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             <Button
               variant="outline"
               className={cn(
-                "rounded-full font-bold transition-all",
+                "rounded-lg font-bold transition-colors",
                 flagged.includes(q.id)
-                  ? "border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(251,191,36,0.55)]"
-                  : "border-amber-400/60 bg-amber-500/15 text-amber-700 shadow-[0_0_14px_rgba(245,158,11,0.2)] hover:bg-amber-500/25 dark:text-amber-200",
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted",
               )}
               onClick={() =>
                 setFlagged((f) => (f.includes(q.id) ? f.filter((x) => x !== q.id) : [...f, q.id]))
@@ -520,14 +485,14 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </Button>
             {index < questions.length - 1 ? (
               <Button
-                className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 px-6 font-black text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.45)] hover:brightness-110"
+                className="rounded-lg bg-primary px-6 font-semibold text-primary-foreground"
                 onClick={() => setIndex((i) => i + 1)}
               >
                 Next <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
               <Button
-                className="rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-fuchsia-400 px-6 font-black text-slate-950 shadow-[0_0_22px_rgba(52,211,153,0.5)] hover:brightness-110"
+                className="rounded-lg bg-primary px-6 font-semibold text-primary-foreground"
                 disabled={submit.isPending}
                 onClick={() => submit.mutate()}
               >
@@ -537,11 +502,9 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           </div>
         </main>
 
-        <aside className="h-fit rounded-2xl border border-violet-400/35 bg-gradient-to-b from-violet-500/[0.08] via-cyan-500/[0.05] to-fuchsia-500/[0.08] p-5 shadow-[0_0_28px_rgba(167,139,250,0.16)] lg:sticky lg:top-24">
-          <p className="bg-gradient-to-r from-cyan-400 via-violet-400 to-fuchsia-400 bg-clip-text text-sm font-black text-transparent">
-            Question palette
-          </p>
-          <div className="mt-4 grid grid-cols-6 gap-2 lg:grid-cols-5">
+        <aside className="h-fit rounded-xl border border-border bg-card p-5 lg:sticky lg:top-24">
+          <p className="text-sm font-semibold">Questions</p>
+          <div className="mt-4 grid max-h-72 grid-cols-5 gap-2 overflow-y-auto p-1 sm:grid-cols-6 lg:grid-cols-5">
             {questions.map((question, i) => {
               const answered = answers[question.id] !== undefined;
               const isCurrent = i === index;
@@ -549,50 +512,58 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
               return (
                 <button
                   key={question.id}
-                  aria-label={`Question ${i + 1}${answers[question.id] !== undefined ? ", answered" : ""}`}
+                  aria-label={`Question ${i + 1}${answered ? ", answered" : ", not answered"}${isFlagged ? ", flagged" : ""}`}
                   aria-current={isCurrent ? "step" : undefined}
                   disabled={timerMode === "question" && i !== index}
                   onClick={() => setIndex(i)}
                   className={cn(
-                    "grid h-9 w-9 place-items-center rounded-xl border text-xs font-black transition-all duration-150",
+                    "relative grid h-10 w-full place-items-center rounded-lg border text-xs font-semibold transition-colors duration-150",
                     isCurrent &&
-                      "border-cyan-200 bg-gradient-to-br from-cyan-400 to-blue-500 text-slate-950 ring-2 ring-cyan-300 ring-offset-2 ring-offset-background shadow-[0_0_16px_rgba(34,211,238,0.65)]",
+                      "border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background",
                     !isCurrent &&
                       isFlagged &&
-                      "border-amber-400 bg-gradient-to-br from-amber-500/35 to-orange-500/30 text-amber-700 shadow-[0_0_12px_rgba(245,158,11,0.35)] dark:text-amber-200",
+                      "border-dashed border-foreground bg-muted text-foreground",
                     !isCurrent &&
                       !isFlagged &&
                       answered &&
-                      "border-emerald-400 bg-gradient-to-br from-emerald-500/35 to-teal-500/30 text-emerald-700 shadow-[0_0_12px_rgba(16,185,129,0.35)] dark:text-emerald-200",
+                      "border-primary/40 bg-primary/10 text-primary",
                     !isCurrent &&
                       !isFlagged &&
                       !answered &&
-                      "border-violet-400/35 bg-violet-500/10 text-violet-700 hover:border-cyan-400/60 hover:bg-cyan-500/20 dark:text-violet-200",
+                      "border-border bg-background text-muted-foreground hover:border-primary/50",
                   )}
                 >
                   {i + 1}
+                  {isFlagged ? (
+                    <Flag aria-hidden="true" className="absolute right-0.5 top-0.5 h-2.5 w-2.5" />
+                  ) : answered ? (
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="absolute right-0.5 top-0.5 h-2.5 w-2.5"
+                    />
+                  ) : null}
                 </button>
               );
             })}
           </div>
-          <dl className="mt-5 space-y-2 rounded-xl border border-violet-400/25 bg-background/60 p-3 text-xs font-semibold">
-            <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-300">
+          <dl className="mt-5 space-y-2 rounded-xl border border-border bg-background/60 p-3 text-xs font-semibold">
+            <div className="flex items-center justify-between text-primary">
               <dt className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                <span className="h-2.5 w-2.5 rounded-lg bg-primary/10" />
                 Attempted
               </dt>
-              <dd className="font-black">{attempted}</dd>
+              <dd className="font-semibold">{attempted}</dd>
             </div>
-            <div className="flex items-center justify-between text-amber-600 dark:text-amber-300">
+            <div className="flex items-center justify-between text-primary">
               <dt className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                <Flag aria-hidden="true" className="h-3 w-3" />
                 Flagged
               </dt>
-              <dd className="font-black">{flagged.length}</dd>
+              <dd className="font-semibold">{flagged.length}</dd>
             </div>
           </dl>
           <Button
-            className="mt-5 w-full rounded-full border-0 bg-gradient-to-r from-cyan-400 via-emerald-400 to-fuchsia-400 font-black text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.45)] hover:brightness-110"
+            className="mt-5 w-full rounded-lg bg-primary font-semibold text-primary-foreground"
             disabled={submit.isPending}
             onClick={() => submit.mutate()}
           >
