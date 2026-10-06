@@ -1,3 +1,4 @@
+import { ContentThumbnail } from "@/components/kkcc/content-thumbnail";
 import { createFileRoute } from "@tanstack/react-router";
 import { MaterialAccessButton } from "@/components/kkcc/material-access-button";
 import { useMemo, useState } from "react";
@@ -138,20 +139,8 @@ function StudyMaterialPage() {
                 key={m.id}
                 className="surface-panel hover-lift flex min-w-0 max-w-full flex-col overflow-hidden p-4 sm:p-6"
               >
+                <ContentThumbnail value={m} title={m.title} kind="materials" id={m.id} />
                 <div className="flex items-start justify-between gap-3">
-                  {m.thumbnail_url ? (
-                    <img
-                      src={m.thumbnail_url}
-                      alt={`${m.title} cover`}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-11 w-11 shrink-0 rounded-2xl object-cover"
-                    />
-                  ) : (
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-                      <FileText className="h-5 w-5" />
-                    </span>
-                  )}
                   <div className="flex max-w-[58%] flex-wrap justify-end gap-2">
                     <Badge variant="secondary" className="rounded-full text-[11px]">
                       {m.material_type}

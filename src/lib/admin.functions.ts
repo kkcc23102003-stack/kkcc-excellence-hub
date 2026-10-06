@@ -1,3 +1,4 @@
+import { thumbnailFields } from "./thumbnail";
 import { testSchema, parseTestSettingsPatch } from "./test-settings";
 import { getExamBankExams } from "@/lib/exam-bank";
 import {
@@ -75,6 +76,7 @@ const lectureSchema = z.object({
 });
 
 const materialSchema = z.object({
+  ...thumbnailFields,
   id: z.string().uuid().optional(),
   course_id: z.string().uuid().nullable().optional(),
   lecture_id: z.string().uuid().nullable().optional(),
@@ -88,7 +90,6 @@ const materialSchema = z.object({
   class_level: z.string().trim().max(60),
   pages: z.number().int().min(0).max(10000),
   file_url: z.string().trim().max(200000).nullable().optional(),
-  thumbnail_url: z.string().trim().max(4000).nullable().optional(),
   access_type: z.enum(["course", "free", "paid"]).optional(),
   price: z.number().int().min(0).max(1000000).optional(),
   coin_price: z.number().int().min(0).max(1000000).optional(),

@@ -1787,3 +1787,10 @@ Existing installations must run **`KKCC-Excellence-Hub-TEST-PRIVACY.sql`**, then
 To remove old results: OFF → refresh counts → type **DELETE TEST HISTORY** → confirm deletion. Only `learning_attempts` are removed, up to 5000 previewed records per batch; repeat as needed. Profiles/accounts, payments, access grants, admin questions/tests, folders and notes remain. Backups/exports/provider logs are not erased. Nothing was deleted in production by the agent.
 
 Verification: **107 unit/database + 84 full browser cases passed**, plus a follow-up temporary flow with an independent Student A login. See [Hindi setup](docs/TEST-PRIVACY-HINDI.md) and [verification](docs/audit/TEST-RETENTION-2026-10-06.md). Live downloads: `/downloads/` (Privacy SQL, Production SQL, Cleaner and ZIP).
+
+## App audit, safe updates and editable thumbnails — 2026-10-06
+- **Free + paid notes/tests:** upload/replace/remove image covers or write a plain-text cover, with preview and explicit Save. Notes: `/admin/materials` → Edit. Tests: `/admin/tests` → Test thumbnails (all saved Easy/Advanced/folder tests).
+- Run **`KKCC-Excellence-Hub-THUMBNAILS.sql`** on existing latest installations, then deploy. It is additive, does not delete content, and does not change result-retention mode. Uploaded covers use a dedicated **public** Supabase bucket; no S3 required. Removing a cover does not physically delete a potentially shared file.
+- Safe PWA updates never auto-reload an open test/editor; test offline warning/reconnect checkpoint retry; bounded server asset cache/304; reduced fallback access polling. Fixed quiz hydration, admin analytics schema mismatch, stale wallet SSR reads, and dashboard sample duplication/visibility.
+- **114 unit/database + 91 browser tests passed**, including a 46-route role-specific mobile smoke sweep. `npm run check`, PWA readiness and 12 SQL mirrors pass. This is local-fixture validation, not live Razorpay/Supabase Storage or production load certification.
+- [Thumbnail Hindi guide](docs/THUMBNAILS-HINDI.md) · [Full audit and measured optimisation scope](docs/audit/APP-OPTIMISATION-THUMBNAILS-2026-10-06.md).

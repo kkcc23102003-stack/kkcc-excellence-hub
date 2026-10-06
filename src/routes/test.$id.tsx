@@ -1,3 +1,4 @@
+import { useNetworkStatus } from "@/hooks/use-network-status";
 import { readTemporaryTest, clearTemporaryTest } from "@/lib/temporary-test-memory";
 import { updateTemporaryTest } from "@/lib/temporary-test.functions";
 import { useAuthUser } from "@/hooks/use-auth-user";
@@ -188,6 +189,8 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       : null;
   const questionLocked = currentTimedIndex !== null && index !== currentTimedIndex;
   const [saveError, setSaveError] = useState("");
+  const online = useNetworkStatus();
+  const [retryCheckpoint, setRetryCheckpoint] = useState(0);
   const submitFn = useServerFn(submitLearningAttempt);
   const saveFn = useServerFn(saveLearningAttemptAnswers);
   const submit = useMutation({
@@ -214,7 +217,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
   const autoSubmit = useRef(false);
   const saveRevision = useRef(attempt.answer_revision ?? 0);
   useEffect(() => {
-    if (!started || submitted) return;
+    if (!started || submitted || !online) return;
     const revision = ++saveRevision.current;
     const timeout = setTimeout(
       () => {
@@ -245,7 +248,18 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       questionSeconds > 0 ? 0 : 250,
     );
     return () => clearTimeout(timeout);
-  }, [answers, attempt.id, saveFn, started, submitted, questionSeconds, temporary, syncTemporary]);
+  }, [
+    answers,
+    attempt.id,
+    saveFn,
+    started,
+    submitted,
+    questionSeconds,
+    temporary,
+    syncTemporary,
+    online,
+    retryCheckpoint,
+  ]);
   useEffect(() => {
     if (!started || submitted || isUnlimited) return;
     const timer = setInterval(() => setElapsed(serverElapsed()), 250);
@@ -433,6 +447,18 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <main className="min-w-0">
+          {!online && (
+            <p
+              role="status"
+              data-testid="test-offline-notice"
+              className="mb-4 rounded-xl border border-primary/30 p-3 text-sm"
+            >
+              Connection lost. Keep this page open; the timer does not pause. Answers cannot reach
+              the server until you reconnect, and late answers may not count. Refreshing a temporary
+              test loses it.
+            </p>
+          )}
+
           {temporary && (
             <p
               role="status"
@@ -458,6 +484,15 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             >
               {temporary ? "Session checkpoint failed" : "Answers not yet saved"}: {saveError}.
               Submit Test will retry your current answers.
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                disabled={!online || submit.isPending}
+                onClick={() => setRetryCheckpoint((value) => value + 1)}
+              >
+                Retry answer check
+              </Button>
             </p>
           )}
           {submit.isError && (

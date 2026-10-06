@@ -121,7 +121,7 @@ export const adminAnalyticsSummary = createServerFn({ method: "GET" })
       supabaseAdmin.from("profiles").select("id, created_at, full_name, email").limit(5000),
       supabaseAdmin
         .from("learning_attempts")
-        .select("user_id, score, total_marks, subject, submitted_at")
+        .select("user_id, score, total_marks, source_refs, submitted_at")
         .eq("status", "submitted")
         .gte("submitted_at", since30)
         .limit(5000),
@@ -140,7 +140,20 @@ export const adminAnalyticsSummary = createServerFn({ method: "GET" })
     const enrollments = (enrollmentResult.data ?? []) as EnrollmentRow[];
     const redemptions = (redemptionResult.data ?? []) as RedemptionRow[];
     const profiles = (profileResult.data ?? []) as ProfileRow[];
-    const attempts = (attemptResult.data ?? []) as AttemptRow[];
+    if (attemptResult.error)
+      throw new Error(`Test analytics unavailable: ${attemptResult.error.message}`);
+    const attempts: AttemptRow[] = (attemptResult.data ?? []).map((row) => {
+      const ref = (row.source_refs || []).find((ref: string) => ref.startsWith("__kkcc_meta__:"));
+      let subject = "Unknown";
+      try {
+        subject = ref
+          ? decodeURIComponent(ref.slice("__kkcc_meta__:".length).split(":")[0] || "")
+          : "Unknown";
+      } catch {
+        /* legacy malformed metadata */
+      }
+      return { ...row, subject };
+    });
     const doubts = (doubtResult.data ?? []) as { id: string; status: string }[];
     const enquiries = (enquiryResult.data ?? []) as { id: string; status: string }[];
     const offlineGrants = (offlineResult.data ?? []) as {

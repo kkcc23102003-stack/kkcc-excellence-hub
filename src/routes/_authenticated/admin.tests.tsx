@@ -1,3 +1,4 @@
+import { TestThumbnailManager } from "@/components/kkcc/test-thumbnail-manager";
 import { TestRetentionPanel } from "@/components/kkcc/test-retention-panel";
 import { TestFolderOrganiser } from "@/components/kkcc/test-folder-organiser";
 import { EasyTextTestBuilder } from "@/components/kkcc/easy-text-test-builder";
@@ -193,6 +194,7 @@ function TestQuestionWriter() {
   const reorder = useServerFn(reorderTestQuestions);
   const bulkAddFn = useServerFn(bulkAddTestQuestions);
 
+  const [retentionOpen, setRetentionOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState<"easy" | "advanced" | "folders">("easy");
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
@@ -604,13 +606,20 @@ function TestQuestionWriter() {
             Advanced — existing setup
           </Button>
         </div>
-        <details className="my-4 rounded-xl border p-3">
+        <details
+          className="my-4 rounded-xl border p-3"
+          onToggle={(event) => setRetentionOpen(event.currentTarget.open)}
+        >
           <summary className="cursor-pointer font-semibold">
             Test result storage — ON / OFF & old history cleanup
           </summary>
-          <div className="mt-3">
-            <TestRetentionPanel />
-          </div>
+          <div className="mt-3">{retentionOpen && <TestRetentionPanel />}</div>
+        </details>
+        <details className="my-4 rounded-xl border p-3">
+          <summary className="cursor-pointer font-semibold">
+            Test thumbnails — image / text / remove
+          </summary>
+          <TestThumbnailManager tests={tests} />
         </details>
         <div hidden={builderMode !== "folders"}>
           <TestFolderOrganiser

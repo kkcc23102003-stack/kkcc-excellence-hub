@@ -1,5 +1,7 @@
+import { thumbnailFields } from "./thumbnail";
 import { z } from "zod";
 export const testSchema = z.object({
+  ...thumbnailFields,
   id: z.string().uuid().optional(),
   course_id: z.string().uuid().nullable().optional(),
   lecture_id: z.string().uuid().nullable().optional(),

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T03:56:41.632Z",
+  "generatedAt": "2026-10-06T04:46:29.472Z",
   "mode": "deterministic-sample",
   "originalTemplatesPreserved": true,
   "counts": {
@@ -9,10 +9,10 @@
     "templates": 6828,
     "positions": 12314180,
     "checked": 34139,
-    "nulls": 2887,
+    "nulls": 2883,
     "structuralInvalid": 0,
-    "qualityRejected": 4,
-    "valid": 31248,
+    "qualityRejected": 0,
+    "valid": 31256,
     "exceptions": 0
   },
   "caveat": "Positions are a finite parameter space, NOT unique verified questions or official PYQs. Null/duplicate/invalid combinations are never served. Exhaustive structural checks do not prove academic accuracy or complete current syllabus coverage.",
@@ -173646,18 +173646,13 @@
       "checked": 5,
       "nulls": 0,
       "invalid": 0,
-      "rejected": 1,
-      "valid": 4,
+      "rejected": 0,
+      "valid": 5,
       "exceptions": 0,
       "types": [
         "single-choice"
       ],
-      "examples": [
-        {
-          "index": 3,
-          "reason": "Quality gate"
-        }
-      ]
+      "examples": []
     },
     {
       "id": "pa:ling:match",
@@ -173797,10 +173792,10 @@
       ],
       "positions": 10,
       "checked": 5,
-      "nulls": 2,
+      "nulls": 0,
       "invalid": 0,
       "rejected": 0,
-      "valid": 3,
+      "valid": 5,
       "exceptions": 0,
       "types": [
         "single-choice"
@@ -173834,26 +173829,15 @@
       ],
       "positions": 10,
       "checked": 5,
-      "nulls": 2,
+      "nulls": 0,
       "invalid": 0,
-      "rejected": 3,
-      "valid": 0,
+      "rejected": 0,
+      "valid": 5,
       "exceptions": 0,
-      "types": [],
-      "examples": [
-        {
-          "index": 0,
-          "reason": "Quality gate"
-        },
-        {
-          "index": 2,
-          "reason": "Quality gate"
-        },
-        {
-          "index": 5,
-          "reason": "Quality gate"
-        }
-      ]
+      "types": [
+        "single-choice"
+      ],
+      "examples": []
     },
     {
       "id": "pa:vachan:match",

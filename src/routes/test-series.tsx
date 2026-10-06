@@ -1,3 +1,4 @@
+import { ContentThumbnail } from "@/components/kkcc/content-thumbnail";
 import { useLearningAccess } from "@/hooks/use-learning-access";
 import { TestCard } from "@/components/kkcc/test-card";
 import { LEARNING_SERIES, ADDITIONAL_PRACTICE_SERIES } from "@/lib/test-series-catalog";
@@ -459,6 +460,7 @@ function TestSeries() {
                     data-testid={`test-card-${t.id}`}
                     className="surface-panel hover-lift p-6"
                   >
+                    <ContentThumbnail value={t} title={t.title} kind="tests" id={t.id} />
                     <div className="flex items-start justify-between gap-3">
                       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
                         <ClipboardList className="h-5 w-5" />

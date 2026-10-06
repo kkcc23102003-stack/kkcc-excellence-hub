@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { format23Kaat, is23KaatUnlimited } from "@/lib/coin-display";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ArrowRight, CreditCard, Loader2, PhoneCall, ShieldCheck, Sparkles } from "lucide-react";
@@ -45,12 +45,11 @@ export const Route = createFileRoute("/coins")({
     ],
   }),
   loader: async () => {
-    const [packages, wallet, payment] = await Promise.all([
+    const [packages, payment] = await Promise.all([
       safeServerCall(() => list23KaatCoinPackages(), []),
-      safeServerCall(() => getMy23KaatWallet(), { balance: 0, transactions: [], packages: [] }),
       safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
     ]);
-    return { packages, wallet, payment };
+    return { packages, payment };
   },
   component: CoinsPage,
 });
@@ -64,8 +63,17 @@ function CoinsPage() {
 }
 
 function CoinsPageContent() {
-  const { packages, wallet, payment = EMPTY_PUBLIC_PAYMENT_SETTINGS } = Route.useLoaderData();
+  const { packages, payment = EMPTY_PUBLIC_PAYMENT_SETTINGS } = Route.useLoaderData();
   const { user } = useAuthUser();
+  const fetchWallet = useServerFn(getMy23KaatWallet);
+  const walletQuery = useQuery({
+    queryKey: ["student", user?.id, "wallet"],
+    enabled: Boolean(user),
+    queryFn: () => fetchWallet(),
+    staleTime: 0,
+  });
+  const wallet = walletQuery.data || { balance: 0 };
+
   const qc = useQueryClient();
   const sendEnquiry = useServerFn(submitAdmissionEnquiry);
   const finishPackPurchase = useServerFn(completeRazorpayCoinPackPurchase);
@@ -233,6 +241,13 @@ function CoinsPageContent() {
               <KaatCoinStack className="scale-150" />
             </div>
             <p className="relative text-sm text-muted-foreground">Current balance</p>
+            {walletQuery.isError && (
+              <p role="alert">
+                Balance could not load.{" "}
+                <Button onClick={() => void walletQuery.refetch()}>Retry wallet</Button>
+              </p>
+            )}
+
             <p className="relative mt-2 text-5xl font-black text-gradient-brand neon-text">
               {format23Kaat(wallet.balance)}
             </p>

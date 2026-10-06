@@ -81,6 +81,7 @@ import {
 } from "@/lib/coin-conversion";
 
 export const Route = createFileRoute("/games")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Kit 2 Coins — KKCC" },
@@ -173,6 +174,7 @@ type PracticeMode = KittuPracticeMode;
 type ExamTrack = string;
 
 type QuizQuestion = {
+  unavailable?: boolean;
   id: string;
   subject: Subject;
   topic: string;
@@ -1806,7 +1808,7 @@ function EndlessQuizQuest({
 
   const finishAttempt = useCallback(
     (index: number | null, timeout = false) => {
-      if (answered) return;
+      if (answered || question.unavailable) return;
       const correct = index !== null && index === question.answerIndex;
       const coins = timeout ? 0 : correct ? rewards.correctReward : rewards.wrongReward;
       const nextStreak = correct ? streak + 1 : 0;
@@ -1830,6 +1832,7 @@ function EndlessQuizQuest({
       exam,
       onReward,
       question.answerIndex,
+      question.unavailable,
       question.subject,
       question.topic,
       rewards.correctReward,
@@ -1839,7 +1842,7 @@ function EndlessQuizQuest({
   );
 
   useEffect(() => {
-    if (answered) return;
+    if (answered || question.unavailable) return;
     if (secondsLeft <= 0) {
       finishAttempt(null, true);
       return;
@@ -1848,7 +1851,7 @@ function EndlessQuizQuest({
       setSecondsLeft((current) => Math.max(0, current - 1));
     }, 1000);
     return () => window.clearTimeout(timerId);
-  }, [answered, finishAttempt, secondsLeft]);
+  }, [answered, finishAttempt, secondsLeft, question.unavailable]);
 
   const advancedRequested =
     typeof window !== "undefined" &&
@@ -1995,6 +1998,11 @@ function EndlessQuizQuest({
             </div>
           )}
 
+          {question.unavailable && (
+            <Button className="mt-3" onClick={() => nextQuestion()}>
+              Retry selected topic
+            </Button>
+          )}
           <div className="mt-6 grid gap-3">
             {question.options.map((option, index) => {
               const isCorrect = index === question.answerIndex;
@@ -3308,38 +3316,16 @@ function makeFallbackQuestion(subject: Subject, topic: string, topicLabel: strin
     );
   }
 
-  /*
-   * The requested chapter has no verified content at all. Crashing the whole
-   * quiz screen is not an option, and inventing a question is not allowed, so
-   * the student gets a genuine question from the bank — labelled with the
-   * subject it actually belongs to and marked as general revision, never
-   * passed off as the chapter they picked. The gap is logged so it can be
-   * filled from the admin panel.
-   */
-  const fallbackSubjects = QUIZ_BANK_SUBJECTS.filter(
-    (candidate) => getSubjectBankItems(candidate).length > 0,
-  );
-  const fallbackItems =
-    fallbackSubjects.length > 0 ? getSubjectBankItems(pick(fallbackSubjects)) : [];
-  if (fallbackItems.length > 0) {
-    const item = pick(fallbackItems);
-    const fallbackSubject = fallbackSubjects.find((candidate) =>
-      getSubjectBankItems(candidate).includes(item),
-    );
-    console.warn(
-      `[quiz] no verified question for "${subject} / ${topic}"; serving a general revision question from "${fallbackSubject ?? subject}".`,
-    );
-    return makeConceptQuestion(
-      (fallbackSubject ?? subject) as Subject,
-      `${topicLabel} · general revision`,
-      item.prompt,
-      item.answer,
-      [item.answer, ...item.distractors],
-      item.explanation,
-    );
-  }
-
-  throw new Error(`No verified question is available for ${subject} / ${topic}.`);
+  return {
+    id: `unavailable:${subject}:${topic}`,
+    subject,
+    topic,
+    prompt: `No verified question is ready for ${subject} / ${topic}. Choose another chapter or retry after the bank finishes loading.`,
+    options: [],
+    answerIndex: -1,
+    explanation: "",
+    unavailable: true,
+  };
 }
 
 function makeTopicQuestion(

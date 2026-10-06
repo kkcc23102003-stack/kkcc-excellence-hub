@@ -11,6 +11,7 @@ const files = [
   "TEST-OUTLINE-EDIT",
   "STORAGE-USAGE",
   "TEST-PRIVACY",
+  "THUMBNAILS",
 ].map((name) => `KKCC-Excellence-Hub-${name}.sql`);
 for (const name of files) {
   if (process.argv.includes("--check")) {

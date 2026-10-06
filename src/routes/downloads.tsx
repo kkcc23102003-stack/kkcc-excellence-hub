@@ -184,6 +184,25 @@ function DownloadsPage() {
             </p>
 
             <section className="mt-6 space-y-3 rounded-2xl border p-5">
+              <h2 className="font-bold">New: Free / paid notes and test thumbnails</h2>
+              <p className="text-sm text-muted-foreground">
+                Image upload/replace/remove ya image ke bina text cover. Notes: Admin → Materials →
+                Edit. Tests: Admin → Tests → Test thumbnails. Pehle Thumbnail SQL run karein, phir
+                updated app redeploy karein. Existing content, payments aur result-saving setting
+                nahi badlenge.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <a href="/KKCC-Excellence-Hub-THUMBNAILS.sql" download>
+                    Download Thumbnail SQL
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href="/downloads/THUMBNAILS-HINDI.md">Thumbnail setup guide</a>
+                </Button>
+              </div>
+            </section>
+            <section className="mt-6 space-y-3 rounded-2xl border p-5">
               <h2 className="font-bold">New: Student test result storage — Admin ON / OFF</h2>
               <p className="text-sm text-muted-foreground">
                 Existing website ke Supabase SQL Editor mein Test Privacy SQL run karein, phir

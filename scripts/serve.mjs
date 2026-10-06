@@ -1,3 +1,5 @@
+import { AssetCache, acceptsGzip, matchesEtag } from "./http-cache.mjs";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
@@ -18,13 +20,15 @@ const mime = {
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
   ".pdf": "application/pdf",
+  ".sql": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
 };
 const compressibleExt = new Set([".js", ".css", ".html", ".json", ".svg", ".webmanifest"]);
-const staticAssetCache = new Map();
 
 /** Serves the REAL production build. Optional relative-URL fixture proxy is server-side only. */
 export function createProductionServer(entry, options = {}) {
   const root = resolve("dist/client");
+  const staticAssetCache = new AssetCache();
   const server = createServer(async (incoming, outgoing) => {
     try {
       const protocol = incoming.headers["x-forwarded-proto"] === "https" ? "https" : "http";
@@ -32,7 +36,7 @@ export function createProductionServer(entry, options = {}) {
       const origin = process.env.KKCC_PUBLIC_ORIGIN || `${protocol}://${host}`;
       const url = new URL(incoming.url || "/", origin);
       const acceptEncoding = String(incoming.headers["accept-encoding"] || "");
-      const supportsGzip = /\bgzip\b/i.test(acceptEncoding);
+      const supportsGzip = acceptsGzip(acceptEncoding);
       const headers = new Headers();
       for (const [key, value] of Object.entries(incoming.headers))
         if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(",") : value);
@@ -185,7 +189,13 @@ export function createProductionServer(entry, options = {}) {
                   compressibleExt.has(ext) && raw.byteLength > 512
                     ? gzipSync(raw, { level: 6 })
                     : null;
-                cached = { mtimeMs: details.mtimeMs, raw, gzipped, ext };
+                cached = {
+                  mtimeMs: details.mtimeMs,
+                  raw,
+                  gzipped,
+                  ext,
+                  etag: `W/"${createHash("sha256").update(raw).digest("hex")}"`,
+                };
                 if (raw.byteLength <= 4 * 1024 * 1024) {
                   staticAssetCache.set(file, cached);
                 }
@@ -205,6 +215,15 @@ export function createProductionServer(entry, options = {}) {
                   ? "private,no-store"
                   : "public,max-age=300",
             );
+            if (cached.gzipped) outgoing.setHeader("vary", "Accept-Encoding");
+            if (url.pathname !== "/secure-video.html") {
+              outgoing.setHeader("etag", cached.etag);
+              if (matchesEtag(incoming.headers["if-none-match"], cached.etag)) {
+                outgoing.writeHead(304);
+                outgoing.end();
+                return;
+              }
+            }
             const useGzip = Boolean(supportsGzip && cached.gzipped);
             const payload = useGzip ? cached.gzipped : cached.raw;
             if (cached.gzipped) outgoing.setHeader("vary", "Accept-Encoding");
@@ -236,7 +255,10 @@ export function createProductionServer(entry, options = {}) {
       if (shouldCompressSsr && response.body) {
         outgoing.removeHeader("content-length");
         outgoing.setHeader("content-encoding", "gzip");
-        outgoing.setHeader("vary", "Accept-Encoding");
+        outgoing.setHeader(
+          "vary",
+          [response.headers.get("vary"), "Accept-Encoding"].filter(Boolean).join(", "),
+        );
         outgoing.writeHead(response.status);
         Readable.fromWeb(response.body)
           .pipe(createGzip({ level: 5 }))

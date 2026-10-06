@@ -1,3 +1,4 @@
+import { ContentThumbnail } from "@/components/kkcc/content-thumbnail";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { FileText, Search } from "lucide-react";
@@ -8,7 +9,6 @@ import { cn } from "@/lib/utils";
 import { coinPriceOf, MATERIAL_TYPES } from "@/lib/cms";
 import { listPublicMaterials } from "@/lib/content.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
-import { getAllBuiltInStudyNotes } from "@/lib/theory-bank";
 
 export const Route = createFileRoute("/dashboard/materials")({
   head: () => ({
@@ -32,32 +32,7 @@ function MaterialsPage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<string>("All");
 
-  const combinedMaterials = useMemo(() => {
-    const builtIn = getAllBuiltInStudyNotes().map((note) => ({
-      id: note.id,
-      course_id: null,
-      lecture_id: null,
-      title: note.title,
-      description: note.description,
-      subject: note.subject,
-      chapter: note.chapter,
-      module_title: note.chapter,
-      batch: "KKCC Study Library",
-      material_type: note.material_type,
-      class_level: note.class_level,
-      pages: note.pages,
-      file_url: null as string | null,
-      thumbnail_url: null as string | null,
-      access_type: "free" as const,
-      price: 0,
-      coin_price: 0,
-      is_published: true,
-      sort_order: 999,
-      created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:00:00.000Z",
-    }));
-    return [...materials, ...builtIn];
-  }, [materials]);
+  const combinedMaterials = materials; // Server already applies admin overrides and sample visibility.
 
   const filtered = useMemo(
     () =>
@@ -112,6 +87,11 @@ function MaterialsPage() {
             key={m.id}
             className="surface-panel flex min-w-0 flex-col gap-4 p-4 sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
           >
+            {(m.thumbnail_url || m.thumbnail_text) && (
+              <div className="w-full sm:w-40">
+                <ContentThumbnail value={m} title={m.title} kind="materials" id={m.id} />
+              </div>
+            )}
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
               <FileText className="h-5 w-5" />
             </span>

@@ -68,6 +68,12 @@ test("Admin retention ON/OFF, RAM-only result, refresh loss, confirmed cleanup a
     await start(student);
     await expect(student.getByTestId("temporary-test-notice")).toBeVisible();
     await expect(student).toHaveURL(/temporary=true/);
+    await studentContext.setOffline(true);
+    await expect(student.getByTestId("test-offline-notice")).toContainText("timer does not pause");
+    await student.getByTestId("answer-option").first().click();
+    await studentContext.setOffline(false);
+    await expect(student.getByTestId("test-offline-notice")).toHaveCount(0);
+
     await student.getByTestId("answer-option").first().click();
     await student.getByRole("button", { name: "Next", exact: true }).click();
     await student.getByTestId("answer-option").last().click();

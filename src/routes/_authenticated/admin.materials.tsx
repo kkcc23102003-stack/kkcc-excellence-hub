@@ -1,3 +1,4 @@
+import { ThumbnailEditor } from "@/components/kkcc/thumbnail-editor";
 import { noteImageRefs, replaceNoteImageRefs } from "@/lib/note-image-refs";
 import { previewAdminNoteImages } from "@/lib/storage-upload.functions";
 import { getAdminStorageSettings } from "@/lib/platform-settings.functions";
@@ -184,6 +185,7 @@ type MaterialInput = {
   pages: number;
   file_url: string | null;
   thumbnail_url: string | null;
+  thumbnail_text?: string | null;
   access_type: "course" | "free" | "paid";
   price: number;
   coin_price: number;
@@ -206,6 +208,7 @@ const toInput = (m: Material): MaterialInput => ({
   pages: m.pages,
   file_url: m.file_url,
   thumbnail_url: m.thumbnail_url ?? null,
+  thumbnail_text: m.thumbnail_text ?? null,
   access_type: m.access_type ?? "course",
   price: m.price ?? 0,
   coin_price: m.coin_price ?? m.price ?? 0,
@@ -569,6 +572,7 @@ function MaterialForm({
   onSave: (v: MaterialInput) => void | Promise<unknown>;
 }) {
   const [v, setV] = useState<MaterialInput>(() => toInput(material));
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const previewImages = useServerFn(previewAdminNoteImages);
   const refs = noteImageRefs(v.description);
   const imageUrls = useQuery({
@@ -656,6 +660,7 @@ function MaterialForm({
           <Label>Title</Label>
           <Input
             className="mt-1.5"
+            aria-label="Note title"
             value={v.title}
             onChange={(e) => setV({ ...v, title: e.target.value })}
           />
@@ -1016,6 +1021,7 @@ function MaterialForm({
           <Label>Access / selling mode</Label>
           <select
             className={selectClass}
+            aria-label="Note access mode"
             value={v.access_type}
             onChange={(e) =>
               setV({ ...v, access_type: e.target.value as "course" | "free" | "paid" })
@@ -1032,6 +1038,7 @@ function MaterialForm({
             className="mt-1.5"
             type="number"
             min={0}
+            aria-label="Note price rupees"
             value={v.price}
             onChange={(e) => setV({ ...v, price: Number(e.target.value || 0) })}
             disabled={v.access_type !== "paid"}
@@ -1151,24 +1158,15 @@ function MaterialForm({
           600-DPI scan into chapter PDFs to avoid slow uploads and Free-plan storage failures.
         </div>
         <div className="sm:col-span-2 flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px] flex-1">
-            <Label>Thumbnail</Label>
-            <Input
-              className="mt-1.5"
-              value={v.thumbnail_url ?? ""}
-              onChange={(e) => setV({ ...v, thumbnail_url: e.target.value || null })}
-              placeholder="Optional cover image URL"
+          <div className="w-full">
+            <ThumbnailEditor
+              value={v}
+              onChange={(value) => setV({ ...v, ...value })}
+              title={v.title}
+              disabled={saving}
+              onBusyChange={setUploadingThumbnail}
             />
           </div>
-          <UploadButton
-            folder={`${folder}/thumbnails`}
-            accept="image/*"
-            label="Upload image"
-            onUploaded={(url) => {
-              const next = { ...v, thumbnail_url: url };
-              setV(next);
-            }}
-          />
           <label className="flex items-center gap-2 pb-2 text-sm">
             <input
               type="checkbox"
@@ -1181,7 +1179,11 @@ function MaterialForm({
       </div>
 
       <div className="mt-5 flex justify-end">
-        <Button className="rounded-full" disabled={saving} onClick={() => onSave(v)}>
+        <Button
+          className="rounded-full"
+          disabled={saving || uploadingThumbnail}
+          onClick={() => onSave(v)}
+        >
           {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
           Save changes
         </Button>

@@ -1,3 +1,4 @@
+import { ContentThumbnail } from "./content-thumbnail";
 import { Link } from "@tanstack/react-router";
 import { ClipboardList, Lock, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function TestCard({
       className="group relative flex h-full flex-col overflow-hidden rounded-3xl border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/70 via-primary to-primary/30" />
+      <ContentThumbnail value={test} title={test.title} kind="tests" id={test.id} />
       <div className="flex items-start justify-between gap-3 pt-1">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
           <ClipboardList className="h-5 w-5" />

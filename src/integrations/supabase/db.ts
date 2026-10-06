@@ -60,6 +60,7 @@ export type MaterialRow = {
   sort_order: number;
   description: string;
   thumbnail_url: string | null;
+  thumbnail_text?: string | null;
   module_title: string;
   batch: string;
   access_type: "course" | "free" | "paid";
@@ -70,6 +71,8 @@ export type MaterialRow = {
 };
 
 export type TestRow = {
+  thumbnail_url?: string | null;
+  thumbnail_text?: string | null;
   assembly_source_ids?: string[];
   id: string;
   course_id: string | null;

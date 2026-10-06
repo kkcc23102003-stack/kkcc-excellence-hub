@@ -242,15 +242,12 @@ test("Analytics reads only existing tables and never trusts the browser for a ro
   assert.match(ledger, /catch \(error\) \{[\s\S]*console\.warn/);
 });
 
-test("The quiz never crashes on a chapter with no verified content", () => {
+test("Missing quiz content is a non-scoring empty state, never a cross-subject replacement", () => {
   const games = readFileSync("src/routes/games.tsx", "utf8");
-  // The last resort must serve a real bank question, labelled with the subject
-  // it truly belongs to, instead of throwing and taking the page down.
-  assert.match(games, /no verified question for/);
-  assert.match(games, /general revision/);
-  assert.match(games, /QUIZ_BANK_SUBJECTS/);
-  // It must never silently relabel another subject's question as the requested one.
-  assert.match(games, /fallbackSubject \?\? subject/);
+  assert.match(games, /No verified question is ready/);
+  assert.match(games, /unavailable: true/);
+  assert.match(games, /answered \|\| question.unavailable/);
+  assert.doesNotMatch(games, /fallbackSubject \?\? subject/);
 });
 
 test("A subject without its own chapters never borrows another subject's chapters", () => {

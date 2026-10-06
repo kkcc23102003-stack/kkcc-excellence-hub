@@ -707,6 +707,21 @@ const server = createServer(async (req, res) => {
       for (const [key, raw] of url.searchParams) {
         if (["select", "limit", "offset", "order", "on_conflict", "columns"].includes(key))
           continue;
+        if (key === "or") {
+          const terms = raw
+            .replace(/^\(|\)$/g, "")
+            .split(",")
+            .map((term) => {
+              const match = /^([a-z_]+)\.(is|lte|gt)\.(.*)$/.exec(term);
+              if (!match) throw new Error("Unsupported fixture OR condition");
+              const column = identifier(match[1]!);
+              if (match[2] === "is" && match[3] === "null") return `${column} IS NULL`;
+              if (match[2] === "is") throw new Error("Unsupported fixture IS condition");
+              return `${column} ${match[2] === "lte" ? "<=" : ">"} ${bind(match[3])}`;
+            });
+          condition.push(`(${terms.join(" OR ")})`);
+          continue;
+        }
         const dot = raw.indexOf(".");
         const op = raw.slice(0, dot);
         const value = raw.slice(dot + 1);
