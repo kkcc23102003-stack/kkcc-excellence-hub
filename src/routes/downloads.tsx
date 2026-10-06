@@ -183,6 +183,34 @@ function DownloadsPage() {
               kar sakte hain.
             </p>
 
+            <section className="mt-6 space-y-3 rounded-2xl border p-5">
+              <h2 className="font-bold">New: Student test result storage — Admin ON / OFF</h2>
+              <p className="text-sm text-muted-foreground">
+                Existing website ke Supabase SQL Editor mein Test Privacy SQL run karein, phir
+                updated app redeploy karein. Default ON hai; installation kuch delete nahi karta.
+                OFF ke liye Admin → Storage → Test result storage kholein. Temporary answers/results
+                sirf current browser memory mein rahenge; refresh/close se loss.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Old attempts/results delete karne ke liye saving OFF → refresh counts → DELETE TEST
+                HISTORY type → separate confirmation. 5000 per batch; zarurat ho to repeat karein.
+                Accounts, payments, access, admin questions safe rahenge. Provider backups/exports
+                erase nahi hote. Ye normal Cleaner se alag control hai.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <a href="/KKCC-Excellence-Hub-TEST-PRIVACY.sql" download>
+                    Download Test Privacy SQL
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href="/downloads/TEST-PRIVACY-HINDI.md">Hindi setup guide</a>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link to="/admin/storage">Open Admin Storage</Link>
+                </Button>
+              </div>
+            </section>
             <section className="mt-6 rounded-2xl border border-primary/40 bg-primary/5 p-5">
               <h2 className="font-bold">
                 Notes / Test publish error? Easy test ko Paid karna hai?
