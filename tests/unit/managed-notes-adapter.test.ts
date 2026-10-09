@@ -91,8 +91,30 @@ test("serverless managed notes use Supabase, recover after SQL setup, and invali
     await projectContent.from("materials").delete().eq("id", "test-note");
     assert.deepEqual((await projectContent.from("materials").select("*")).data, []);
     assert.ok(calls.some((call) => call.startsWith("PATCH")));
+    const privateObjects = new Map<string, Uint8Array>();
     globalThis.fetch = async (input, init) => {
       const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      if (path === "/storage/v1/bucket/kkcc-test-bodies")
+        return Response.json({ id: "kkcc-test-bodies", name: "kkcc-test-bodies", public: false });
+      if (path.startsWith("/storage/v1/object/")) {
+        const key = path.replace("/authenticated/", "/");
+        if (request.method === "POST") {
+          privateObjects.set(key, new Uint8Array(await request.arrayBuffer()));
+          return Response.json({ Key: key });
+        }
+        const bytes = privateObjects.get(key);
+        return bytes
+          ? new Response(bytes as BodyInit, { headers: { "content-type": "application/json" } })
+          : new Response("missing", { status: 404 });
+      }
+      if (path === "/rest/v1/kkcc_test_questions" && request.method === "POST") {
+        const body = await request.json();
+        assert.equal(body[0].question_text, "");
+        assert.deepEqual(body[0].options, []);
+        assert.ok(body[0].body_storage_sha256);
+        return Response.json(body);
+      }
       assert.ok(
         ["/rest/v1/kkcc_tests", "/rest/v1/kkcc_test_questions"].includes(
           new URL(request.url).pathname,
@@ -116,7 +138,24 @@ test("serverless managed notes use Supabase, recover after SQL setup, and invali
         assert.equal(missingTest.error?.code, "TESTS_SETUP_REQUIRED");
         assert.ok(missingTest.error?.message.includes("PUBLISH-FIX.sql"));
         missingSchema = false;
-        assert.equal((await projectContent.from(table).insert({ id: "saved-test" })).error, null);
+        const row =
+          table === "tests"
+            ? { id: "saved-test" }
+            : {
+                id: "80000000-0000-4000-8000-000000000001",
+                test_id: "90000000-0000-4000-8000-000000000001",
+                question_text: "Exact UTF-8 ਪੰਜਾਬੀ question",
+                options: ["One", "Two"],
+                correct_index: 1,
+                explanation: "Keep this explanation",
+              };
+        const saved = await projectContent.from(table).insert(row as never);
+        assert.equal(saved.error, null);
+        if (table === "test_questions")
+          assert.equal(
+            (saved.data[0] as { question_text: string }).question_text,
+            "Exact UTF-8 ਪੰਜਾਬੀ question",
+          );
       }
     }
   } finally {

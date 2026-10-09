@@ -29,14 +29,32 @@ export const publishEasyTextTest = createServerFn({ method: "POST" })
         );
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const result = await supabaseAdmin.rpc("publish_easy_text_test_v3", {
+    const { createHash, randomUUID } = await import("node:crypto");
+    const { storeTestQuestions } = await import("./test-body.server");
+    const hash = createHash("sha256").update(JSON.stringify(data)).digest("hex");
+    const previous = await projectContent.from("tests").select("*").eq("id", data.id).maybeSingle();
+    if (previous.error) throw new Error(previous.error.message);
+    if (previous.data) {
+      if (previous.data.easy_request_hash !== hash)
+        throw new Error("Test already saved with different content. Open it in Advanced to edit.");
+      return { id: data.id, count: data.questions.length, published: previous.data.is_published };
+    }
+    const rows = await storeTestQuestions(
+      data.questions.map((q) => ({
+        ...q,
+        id: randomUUID(),
+        test_id: data.id,
+        option_count: q.options.length,
+      })),
+    );
+    const result = await supabaseAdmin.rpc("publish_storage_text_test", {
       p_actor: context.userId,
-      p_payload: data,
+      p_payload: { ...data, _request_hash: hash, questions: rows },
     });
     if (result.error)
       throw new Error(
         ["PGRST202", "42883", "42P01"].includes(result.error.code)
-          ? "Publish setup pending: run the latest KKCC-Excellence-Hub-TEST-FOLDERS.sql in Supabase SQL Editor and redeploy. No test was published; your preview is safe to retry. S3 is not required."
+          ? "Publish setup pending: run the latest KKCC-Excellence-Hub-TEST-BODIES.sql in Supabase SQL Editor and redeploy. No test was published; your preview is safe to retry. S3 is not required."
           : result.error.message,
       );
     invalidateProjectContentCache("tests");

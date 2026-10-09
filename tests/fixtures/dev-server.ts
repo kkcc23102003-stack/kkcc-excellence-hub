@@ -468,6 +468,14 @@ for (const table of ["tests", "test_questions"] as const) {
   }
 }
 
+// Disposable migration fixture only; the interactive preview still starts with no prebuilt tests.
+if (!isLivePreview) {
+  await database.exec(`INSERT INTO public.kkcc_tests(id,title,subject,syllabus_subject,syllabus_chapter,question_source,is_published,is_paid,duration_minutes)
+ VALUES('82000000-0000-4000-8000-000000000001','Fixture Legacy Storage Test','Mathematics','Mathematics','Storage migration','manual',true,false,30);
+ INSERT INTO public.kkcc_test_questions(id,test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order)
+ VALUES('83000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001','Storage migration: what is 2 + 3?','Mathematics',ARRAY['4','5'],1,1,0,'Original migration explanation: two plus three is five.',0);`);
+}
+
 await database.query(
   "INSERT INTO public.coin_transactions(user_id,amount,source,reason) VALUES($1,1000,'admin_grant','fixture'),($2,1000,'admin_grant','fixture')",
   [ids.studentA, ids.studentB],

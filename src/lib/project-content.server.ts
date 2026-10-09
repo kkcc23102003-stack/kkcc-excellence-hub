@@ -671,22 +671,67 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       };
       const client = supabaseAdmin as unknown as { from: (t: string) => RemoteQuery };
       let query: RemoteQuery;
+      let payload = this.payload;
+      let expectedQuestionVersion: string | null | undefined;
+      const isQuestions = this.table === "test_questions";
+      if (isQuestions && ["insert", "upsert", "update"].includes(this.operation)) {
+        const { storeTestQuestions, hydrateTestQuestions } = await import("./test-body.server");
+        if (this.operation !== "update") {
+          payload = (await storeTestQuestions(
+            payload.map((row) => ({
+              ...row,
+              id: row["id"] || randomUUID(),
+            })) as unknown as import("./test-body-store").TestContentRow[],
+          )) as unknown as AnyRow[];
+        } else if (
+          ["question_text", "options", "explanation"].some((key) =>
+            Object.hasOwn(payload[0] || {}, key),
+          )
+        ) {
+          const id = this.remoteFilters.find((f) => f.op === "eq" && f.key === "id")?.value;
+          if (typeof id !== "string")
+            throw new Error(
+              "Content edits require a single question ID; metadata-only bulk edits are unchanged.",
+            );
+          const current = await supabaseAdmin
+            .from("kkcc_test_questions")
+            .select("*")
+            .eq("id", id)
+            .single();
+          if (current.error || !current.data)
+            throw new Error(current.error?.message || "Question not found");
+          const [hydrated] = await hydrateTestQuestions([current.data]);
+          expectedQuestionVersion = current.data.updated_at;
+          payload = (await storeTestQuestions([
+            { ...hydrated, ...payload[0], id } as import("./test-body-store").TestContentRow,
+          ])) as unknown as AnyRow[];
+        }
+      }
+      const hydrateQuestions =
+        isQuestions &&
+        !this.head &&
+        (this.selectColumns.includes("*") ||
+          /(question_text|options|explanation)/.test(this.selectColumns));
+      const columns =
+        hydrateQuestions && !this.selectColumns.includes("*")
+          ? `${this.selectColumns},id,test_id,body_storage_path,body_storage_sha256,body_storage_bytes`
+          : this.selectColumns;
 
       if (this.operation === "select") {
-        query = client.from(table).select(this.selectColumns, {
+        query = client.from(table).select(columns, {
           count: "exact",
           head: this.head,
         });
       } else if (this.operation === "insert") {
-        query = client.from(table).insert(this.payload).select(this.selectColumns);
+        query = client.from(table).insert(payload).select(this.selectColumns);
       } else if (this.operation === "update") {
-        query = client.from(table).update(this.payload[0] ?? {});
+        query = client.from(table).update(payload[0] ?? {});
       } else if (this.operation === "delete") {
         query = client.from(table).delete();
       } else {
         query = client
           .from(table)
-          .upsert(this.payload, {
+          .upsert(payload, {
             onConflict: this.conflict || undefined,
             ignoreDuplicates: this.ignoreDuplicates,
           })
@@ -703,6 +748,11 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           query = query.in(f.key, Array.isArray(f.value) ? (f.value as unknown[]) : []);
         else if (f.op === "ilike") query = query.ilike(f.key, String(f.value));
       }
+      if (expectedQuestionVersion !== undefined)
+        query =
+          expectedQuestionVersion === null
+            ? query.is("updated_at", null)
+            : query.eq("updated_at", expectedQuestionVersion);
       for (const { key, ascending } of this.orders) query = query.order(key, { ascending });
       if (this.offset !== 0 || this.cap !== Infinity) {
         const to = this.cap === Infinity ? 999999999 : this.offset + this.cap - 1;
@@ -774,7 +824,14 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           count: result.count ?? null,
         };
       }
-      const data = result.data as Output;
+      let data = result.data as Output;
+      if (hydrateQuestions && data) {
+        const { hydrateTestQuestions } = await import("./test-body.server");
+        const rows = await hydrateTestQuestions(
+          (Array.isArray(data) ? data : [data]) as import("./test-body-store").TestContentRow[],
+        );
+        data = (Array.isArray(data) ? rows : rows[0]) as Output;
+      }
       const outResult: Result<Output> = {
         data,
         error: null,

@@ -184,6 +184,26 @@ function DownloadsPage() {
             </p>
 
             <section className="mt-6 space-y-3 rounded-2xl border p-5">
+              <h2 className="font-bold">New: Test questions in Supabase Storage</h2>
+              <p className="text-sm text-muted-foreground">
+                Questions, options and explanations save in a private Supabase bucket. Student
+                records, payments, attempts and results stay unchanged. Verified migration clears
+                only heavy Database content; IDs and small metadata remain.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <a href="/KKCC-Excellence-Hub-TEST-BODIES.sql" download>
+                    Download Test Bodies SQL
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href="/downloads/TEST-BODIES-HINDI.md">
+                    Test Storage setup / old-content guide
+                  </a>
+                </Button>
+              </div>
+            </section>
+            <section className="mt-6 space-y-3 rounded-2xl border p-5">
               <h2 className="font-bold">New: Notes text in private Supabase Storage</h2>
               <p className="text-sm text-muted-foreground">
                 Main text Storage mein; metadata/access Database mein. Install SQL, redeploy, then

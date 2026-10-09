@@ -579,6 +579,14 @@ function TestQuestionWriter() {
           description="Write your own MCQs for the test series. Each question is stored with the test, so students see exactly what you type."
         />
 
+        <p className="my-3 rounded-xl border p-3 text-sm">
+          Question text, options and explanations now save in private Supabase Storage.
+          <Link to="/admin/storage" className="ml-1 font-semibold underline">
+            Storage setup / verified old-content migration
+          </Link>
+          . Student accounts, payments and results are not part of this migration.
+        </p>
+
         {testsQuery.isError && (
           <p role="alert" className="my-3 rounded-xl border border-destructive p-3 text-sm">
             {testsQuery.error instanceof Error

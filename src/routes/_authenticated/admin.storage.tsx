@@ -1,3 +1,4 @@
+import { TestBodyStoragePanel } from "@/components/kkcc/test-body-storage-panel";
 import { NoteBodyStoragePanel } from "@/components/kkcc/note-body-storage-panel";
 import { TestRetentionPanel } from "@/components/kkcc/test-retention-panel";
 import { StorageUsagePanel } from "@/components/kkcc/storage-usage-panel";
@@ -200,6 +201,7 @@ function AdminStoragePage() {
           </Button>
         </div>
         <TestRetentionPanel />
+        <TestBodyStoragePanel />
         <NoteBodyStoragePanel />
         <StorageUsagePanel />
         <SpaceSaverPanel />

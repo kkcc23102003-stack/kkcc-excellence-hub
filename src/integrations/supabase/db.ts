@@ -74,6 +74,7 @@ export type MaterialRow = {
 };
 
 export type TestRow = {
+  easy_request_hash?: string | null;
   thumbnail_url?: string | null;
   thumbnail_text?: string | null;
   assembly_source_ids?: string[];
@@ -198,6 +199,9 @@ export type TestAccessGrantRow = {
 };
 
 export type TestQuestionRow = {
+  body_storage_path?: string | null;
+  body_storage_sha256?: string | null;
+  body_storage_bytes?: number | null;
   id: string;
   test_id: string;
   question_text: string;
@@ -567,6 +571,17 @@ export type DB = {
         WithGeneratedDefaults<TestSeriesOverrideRow>,
         Partial<TestSeriesOverrideRow>
       >;
+      kkcc_test_questions: TableDefinition<
+        TestQuestionRow,
+        WithGeneratedDefaults<TestQuestionRow>,
+        Partial<TestQuestionRow>
+      >;
+      kkcc_tests: TableDefinition<TestRow, WithGeneratedDefaults<TestRow>, Partial<TestRow>>;
+      kkcc_materials: TableDefinition<
+        MaterialRow,
+        WithGeneratedDefaults<MaterialRow>,
+        Partial<MaterialRow>
+      >;
       test_questions: TableDefinition<
         TestQuestionRow,
         WithGeneratedDefaults<TestQuestionRow>,
@@ -711,6 +726,43 @@ export type DB = {
           p_expected_ids: string[];
         };
         Returns: Json;
+      };
+      publish_storage_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
+      test_body_storage_status: {
+        Args: { p_actor: string };
+        Returns: Array<{
+          source: string;
+          inline_count: number;
+          inline_bytes: number;
+          stored_count: number;
+        }>;
+      };
+      move_test_question_body: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_text_md5: string;
+          p_options_md5: string;
+          p_explanation_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+          p_legacy: boolean;
+        };
+        Returns: boolean;
+      };
+      move_legacy_note_body: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_source_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+        };
+        Returns: boolean;
       };
       publish_easy_text_test_v3: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       publish_easy_text_test_v2: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
