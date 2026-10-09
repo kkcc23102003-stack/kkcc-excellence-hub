@@ -159,7 +159,11 @@ Examples
 :::
 `;
 
-const runtime = "data/fixture-content.runtime.json";
+// Keep interactive preview edits separate from disposable automated browser data.
+const runtime =
+  process.env["KKCC_LIVE_PREVIEW"] === "1"
+    ? "data/preview-content.runtime.json"
+    : "data/fixture-content.runtime.json";
 const doc = JSON.parse(readFileSync("data/project-content.json", "utf8")) as {
   version: number;
   tables: Record<string, Record<string, unknown>[]>;

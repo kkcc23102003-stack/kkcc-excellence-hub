@@ -1,3 +1,5 @@
+import { materialAccessMode } from "./material-access-mode";
+import { readNoteBody, mapNoteBodyReads } from "./note-body.server";
 import { isFreeCourse } from "@/lib/cms";
 import { resolveContentUrl, resolveNoteImages } from "@/lib/content-storage.server";
 import { createServerFn } from "@tanstack/react-start";
@@ -49,27 +51,26 @@ function buildPublicNoteDataUrl(material: Row<"materials">) {
 }
 
 async function publicMaterials(materials: Row<"materials">[]) {
-  return Promise.all(
-    materials.map(async (material) => {
-      const hasPaidPrice = Number(material.price ?? 0) > 0 || Number(material.coin_price ?? 0) > 0;
-      const effectiveAccessType =
-        material.access_type === "paid" || hasPaidPrice
-          ? "paid"
-          : material.access_type === "free" || !material.course_id
-            ? "free"
-            : "course";
-      const resolved =
-        effectiveAccessType === "free" ? await resolveContentUrl(material.file_url) : null;
-      return {
-        ...material,
-        description:
-          effectiveAccessType === "free" ? await resolveNoteImages(material.description || "") : "",
-        access_type: effectiveAccessType,
-        file_url:
-          effectiveAccessType === "free" ? resolved || buildPublicNoteDataUrl(material) : null,
-      };
-    }),
-  );
+  return mapNoteBodyReads(materials, async (material) => {
+    const effectiveAccessType = materialAccessMode(material);
+    const publicMaterial = { ...material };
+    delete publicMaterial.body_storage_path;
+    delete publicMaterial.body_storage_sha256;
+    delete publicMaterial.body_storage_bytes;
+    const description =
+      effectiveAccessType === "free" ? await resolveNoteImages(await readNoteBody(material)) : "";
+    const resolved =
+      effectiveAccessType === "free" ? await resolveContentUrl(material.file_url) : null;
+    return {
+      ...publicMaterial,
+      description,
+      access_type: effectiveAccessType,
+      file_url:
+        effectiveAccessType === "free"
+          ? resolved || buildPublicNoteDataUrl({ ...material, description })
+          : null,
+    };
+  });
 }
 export type PublicPlatformStats = {
   studentsJoined: number;

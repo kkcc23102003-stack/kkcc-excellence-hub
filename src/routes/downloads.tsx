@@ -184,6 +184,25 @@ function DownloadsPage() {
             </p>
 
             <section className="mt-6 space-y-3 rounded-2xl border p-5">
+              <h2 className="font-bold">New: Notes text in private Supabase Storage</h2>
+              <p className="text-sm text-muted-foreground">
+                Main text Storage mein; metadata/access Database mein. Install SQL, redeploy, then
+                Admin → Materials / Storage. Legacy migration has separate confirmation, verified
+                upload and 5-note batches. PDF links unchanged; 200,000-character typed-note limit,
+                not a 1 GB file uploader.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <a href="/KKCC-Excellence-Hub-NOTE-BODIES.sql" download>
+                    Download Note Bodies SQL
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href="/downloads/NOTE-BODIES-HINDI.md">Private notes setup guide</a>
+                </Button>
+              </div>
+            </section>
+            <section className="mt-6 space-y-3 rounded-2xl border p-5">
               <h2 className="font-bold">New: Free / paid notes and test thumbnails</h2>
               <p className="text-sm text-muted-foreground">
                 Image upload/replace/remove ya image ke bina text cover. Notes: Admin → Materials →

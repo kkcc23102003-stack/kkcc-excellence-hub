@@ -1,3 +1,4 @@
+import { materialAccessMode } from "./material-access-mode";
 import { projectContent } from "@/lib/project-content.server";
 import { effectiveSeries, readStudentAccess, unwrap } from "@/lib/learning.server";
 import { coinPriceOf } from "@/lib/cms";
@@ -576,8 +577,7 @@ export const spend23KaatForMaterial = createServerFn({ method: "POST" })
         .eq("is_published", true)
         .single(),
     );
-    const mode =
-      material.access_type || (material.price > 0 || material.coin_price > 0 ? "paid" : "course");
+    const mode = materialAccessMode(material);
     if (mode === "course") return materialForStudent(context, material.id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const result = unwrap(

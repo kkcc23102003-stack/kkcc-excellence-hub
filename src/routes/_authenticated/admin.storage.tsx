@@ -1,3 +1,4 @@
+import { NoteBodyStoragePanel } from "@/components/kkcc/note-body-storage-panel";
 import { TestRetentionPanel } from "@/components/kkcc/test-retention-panel";
 import { StorageUsagePanel } from "@/components/kkcc/storage-usage-panel";
 import { SpaceSaverPanel } from "@/components/kkcc/space-saver-panel";
@@ -199,6 +200,7 @@ function AdminStoragePage() {
           </Button>
         </div>
         <TestRetentionPanel />
+        <NoteBodyStoragePanel />
         <StorageUsagePanel />
         <SpaceSaverPanel />
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">

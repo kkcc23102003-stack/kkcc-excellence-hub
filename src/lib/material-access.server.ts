@@ -1,3 +1,5 @@
+import { materialAccessMode } from "./material-access-mode";
+import { readNoteBody } from "./note-body.server";
 import { isFreeCourse } from "@/lib/cms";
 import { notesPrintDocument } from "@/lib/notes-visuals";
 import type { StudentContext } from "@/lib/learning.server";
@@ -35,10 +37,8 @@ export async function materialForStudent(context: StudentContext, id: string) {
   );
   if (!material) throw new Error("Material not found.");
   const access = await readStudentAccess(context);
-  const hasPaidPrice = Number(material.price ?? 0) > 0 || Number(material.coin_price ?? 0) > 0;
-  const mode =
-    material.access_type || (hasPaidPrice ? "paid" : material.course_id ? "course" : "free");
-  let allowed = access.is_admin || mode === "free" || (!hasPaidPrice && !material.course_id);
+  const mode = materialAccessMode(material);
+  let allowed = access.is_admin || mode === "free";
   if (!allowed && mode === "paid") {
     allowed = Boolean(
       unwrap(
@@ -69,7 +69,7 @@ export async function materialForStudent(context: StudentContext, id: string) {
   }
   if (!allowed)
     throw new Error(mode === "paid" ? "MATERIAL_ACCESS_REQUIRED" : "COURSE_ACCESS_REQUIRED");
-  const description = await resolveNoteImages(material.description || "");
+  const description = await resolveNoteImages(await readNoteBody(material));
   const resolvedUrl = await resolveContentUrl(material.file_url);
   const file_url =
     resolvedUrl && resolvedUrl !== "#"

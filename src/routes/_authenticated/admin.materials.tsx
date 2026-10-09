@@ -1,3 +1,4 @@
+import { NoteBodyStoragePanel } from "@/components/kkcc/note-body-storage-panel";
 import { ThumbnailEditor } from "@/components/kkcc/thumbnail-editor";
 import { noteImageRefs, replaceNoteImageRefs } from "@/lib/note-image-refs";
 import { previewAdminNoteImages } from "@/lib/storage-upload.functions";
@@ -254,15 +255,17 @@ function MaterialsManager() {
     retry: false,
   });
 
-  const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ["admin", "materials"] });
-    void qc.invalidateQueries({ queryKey: ["admin", "courses"] });
+  const invalidate = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["admin", "materials"] }),
+      qc.invalidateQueries({ queryKey: ["admin", "courses"] }),
+    ]);
   };
 
   const saveMutation = useMutation({
     mutationFn: (value: MaterialInput) => save({ data: value }),
-    onSuccess: () => {
-      invalidate();
+    onSuccess: async () => {
+      await invalidate();
       toast.success("Study material saved");
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -270,9 +273,9 @@ function MaterialsManager() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => remove({ data: { id } }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setPendingDelete(null);
-      invalidate();
+      await invalidate();
       toast.success("Study material deleted");
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -322,6 +325,7 @@ function MaterialsManager() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <NoteBodyStoragePanel />
         <div className="mb-4 rounded-xl border p-4 text-sm">
           <strong>
             Upload storage:{" "}
@@ -707,19 +711,22 @@ function MaterialForm({
           <Textarea
             className="mt-1.5 font-mono text-xs leading-relaxed"
             rows={8}
+            aria-label="Study notes content"
+            maxLength={200000}
             value={v.description}
             onChange={(e) => setV({ ...v, description: e.target.value })}
             placeholder="Write or paste complete chapter study notes here (students can read & print this directly even without a PDF file), or attach a PDF / Google Drive link below."
           />
           <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-            Diagrams apne aap ban jaate hain: heading ke neeche 3+ points likhein (Types, Steps,
-            Advantages/Disadvantages, saal ke saath Timeline) ya number wale points likhein (chart).
-            Apna diagram chahiye to likhein <code>:::flow Naam</code> &rarr; step → step &rarr; step
-            &rarr; <code>:::</code> (ya <code>:::cycle</code> / <code>:::tree</code> /{" "}
-            <code>:::compare</code> / <code>:::timeline</code> / <code>:::chart</code> /{" "}
-            <code>:::auto</code>). Math formulas apne aap typeset hote hain — likhein{" "}
-            <code>{"x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"}</code>, <code>{"\\pi r^2"}</code> ya{" "}
-            <code>{"2H_2 + O_2 -> 2H_2O"}</code>.
+            {v.description.length.toLocaleString()} / 200,000 characters · Main text saves in
+            private Storage. Diagrams apne aap ban jaate hain: heading ke neeche 3+ points likhein
+            (Types, Steps, Advantages/Disadvantages, saal ke saath Timeline) ya number wale points
+            likhein (chart). Apna diagram chahiye to likhein <code>:::flow Naam</code> &rarr; step →
+            step &rarr; step &rarr; <code>:::</code> (ya <code>:::cycle</code> /{" "}
+            <code>:::tree</code> / <code>:::compare</code> / <code>:::timeline</code> /{" "}
+            <code>:::chart</code> / <code>:::auto</code>). Math formulas apne aap typeset hote hain
+            — likhein <code>{"x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"}</code>,{" "}
+            <code>{"\\pi r^2"}</code> ya <code>{"2H_2 + O_2 -> 2H_2O"}</code>.
           </p>
 
           <div className="my-3 space-y-2 rounded-xl border p-3">

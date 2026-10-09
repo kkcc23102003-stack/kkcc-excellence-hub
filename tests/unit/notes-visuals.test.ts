@@ -148,7 +148,7 @@ test("Notes can be sold: paid notes travel through the same checkout as batches"
   const admin = readFileSync("src/routes/_authenticated/admin.materials.tsx", "utf8");
 
   // Free / Paid is an admin switch, and the student side honours it.
-  assert.match(purchase, /const isPaid = material\.access_type === "paid";/);
+  assert.match(purchase, /const isPaid = materialAccessMode\(material\) === "paid";/);
   assert.match(purchase, /baseInr: isPaid \? Math\.max\(0, material\.price \?\? 0\) : 0/);
   // Paid notes open the shared checkout: Razorpay, 23KAAT or contact Admin.
   assert.match(button, /to="\/checkout"/);

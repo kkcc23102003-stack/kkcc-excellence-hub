@@ -1,3 +1,4 @@
+import { materialAccessMode } from "./material-access-mode";
 /**
  * One place that decides what a learning item costs and how access is granted.
  *
@@ -94,7 +95,7 @@ export async function loadLearningItem(kind: LearningKind, itemId: string): Prom
         .eq("is_published", true)
         .single(),
     ) as MaterialRow;
-    const isPaid = material.access_type === "paid";
+    const isPaid = materialAccessMode(material) === "paid";
     return {
       id: material.id,
       kind,
@@ -324,10 +325,10 @@ export async function hasLearningAccess(
     // A note the admin switched to Free opens immediately, no purchase needed.
     const { data } = await projectContent
       .from("materials")
-      .select("access_type")
+      .select("access_type,price,coin_price,course_id")
       .eq("id", itemId)
       .maybeSingle();
-    return (data as { access_type?: string } | null)?.access_type === "free";
+    return Boolean(data && materialAccessMode(data as MaterialRow) === "free");
   }
   const { count } = await supabaseAdmin
     .from("test_access_grants")

@@ -46,6 +46,9 @@ export type LectureRow = {
 };
 
 export type MaterialRow = {
+  body_storage_path?: string | null;
+  body_storage_sha256?: string | null;
+  body_storage_bytes?: number | null;
   id: string;
   course_id: string | null;
   lecture_id: string | null;
@@ -671,6 +674,22 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      note_body_storage_status: {
+        Args: { p_actor: string };
+        Returns: Array<{ inline_count: number; inline_bytes: number; stored_count: number }>;
+      };
+      move_note_body_to_storage: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_source_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+        };
+        Returns: boolean;
+      };
       get_test_retention: { Args: Record<string, never>; Returns: Json };
       admin_test_retention: {
         Args: {

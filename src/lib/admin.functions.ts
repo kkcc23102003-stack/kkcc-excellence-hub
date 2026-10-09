@@ -1,3 +1,5 @@
+import { readNoteBody, storeNoteBody, hydrateNoteBodies } from "./note-body.server";
+import { randomUUID } from "node:crypto";
 import { thumbnailFields } from "./thumbnail";
 import { testSchema, parseTestSettingsPatch } from "./test-settings";
 import { getExamBankExams } from "@/lib/exam-bank";
@@ -81,7 +83,7 @@ const materialSchema = z.object({
   course_id: z.string().uuid().nullable().optional(),
   lecture_id: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(2).max(200),
-  description: z.string().trim().max(50000).optional(),
+  description: z.string().max(200000).optional(),
   subject: z.string().trim().max(80),
   chapter: z.string().trim().max(120),
   module_title: z.string().trim().max(160).optional(),
@@ -293,7 +295,7 @@ export const adminGetCourse = createServerFn({ method: "GET" })
     return {
       course,
       lectures: lectures ?? [],
-      materials: materials ?? [],
+      materials: await hydrateNoteBodies(materials ?? []),
       tests: tests ?? [],
     };
   });
@@ -382,13 +384,29 @@ export const saveMaterial = createServerFn({ method: "POST" })
       if (!course) throw new Error("Linked course is missing. Choose an existing course ID.");
     }
     const { id, ...rest } = data;
+    const current = id
+      ? unwrap(await projectContent.from("materials").select("*").eq("id", id).single())
+      : null;
+    const noteId = id || randomUUID();
+    const text =
+      data.description !== undefined
+        ? data.description
+        : current
+          ? await readNoteBody(current)
+          : "";
+    const body = await storeNoteBody(noteId, text, current);
     const previousPublished = id
       ? Boolean(
           (await projectContent.from("materials").select("is_published").eq("id", id).maybeSingle())
             .data?.is_published,
         )
       : false;
-    const payload = clean({ ...rest, updated_at: new Date().toISOString() });
+    const payload = clean({
+      ...rest,
+      description: "",
+      ...body,
+      updated_at: new Date().toISOString(),
+    });
     const { data: row, error } = id
       ? await projectContent
           .from("materials")
@@ -398,12 +416,12 @@ export const saveMaterial = createServerFn({ method: "POST" })
           .single()
       : await projectContent
           .from("materials")
-          .insert(payload as never)
+          .insert({ id: noteId, ...payload } as never)
           .select("*")
           .single();
     if (error) throw new Error(error.message);
     await sendMaterialNotification(context, row, previousPublished);
-    return row;
+    return { ...row, description: text };
   });
 
 export const deleteMaterial = createServerFn({ method: "POST" })
@@ -528,7 +546,7 @@ export const adminListMaterials = createServerFn({ method: "GET" })
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return hydrateNoteBodies(data ?? []);
   });
 
 const mcqImportSchema = z.object({
@@ -2007,10 +2025,23 @@ export const adoptBuiltInMaterials = createServerFn({ method: "POST" })
       .maybeSingle();
     if (flag.error) throw new Error(flag.error.message);
     if (flag.data?.value === "true") return { ok: true };
-    const result = await projectContent
-      .from("materials")
-      .upsert(builtInMaterials(), { onConflict: "id", ignoreDuplicates: true });
-    if (result.error) throw new Error(result.error.message);
+    const ids = new Set(
+      unwrap(await projectContent.from("materials").select("id")).map((row) => row.id),
+    );
+    const samples = builtInMaterials().filter((row) => !ids.has(row.id));
+    for (let i = 0; i < samples.length; i += 5) {
+      const rows = await Promise.all(
+        samples.slice(i, i + 5).map(async (row) => ({
+          ...row,
+          description: "",
+          ...(await storeNoteBody(row.id, row.description)),
+        })),
+      );
+      const result = await projectContent
+        .from("materials")
+        .upsert(rows, { onConflict: "id", ignoreDuplicates: true });
+      if (result.error) throw new Error(result.error.message);
+    }
     const saved = await projectContent
       .from("site_settings")
       .upsert({ key: "builtin_materials_adopted", value: "true" }, { onConflict: "key" });
