@@ -344,6 +344,7 @@ export async function learningPlan(context: StudentContext, selection: LearningS
     kind: "series" as const,
     id: permission.series.id,
     title: permission.series.name,
+    series_paid: permission.series.priceInr > 0 || permission.series.priceCoins > 0,
     exam: permission.series.examTrack,
     series_id: permission.series.id,
     plan: seriesPlan(permission.series),
@@ -588,6 +589,7 @@ export async function buildSelectedPaper(
   return {
     test: {
       ...test,
+      is_paid: learning.kind === "series" ? learning.series_paid : test.is_paid,
       questions_count: questions.length,
       total_marks: questions.reduce((sum, question) => sum + question.marks, 0),
     },

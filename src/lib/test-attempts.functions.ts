@@ -1,3 +1,8 @@
+import {
+  readResultPaper,
+  saveResultPaper,
+  requireArchivedAttemptAccess,
+} from "./result-paper.server";
 import { testAnswersSchema as responses } from "./test-answer-schema";
 import { randomUUID } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
@@ -69,6 +74,11 @@ async function rebuildPaper(
   context: Parameters<typeof buildSelectedPaper>[0],
   row: LearningAttemptRow,
 ) {
+  const preserved = await readResultPaper(row.id);
+  if (preserved) {
+    await requireArchivedAttemptAccess(context, row, preserved);
+    return preserved;
+  }
   const meta = getAttemptMeta(row);
 
   return buildSelectedPaper(
@@ -137,6 +147,7 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
       }
 
       const paper = await rebuildPaper(context, existing);
+      await saveResultPaper(existing.id, paper);
 
       return {
         attempt: attemptView(existing, paper),
@@ -239,6 +250,8 @@ export const startLearningAttempt = createServerFn({ method: "POST" })
       throw new Error("Attempt could not be recorded. Retry Start Test with the same request.");
     }
 
+    await saveResultPaper(row.id, paper);
+
     return {
       attempt: attemptView(row, paper),
       test: paper.test,
@@ -266,7 +279,7 @@ export const getLearningAttempt = createServerFn({ method: "GET" })
 
     const meta = getAttemptMeta(row);
 
-    if (row.status !== "submitted") {
+    if (row.status !== "submitted" && !(await readResultPaper(row.id))) {
       await learningPlan(context, {
         test_id: row.test_id ?? undefined,
         series_id: row.series_id ?? undefined,
@@ -316,12 +329,13 @@ export const saveLearningAttemptAnswers = createServerFn({ method: "POST" })
 
     const meta = getAttemptMeta(row);
 
-    await learningPlan(context, {
-      test_id: row.test_id ?? undefined,
-      series_id: row.series_id ?? undefined,
-      subject: meta.subject || undefined,
-      chapter: meta.chapter || undefined,
-    });
+    if (!(await readResultPaper(row.id)))
+      await learningPlan(context, {
+        test_id: row.test_id ?? undefined,
+        series_id: row.series_id ?? undefined,
+        subject: meta.subject || undefined,
+        chapter: meta.chapter || undefined,
+      });
 
     const paper = await rebuildPaper(context, row);
 
@@ -405,12 +419,13 @@ export const submitLearningAttempt = createServerFn({ method: "POST" })
 
       const meta = getAttemptMeta(row);
 
-      await learningPlan(context, {
-        test_id: row.test_id ?? undefined,
-        series_id: row.series_id ?? undefined,
-        subject: meta.subject || undefined,
-        chapter: meta.chapter || undefined,
-      });
+      if (!(await readResultPaper(row.id)))
+        await learningPlan(context, {
+          test_id: row.test_id ?? undefined,
+          series_id: row.series_id ?? undefined,
+          subject: meta.subject || undefined,
+          chapter: meta.chapter || undefined,
+        });
 
       const savedAnswers = answerMap(row.answers);
       const freshResult = gradePaper(paper.questions, data.answers);

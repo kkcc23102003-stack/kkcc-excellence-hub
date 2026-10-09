@@ -503,6 +503,8 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     return this as unknown as ContentQuery<Row, Row | null>;
   }
   private matches(row: AnyRow) {
+    if (["materials", "tests", "test_questions"].includes(this.table) && row["content_deleted_at"])
+      return false;
     return this.filters.every((filter) => filter(row));
   }
   private apply(doc: ContentDocument): AnyRow[] {
@@ -738,6 +740,8 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           .select(this.selectColumns);
       }
 
+      if (["materials", "tests", "test_questions"].includes(this.table))
+        query = query.is("content_deleted_at", null);
       for (const f of this.remoteFilters) {
         if (f.op === "eq") query = query.eq(f.key, f.value);
         else if (f.op === "neq") query = query.neq(f.key, f.value);

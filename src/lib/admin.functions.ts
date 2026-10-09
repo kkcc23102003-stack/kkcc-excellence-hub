@@ -2024,7 +2024,7 @@ export const adoptBuiltInMaterials = createServerFn({ method: "POST" })
       .eq("key", "builtin_materials_adopted")
       .maybeSingle();
     if (flag.error) throw new Error(flag.error.message);
-    if (flag.data?.value === "true") return { ok: true };
+
     const ids = new Set(
       unwrap(await projectContent.from("materials").select("id")).map((row) => row.id),
     );
@@ -2034,13 +2034,26 @@ export const adoptBuiltInMaterials = createServerFn({ method: "POST" })
         samples.slice(i, i + 5).map(async (row) => ({
           ...row,
           description: "",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          content_deleted_at: null,
           ...(await storeNoteBody(row.id, row.description)),
         })),
       );
-      const result = await projectContent
-        .from("materials")
-        .upsert(rows, { onConflict: "id", ignoreDuplicates: true });
-      if (result.error) throw new Error(result.error.message);
+      const { isLocalManagedFixture } = await import("./managed-content-tables");
+      if (isLocalManagedFixture("materials", process.env)) {
+        const result = await projectContent.from("materials").upsert(rows, { onConflict: "id" });
+        if (result.error) throw new Error(result.error.message);
+      } else {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const result = await supabaseAdmin.rpc("restore_storage_sample_notes", {
+          p_actor: context.userId,
+          p_rows: rows,
+        });
+        if (result.error) throw new Error(`${result.error.message}. Run CONTENT-RESET SQL setup.`);
+        const { flushProjectContentCaches } = await import("./project-content.server");
+        flushProjectContentCaches();
+      }
     }
     const saved = await projectContent
       .from("site_settings")

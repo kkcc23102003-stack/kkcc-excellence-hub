@@ -7,11 +7,15 @@ import {
   writeVerifiedTestBodies,
   type TestContentRow,
 } from "./test-body-store";
-async function io(): Promise<NoteBodyIO> {
+export async function testBodyIO(bucketName = TEST_BODY_BUCKET): Promise<NoteBodyIO> {
   if (process.env["KKCC_FIXTURE_LOCAL_CMS"] === "1" && !process.env["VERCEL"]) {
     const fs = await import("node:fs/promises"),
       path = await import("node:path");
-    const root = path.resolve(".cache/fixture-test-bodies");
+    const root = path.resolve(
+      bucketName === "kkcc-result-papers"
+        ? ".cache/fixture-result-papers"
+        : ".cache/fixture-test-bodies",
+    );
     return {
       write: async (key, bytes) => {
         const target = path.join(root, key);
@@ -22,12 +26,12 @@ async function io(): Promise<NoteBodyIO> {
     };
   }
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const bucket = await supabaseAdmin.storage.getBucket(TEST_BODY_BUCKET);
+  const bucket = await supabaseAdmin.storage.getBucket(bucketName);
   if (bucket.error || !bucket.data || bucket.data.public)
     throw new Error(
       "Private test bucket unavailable. Run KKCC-Excellence-Hub-TEST-BODIES.sql; original content was not cleared.",
     );
-  const storage = supabaseAdmin.storage.from(TEST_BODY_BUCKET);
+  const storage = supabaseAdmin.storage.from(bucketName);
   return {
     write: async (path, bytes) => {
       const result = await storage.upload(path, bytes, {
@@ -59,7 +63,7 @@ async function body(row: TestContentRow) {
   if (hit && hit.until > Date.now()) return hit.body;
   if (inflight.has(key)) return inflight.get(key)!;
   const promise = (async () => {
-    const bytes = await (await io()).read(row.body_storage_path!);
+    const bytes = await (await testBodyIO()).read(row.body_storage_path!);
     const value = decodeTestBody(bytes, row);
     if (hit) {
       size -= hit.bytes;
@@ -104,5 +108,5 @@ export async function hydrateTestQuestions<T extends TestContentRow>(rows: T[]):
   return output;
 }
 export async function storeTestQuestions<T extends TestContentRow>(rows: T[]) {
-  return writeVerifiedTestBodies(await io(), rows);
+  return writeVerifiedTestBodies(await testBodyIO(), rows);
 }

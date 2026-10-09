@@ -183,6 +183,46 @@ function DownloadsPage() {
               kar sakte hain.
             </p>
 
+            <section className="mt-6 space-y-3 rounded-2xl border border-destructive/40 p-5">
+              <h2 className="font-bold">Old notes/tests removal · student records protected</h2>
+              <p className="text-sm text-muted-foreground">
+                Latest choice: remove old library content, not migrate it. Back up Database and
+                Storage, install the latest Production SQL before deployment, then Admin → Storage →
+                Review → confirm deletion. Student records/results stay; attempt-paper snapshots are
+                protected separately in Supabase Storage. Restore sample notes only after cleanup.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <a href="/KKCC-Excellence-Hub-CONTENT-RESET.sql" download>
+                    Download Content Reset SQL
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href="/downloads/CONTENT-RESET-HINDI.md">Removal + samples setup guide</a>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch("/KKCC-Excellence-Hub-CONTENT-RESET.sql", {
+                        cache: "no-store",
+                      });
+                      const text = await response.text();
+                      if (!response.ok || !text.startsWith("--"))
+                        throw new Error("SQL download failed");
+                      await navigator.clipboard.writeText(text);
+                      toast.success(
+                        "Content Reset SQL copied — installer only; deletes nothing by itself",
+                      );
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : "Copy failed");
+                    }
+                  }}
+                >
+                  Copy Content Reset SQL
+                </Button>
+              </div>
+            </section>
             <section className="mt-6 space-y-3 rounded-2xl border p-5">
               <h2 className="font-bold">New: Test questions in Supabase Storage</h2>
               <p className="text-sm text-muted-foreground">
@@ -198,7 +238,7 @@ function DownloadsPage() {
                 </Button>
                 <Button asChild variant="outline">
                   <a href="/downloads/TEST-BODIES-HINDI.md">
-                    Test Storage setup / old-content guide
+                    Optional migration guide — not the remove-old workflow
                   </a>
                 </Button>
               </div>

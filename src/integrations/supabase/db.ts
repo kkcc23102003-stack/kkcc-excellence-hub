@@ -46,6 +46,7 @@ export type LectureRow = {
 };
 
 export type MaterialRow = {
+  content_deleted_at?: string | null;
   body_storage_path?: string | null;
   body_storage_sha256?: string | null;
   body_storage_bytes?: number | null;
@@ -74,6 +75,7 @@ export type MaterialRow = {
 };
 
 export type TestRow = {
+  content_deleted_at?: string | null;
   easy_request_hash?: string | null;
   thumbnail_url?: string | null;
   thumbnail_text?: string | null;
@@ -199,6 +201,7 @@ export type TestAccessGrantRow = {
 };
 
 export type TestQuestionRow = {
+  content_deleted_at?: string | null;
   body_storage_path?: string | null;
   body_storage_sha256?: string | null;
   body_storage_bytes?: number | null;
@@ -571,6 +574,16 @@ export type DB = {
         WithGeneratedDefaults<TestSeriesOverrideRow>,
         Partial<TestSeriesOverrideRow>
       >;
+      kkcc_attempt_papers: TableDefinition<
+        { attempt_id: string; path: string; sha256: string; bytes: number; verified_at: string },
+        { attempt_id: string; path: string; sha256: string; bytes: number; verified_at?: string },
+        { path?: string; sha256?: string; bytes?: number; verified_at?: string }
+      >;
+      kkcc_removed_content_files: TableDefinition<
+        { bucket: string; path: string; created_at: string },
+        { bucket: string; path: string; created_at?: string },
+        { bucket?: string; path?: string }
+      >;
       kkcc_test_questions: TableDefinition<
         TestQuestionRow,
         WithGeneratedDefaults<TestQuestionRow>,
@@ -727,6 +740,17 @@ export type DB = {
         };
         Returns: Json;
       };
+      admin_remove_old_content: {
+        Args: {
+          p_actor: string;
+          p_action: string;
+          p_before?: string;
+          p_confirmation?: string;
+          p_files?: Json;
+        };
+        Returns: Json;
+      };
+      restore_storage_sample_notes: { Args: { p_actor: string; p_rows: Json }; Returns: boolean };
       publish_storage_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
       test_body_storage_status: {
         Args: { p_actor: string };
