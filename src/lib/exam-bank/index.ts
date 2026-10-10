@@ -316,7 +316,69 @@ export const SCHOOL_GRADE_TAGS_REMOVED = applySchoolGradeScope(ALL_TEMPLATES);
 ALL_TEMPLATES.push(...foundationRecallPractice(ALL_TEMPLATES));
 
 const DEAD_TEMPLATE_IDS = new Set([
-  "im9:compound-interest:adv:match","im9:expansions-factorisation:adv:match","im9:indices-logarithms:adv:match","im10:gst:adv:match","im10:banking:adv:match","im10:shares-dividends:adv:match","im10:matrices:adv:match","im10:remainder-factor:adv:match","im10:inequations-loci:adv:match","n9:sci:atoms-molecules:adv:match","n9:sci:tissues:adv:match","n9:sci:motion:adv:match","n9:sci:gravitation:adv:match","n9:sci:work-energy:adv:match","n9:sci:food-resources:adv:match","n9:sci:diversity:adv:match","n9:sci:illness:adv:match","n9:sci:natural-resources:adv:match","n9:math:number-systems:adv:match","n9:math:coordinate-geometry:adv:match","n9:math:linear-equations:adv:match","n9:math:euclid:adv:match","n9:math:lines-angles:adv:match","n9:math:triangles:adv:match","n9:math:quadrilaterals:adv:match","n9:math:circles:adv:match","n9:math:herons:adv:match","n9:math:surface-volume:adv:match","n9:math:statistics:adv:match","n10:sci:metals:adv:match","n10:sci:carbon:adv:match","n10:sci:control:adv:match","n10:sci:reproduction:adv:match","n10:sci:heredity:adv:match","n10:sci:human-eye:adv:match","n10:sci:magnetic-effects:adv:match","n10:sci:environment:adv:match","n10:sci:periodic:adv:match","n10:sci:energy-sources:adv:match","n10:sci:natural-resource-mgmt:adv:match","n10:math:real-numbers:adv:match","n10:math:polynomials:adv:match","n10:math:linear-pair:adv:match","n10:math:quadratic:adv:match","n10:math:ap:adv:match","n10:math:triangles:adv:match","n10:math:coordinate:adv:match","n10:math:trig-applications:adv:match","n10:math:circles:adv:match","n10:math:areas-circles:adv:match","n10:math:surface-volume:adv:match","n10:math:statistics:adv:match","n10:math:probability:adv:match","im9:standard-angles:adv:fwd","hy:polity:adv:match","hy:geography:adv:fwd","hy:economy:adv:fwd","hy:science:adv:fwd","hy:punjab:adv:fwd","ca:acc:classify:fwd","comp2:devices:fwd","eg:article:fwd","practice:foundation:ca:acc:classify:fwd"
+  "im9:compound-interest:adv:match",
+  "im9:expansions-factorisation:adv:match",
+  "im9:indices-logarithms:adv:match",
+  "im10:gst:adv:match",
+  "im10:banking:adv:match",
+  "im10:shares-dividends:adv:match",
+  "im10:matrices:adv:match",
+  "im10:remainder-factor:adv:match",
+  "im10:inequations-loci:adv:match",
+  "n9:sci:atoms-molecules:adv:match",
+  "n9:sci:tissues:adv:match",
+  "n9:sci:motion:adv:match",
+  "n9:sci:gravitation:adv:match",
+  "n9:sci:work-energy:adv:match",
+  "n9:sci:food-resources:adv:match",
+  "n9:sci:diversity:adv:match",
+  "n9:sci:illness:adv:match",
+  "n9:sci:natural-resources:adv:match",
+  "n9:math:number-systems:adv:match",
+  "n9:math:coordinate-geometry:adv:match",
+  "n9:math:linear-equations:adv:match",
+  "n9:math:euclid:adv:match",
+  "n9:math:lines-angles:adv:match",
+  "n9:math:triangles:adv:match",
+  "n9:math:quadrilaterals:adv:match",
+  "n9:math:circles:adv:match",
+  "n9:math:herons:adv:match",
+  "n9:math:surface-volume:adv:match",
+  "n9:math:statistics:adv:match",
+  "n10:sci:metals:adv:match",
+  "n10:sci:carbon:adv:match",
+  "n10:sci:control:adv:match",
+  "n10:sci:reproduction:adv:match",
+  "n10:sci:heredity:adv:match",
+  "n10:sci:human-eye:adv:match",
+  "n10:sci:magnetic-effects:adv:match",
+  "n10:sci:environment:adv:match",
+  "n10:sci:periodic:adv:match",
+  "n10:sci:energy-sources:adv:match",
+  "n10:sci:natural-resource-mgmt:adv:match",
+  "n10:math:real-numbers:adv:match",
+  "n10:math:polynomials:adv:match",
+  "n10:math:linear-pair:adv:match",
+  "n10:math:quadratic:adv:match",
+  "n10:math:ap:adv:match",
+  "n10:math:triangles:adv:match",
+  "n10:math:coordinate:adv:match",
+  "n10:math:trig-applications:adv:match",
+  "n10:math:circles:adv:match",
+  "n10:math:areas-circles:adv:match",
+  "n10:math:surface-volume:adv:match",
+  "n10:math:statistics:adv:match",
+  "n10:math:probability:adv:match",
+  "im9:standard-angles:adv:fwd",
+  "hy:polity:adv:match",
+  "hy:geography:adv:fwd",
+  "hy:economy:adv:fwd",
+  "hy:science:adv:fwd",
+  "hy:punjab:adv:fwd",
+  "ca:acc:classify:fwd",
+  "comp2:devices:fwd",
+  "eg:article:fwd",
+  "practice:foundation:ca:acc:classify:fwd",
 ]);
 
 /** Runtime bank: only templates with a non-zero parameter space and known
@@ -356,8 +418,78 @@ for (const template of ACTIVE_TEMPLATES) {
 
 export const EXAM_BANK_SUBJECTS = [...bySubject.keys()].sort();
 
+function resolveSubjectTemplates(subject: string): Template[] {
+  const exact = bySubject.get(subject);
+  if (exact && exact.length > 0) return exact;
+  const norm = subject.trim().toLowerCase();
+  if (!norm) return [];
+  for (const [key, list] of bySubject.entries()) {
+    if (key.toLowerCase() === norm) return list;
+  }
+  const aliasSubjects: string[] = [];
+  if (/[\u0A00-\u0A7F]/.test(subject) || norm.includes("punjabi") || norm.includes("gurmukhi")) {
+    aliasSubjects.push(
+      "Punjabi Grammar",
+      "Punjabi Paper A",
+      "Punjabi Paper B",
+      "Punjabi Literature",
+    );
+  } else if (/[\u0900-\u097F]/.test(subject) || norm.includes("hindi")) {
+    aliasSubjects.push("Hindi Grammar", "Hindi Literature");
+  } else if (norm.includes("punjab") && norm.includes("hist")) {
+    aliasSubjects.push("Punjab History", "Punjab GK");
+  } else if (norm.includes("punjab") && norm.includes("geog")) {
+    aliasSubjects.push("Punjab Geography", "Punjab GK");
+  } else if (norm.includes("punjab") && norm.includes("econ")) {
+    aliasSubjects.push("Punjab Economics", "Punjab GK");
+  } else if (norm.includes("punjab")) {
+    aliasSubjects.push("Punjab GK", "Punjab History", "Punjab Geography", "Punjab Economics");
+  } else if (
+    norm.includes("pedagog") ||
+    norm.includes("child") ||
+    norm.includes("cdp") ||
+    norm.includes("teaching")
+  ) {
+    aliasSubjects.push("Teaching Aptitude", "Psychology");
+  } else if (norm.includes("english")) {
+    aliasSubjects.push("English Grammar", "English Language", "English Core");
+  } else if (norm.includes("math") || norm.includes("quant") || norm.includes("arithmetic")) {
+    aliasSubjects.push("Quantitative Aptitude", "Math Class 10", "Math Class 9", "Mathematics");
+  } else if (norm.includes("reason") || norm.includes("mental") || norm.includes("logical")) {
+    aliasSubjects.push("Reasoning", "CSAT");
+  } else if (norm.includes("comp") || norm.includes("ict") || norm === "it") {
+    aliasSubjects.push("Computer Awareness");
+  } else if (norm.includes("evs") || norm.includes("environment") || norm.includes("ecolog")) {
+    aliasSubjects.push("Environment and Ecology");
+  } else if (norm.includes("polity") || norm.includes("civic") || norm.includes("constitution")) {
+    aliasSubjects.push("Polity", "SST");
+  } else if (norm.includes("history")) {
+    aliasSubjects.push("Modern History", "Ancient History", "Medieval History", "SST");
+  } else if (norm.includes("geog")) {
+    aliasSubjects.push("Indian Geography", "Physical Geography", "World Geography", "SST");
+  } else if (norm.includes("econ")) {
+    aliasSubjects.push("Indian Economy", "Business Economics", "SST");
+  } else if (
+    norm.includes("gk") ||
+    norm.includes("general knowledge") ||
+    norm.includes("general studies") ||
+    norm.includes("subject specialization") ||
+    norm === "gs" ||
+    norm === "ga" ||
+    norm === "general"
+  ) {
+    aliasSubjects.push("General Awareness", "Polity", "Modern History", "Indian Geography");
+  }
+  const out: Template[] = [];
+  for (const s of aliasSubjects) {
+    const list = bySubject.get(s);
+    if (list) out.push(...list);
+  }
+  return out;
+}
+
 export function getExamBankTopics(subject: string): string[] {
-  const list = bySubject.get(subject) ?? [];
+  const list = resolveSubjectTemplates(subject);
   return [...new Set(list.map((t) => t.topic))].sort();
 }
 
@@ -371,7 +503,9 @@ export function getExamBankExams(): string[] {
  * paper never lists a chapter PSSSB does not set.
  */
 export function getExamBankTopicsForExam(subject: string, exam: string): string[] {
-  const list = (bySubject.get(subject) ?? []).filter(
+  const exact = bySubject.get(subject);
+  const baseList = exact && exact.length > 0 ? exact : resolveSubjectTemplates(subject);
+  const list = baseList.filter(
     (t) => t.count > 0 && (exam === "All Exams" || t.exams.includes(exam)),
   );
   return [...new Set(list.map((t) => t.topic))].sort();
@@ -379,7 +513,7 @@ export function getExamBankTopicsForExam(subject: string, exam: string): string[
 
 /** Total addressable questions for a subject. */
 export function countBySubject(subject: string): number {
-  return (bySubject.get(subject) ?? []).reduce((sum, t) => sum + t.count, 0);
+  return resolveSubjectTemplates(subject).reduce((sum, t) => sum + t.count, 0);
 }
 
 /* -------------------------------------------------------------- sampling */
@@ -406,17 +540,31 @@ export type SampleFilter = {
 };
 
 function resolvePool(filter: SampleFilter): Template[] {
+  const effectiveTopic =
+    filter.topic && filter.topic !== "Mixed" && filter.topic !== "All Chapters"
+      ? filter.topic
+      : undefined;
   let pool: Template[];
-  if (filter.subject && filter.topic) {
-    pool = byTopic.get(`${filter.subject}::${filter.topic}`) ?? [];
+  if (filter.subject && effectiveTopic) {
+    const exactTopic = byTopic.get(`${filter.subject}::${effectiveTopic}`);
+    if (exactTopic && exactTopic.length > 0) {
+      pool = exactTopic;
+    } else {
+      const subjPool = resolveSubjectTemplates(filter.subject);
+      const normTopic = effectiveTopic.trim().toLowerCase();
+      pool = subjPool.filter((t) => {
+        const tl = t.topic.toLowerCase();
+        return tl === normTopic || tl.includes(normTopic) || normTopic.includes(tl);
+      });
+    }
   } else if (filter.subject) {
-    pool = bySubject.get(filter.subject) ?? [];
+    pool = resolveSubjectTemplates(filter.subject);
   } else if (filter.exam) {
     pool = byExam.get(filter.exam) ?? [];
   } else {
     pool = ACTIVE_TEMPLATES;
   }
-  if (filter.exam && (filter.subject || filter.topic)) {
+  if (filter.exam && (filter.subject || effectiveTopic)) {
     pool = pool.filter((t) => t.exams.includes(filter.exam as string));
   }
   if (filter.difficulty) {

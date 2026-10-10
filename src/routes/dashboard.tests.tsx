@@ -83,6 +83,10 @@ function TestsPage() {
 
       <section className="surface-panel p-6">
         <h2 className="text-lg font-bold">Result history</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Only results submitted with Admin saving ON appear here. Temporary tests (saving OFF) do
+          not create history; refreshing/closing their page loses the result.
+        </p>
         {results.isPending && (
           <p role="status" className="mt-3">
             Loading your results…
@@ -96,7 +100,7 @@ function TestsPage() {
         )}
         {!results.isPending && !results.isError && !results.data?.length && (
           <p className="mt-3 text-sm text-muted-foreground">
-            Your completed tests will appear here after submission.
+            Completed tests appear here only when result saving is ON.
           </p>
         )}
         <div className="mt-4 space-y-3">

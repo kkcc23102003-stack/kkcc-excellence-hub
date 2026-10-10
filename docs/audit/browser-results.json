@@ -1,14 +1,14 @@
 {
   "config": {
     "argv": [
-      "/home/user/toolchain/node_modules/node/bin/node",
-      "/home/user/kkcc-excellence-hub/source/node_modules/.bin/playwright",
+      "/usr/local/bin/node",
+      "/home/user/kkcc-excellence-hub/node_modules/.bin/playwright",
       "test",
-      "--grep",
-      "Mobile public"
+      "tests/e2e/zz-content-reset.spec.ts",
+      "tests/e2e/test-retention.spec.ts"
     ],
-    "configFile": "/home/user/kkcc-excellence-hub/source/playwright.config.ts",
-    "rootDir": "/home/user/kkcc-excellence-hub/source/tests/e2e",
+    "configFile": "/home/user/kkcc-excellence-hub/playwright.config.ts",
+    "rootDir": "/home/user/kkcc-excellence-hub/tests/e2e",
     "failOnFlakyTests": false,
     "forbidOnly": false,
     "fullyParallel": false,
@@ -24,7 +24,7 @@
     "preserveOutput": "always",
     "projects": [
       {
-        "outputDir": "/home/user/kkcc-excellence-hub/source/test-results",
+        "outputDir": "/home/user/kkcc-excellence-hub/test-results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
@@ -32,7 +32,7 @@
         },
         "id": "",
         "name": "",
-        "testDir": "/home/user/kkcc-excellence-hub/source/tests/e2e",
+        "testDir": "/home/user/kkcc-excellence-hub/tests/e2e",
         "testIgnore": [],
         "testMatch": [
           "**/*.@(spec|test).?(c|m)[jt]s?(x)"
@@ -64,7 +64,7 @@
     "version": "1.63.0",
     "workers": 1,
     "webServer": {
-      "command": "npm run test:fixture",
+      "command": "PORT=4600 npm run test:fixture",
       "url": "http://127.0.0.1:4600",
       "reuseExistingServer": true,
       "timeout": 120000
@@ -72,13 +72,13 @@
   },
   "suites": [
     {
-      "title": "learning.spec.ts",
-      "file": "learning.spec.ts",
+      "title": "test-retention.spec.ts",
+      "file": "test-retention.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "Mobile public routes render without horizontal overflow; menus and learning remain reachable",
+          "title": "Admin retention ON/OFF, RAM-only result, refresh loss, confirmed cleanup and restored saved results",
           "ok": true,
           "tags": [],
           "tests": [
@@ -93,12 +93,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4839,
+                  "duration": 25970,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-10-01T11:35:39.710Z",
+                  "startTime": "2026-10-09T13:22:57.611Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -106,9 +106,51 @@
               "status": "expected"
             }
           ],
-          "id": "e0ec79b0c4f511f16424-c39d0186d1ae5edf5c54",
-          "file": "learning.spec.ts",
-          "line": 119,
+          "id": "7f5a3acc64f44cea0b2a-a98d195bc4f5bbe07a01",
+          "file": "test-retention.spec.ts",
+          "line": 18,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "zz-content-reset.spec.ts",
+      "file": "zz-content-reset.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "reviewed old library is removed, student result survives, and samples/new notes are Storage-backed",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15223,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T13:23:23.694Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b1cbc4fbe9d6b045c7c8-c0ba3db350b634d89966",
+          "file": "zz-content-reset.spec.ts",
+          "line": 11,
           "column": 1
         }
       ]
@@ -116,9 +158,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-01T11:35:38.699Z",
-    "duration": 6821.851,
-    "expected": 1,
+    "startTime": "2026-10-09T13:22:30.105Z",
+    "duration": 68948.981,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

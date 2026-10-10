@@ -1,3 +1,6 @@
+import { useNetworkStatus } from "@/hooks/use-network-status";
+import { readTemporaryTest, clearTemporaryTest } from "@/lib/temporary-test-memory";
+import { updateTemporaryTest } from "@/lib/temporary-test.functions";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { z } from "zod";
@@ -5,7 +8,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CheckCircle2, ChevronLeft, ChevronRight, Flag, Timer, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  Timer,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -22,9 +33,22 @@ type TestAttemptQuestion = Omit<ScorableQuestion, "correct_index" | "explanation
   correct_index?: number;
   explanation?: string;
 };
+
+const OPTION_STYLE = {
+  idle: "border-border bg-card hover:border-primary/50 hover:bg-primary/5",
+  active: "border-primary bg-primary/10 ring-1 ring-primary",
+  badgeIdle: "border-border bg-muted text-muted-foreground",
+  badgeActive: "border-primary bg-primary text-primary-foreground",
+};
+
 export const Route = createFileRoute("/test/$id")({
   ssr: false,
-  validateSearch: z.object({ attempt: z.string().uuid().optional() }),
+  validateSearch: z.object({
+    attempt: z.string().uuid().optional(),
+    temporary: z.boolean().optional(),
+  }),
+  staleTime: 0,
+  gcTime: 0,
   beforeLoad: async ({ location }) => {
     if (!isSupabaseConfigured())
       throw redirect({ to: "/login", search: { redirectTo: location.href } });
@@ -32,13 +56,15 @@ export const Route = createFileRoute("/test/$id")({
     if (error || !data.user)
       throw redirect({ to: "/login", search: { redirectTo: location.href } });
   },
-  loaderDeps: ({ search }) => ({ attempt: search.attempt }),
+  loaderDeps: ({ search }) => ({ attempt: search.attempt, temporary: search.temporary }),
   loader: async ({ params, deps }) => {
     if (!deps.attempt) {
       if (params.id === "series") throw redirect({ to: "/test-series" });
       throw redirect({ to: "/tests/learn/$testId", params: { testId: params.id } });
     }
-    const paper = await getLearningAttempt({ data: { attempt_id: deps.attempt } });
+    const paper = deps.temporary
+      ? readTemporaryTest(deps.attempt)
+      : await getLearningAttempt({ data: { attempt_id: deps.attempt } });
     if (
       (paper.attempt.test_id && paper.attempt.test_id !== params.id) ||
       (!paper.attempt.test_id && params.id !== "series")
@@ -55,7 +81,7 @@ export const Route = createFileRoute("/test/$id")({
   errorComponent: ({ error }) => (
     <div role="alert" className="mx-auto max-w-xl px-4 py-16">
       <h1 className="text-2xl font-bold">Test could not open</h1>
-      <p className="mt-3 text-sm">{error.message}</p>
+      <p className="mt-3 text-sm">{error instanceof Error ? error.message : String(error)}</p>
       <Button asChild className="mt-6">
         <Link to="/test-series">Back to Test Series</Link>
       </Button>
@@ -82,7 +108,38 @@ function TestRunner() {
 }
 
 function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[] }) {
-  const { test, attempt, server_now } = Route.useLoaderData();
+  const { test, attempt, server_now, temporary, token } = Route.useLoaderData();
+  const temporaryFn = useServerFn(updateTemporaryTest);
+  const temporaryToken = useRef(token);
+  const temporaryQueue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(
+    () => () => {
+      if (temporary) {
+        clearTemporaryTest();
+        temporaryToken.current = null;
+      }
+    },
+    [temporary],
+  );
+
+  const syncTemporary = useCallback(
+    (values: Record<string, number>, finish: boolean) => {
+      const task = temporaryQueue.current.then(async () => {
+        if (!temporaryToken.current) throw new Error("Temporary session is missing. Start again.");
+        const response = await temporaryFn({
+          data: { token: temporaryToken.current, answers: values, submit: finish },
+        });
+        temporaryToken.current = response.token;
+        return response;
+      });
+      temporaryQueue.current = task.then(
+        () => undefined,
+        () => undefined,
+      );
+      return task;
+    },
+    [temporaryFn],
+  );
   const [paperQuestions, setPaperQuestions] = useState<TestAttemptQuestion[]>(dbQuestions);
   const [result, setResult] = useState<LearningAttemptRow | null>(
     attempt.status === "submitted" ? attempt : null,
@@ -132,28 +189,43 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       : null;
   const questionLocked = currentTimedIndex !== null && index !== currentTimedIndex;
   const [saveError, setSaveError] = useState("");
+  const online = useNetworkStatus();
+  const [retryCheckpoint, setRetryCheckpoint] = useState(0);
   const submitFn = useServerFn(submitLearningAttempt);
   const saveFn = useServerFn(saveLearningAttemptAnswers);
   const submit = useMutation({
-    mutationFn: () => submitFn({ data: { attempt_id: attempt.id, answers } }),
+    mutationFn: async () => {
+      if (!temporary) return submitFn({ data: { attempt_id: attempt.id, answers } });
+      const response = await syncTemporary(answers, true);
+      if (!response.attempt || !response.questions)
+        throw new Error("Result could not be calculated. Retry.");
+      return { attempt: response.attempt, questions: response.questions };
+    },
     onSuccess: (data) => {
       setResult(data.attempt);
       setPaperQuestions(data.questions);
       setAnswers(data.attempt.answers as Record<string, number>);
       setSubmitted(true);
+      if (temporary) clearTemporaryTest();
     },
     onError: (error) =>
-      toast.error(`Result was not saved: ${error.message}. Please retry Submit Test.`),
+      toast.error(
+        `${temporary ? "Result could not be calculated" : "Result was not saved"}: ${error instanceof Error ? error.message : String(error)}. Please retry Submit Test.`,
+      ),
   });
   const mutateSubmit = submit.mutate;
   const autoSubmit = useRef(false);
   const saveRevision = useRef(attempt.answer_revision ?? 0);
   useEffect(() => {
-    if (!started || submitted) return;
+    if (!started || submitted || !online) return;
     const revision = ++saveRevision.current;
     const timeout = setTimeout(
       () => {
-        void saveFn({ data: { attempt_id: attempt.id, answers, revision } })
+        void (
+          temporary
+            ? syncTemporary(answers, false)
+            : saveFn({ data: { attempt_id: attempt.id, answers, revision } })
+        )
           .then((result) => {
             if (revision !== saveRevision.current) return;
             setSaveError(
@@ -176,7 +248,18 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
       questionSeconds > 0 ? 0 : 250,
     );
     return () => clearTimeout(timeout);
-  }, [answers, attempt.id, saveFn, started, submitted, questionSeconds]);
+  }, [
+    answers,
+    attempt.id,
+    saveFn,
+    started,
+    submitted,
+    questionSeconds,
+    temporary,
+    syncTemporary,
+    online,
+    retryCheckpoint,
+  ]);
   useEffect(() => {
     if (!started || submitted || isUnlimited) return;
     const timer = setInterval(() => setElapsed(serverElapsed()), 250);
@@ -212,7 +295,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
   const timerDescription = isUnlimited
     ? "No timer: move when you click Next."
     : timerMode === "question"
-      ? `${questionSeconds} seconds per question; earlier questions lock. Remaining test time is shown. Reload does not reset the server timer.`
+      ? `${questionSeconds} seconds per question; earlier questions lock. Remaining test time is shown. ${temporary ? "Reload loses this temporary session." : "Reload does not reset the server timer."}`
       : "The timer starts immediately and auto-submits at zero.";
 
   if (!questions.length) {
@@ -223,7 +306,7 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           Questions for this test have not been published yet. Please check again later or contact
           KKCC support.
         </p>
-        <Button asChild variant="outline" className="mt-8 w-fit rounded-full">
+        <Button asChild variant="outline" className="mt-8 w-fit rounded-lg">
           <Link to="/test-series">Back to tests</Link>
         </Button>
       </div>
@@ -251,10 +334,10 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
           <li>{timerDescription}</li>
         </ul>
         <div className="mt-8 flex gap-3">
-          <Button className="rounded-full" onClick={() => setStarted(true)}>
+          <Button className="rounded-lg" onClick={() => setStarted(true)}>
             Start test
           </Button>
-          <Button asChild variant="outline" className="rounded-full">
+          <Button asChild variant="outline" className="rounded-lg">
             <Link to="/test-series">Back</Link>
           </Button>
         </div>
@@ -264,86 +347,152 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
 
   if (submitted) {
     return (
-      <div data-testid="test-result" className="mx-auto max-w-2xl px-4 py-16">
-        <CheckCircle2 className="h-10 w-10 text-primary" />
-        <h1 className="mt-4 text-2xl font-bold">Result</h1>
-        <p className="mt-2 text-sm text-primary">Test submitted · Saved to your account</p>
-        <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
+      <div className="test-paper min-h-screen bg-background">
+        <div data-testid="test-result" className="mx-auto max-w-3xl px-4 py-12">
+          <CheckCircle2 className="h-10 w-10 text-primary" />
+          <h1 className="mt-4 text-2xl font-bold">Result</h1>
+          <p className="mt-2 text-sm font-semibold text-primary">
+            {temporary
+              ? "Temporary result · Not saved to your account · Refresh/close loses this result"
+              : "Test submitted · Saved to your account"}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{test.title}</p>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          {[
-            { label: "Score", value: `${score}` },
-            { label: "Correct", value: `${correct}/${questions.length}` },
-            { label: "Attempted", value: `${attempted}/${questions.length}` },
-          ].map((s) => (
-            <div key={s.label} className="surface-panel p-5">
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <h2 className="mt-10 text-lg font-bold">Answer review</h2>
-        <div className="mt-4 space-y-4">
-          {questions.map((question, i) => {
-            const chosen = answers[question.id];
-            return (
-              <div key={question.id} className="surface-panel p-5">
-                <p className="text-sm font-medium">
-                  {i + 1}. {question.text}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Your answer: {chosen === undefined ? "Not attempted" : question.options[chosen]}
-                </p>
-                <p className="text-xs text-primary">
-                  Correct answer:{" "}
-                  {question.answer === undefined
-                    ? "Unavailable"
-                    : question.options[question.answer]}
-                </p>
-                {question.explanation && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Explanation: {question.explanation}
-                  </p>
-                )}
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                label: "Score",
+                value: `${score}`,
+                tone: "border-border bg-card text-foreground",
+              },
+              {
+                label: "Correct",
+                value: `${correct}/${questions.length}`,
+                tone: "border-border bg-card text-foreground",
+              },
+              {
+                label: "Attempted",
+                value: `${attempted}/${questions.length}`,
+                tone: "border-border bg-card text-foreground",
+              },
+            ].map((s) => (
+              <div key={s.label} className={cn("rounded-2xl border p-5", s.tone)}>
+                <p className="text-2xl font-semibold">{s.value}</p>
+                <p className="text-xs font-semibold opacity-80">{s.label}</p>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
 
-        <div className="mt-8 flex gap-3">
-          <Button asChild className="rounded-full">
-            <Link to="/dashboard/tests">Go to results</Link>
-          </Button>
-          <Button asChild variant="outline" className="rounded-full">
-            <Link to="/test-series">More tests</Link>
-          </Button>
+          <h2 className="mt-10 text-lg font-bold">Answer review</h2>
+          <div className="mt-4 space-y-4">
+            {questions.map((question, i) => {
+              const chosen = answers[question.id];
+              const isCorrect = chosen !== undefined && chosen === question.answer;
+              return (
+                <div key={question.id} className="rounded-xl border border-border bg-card p-5">
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                    {chosen === undefined ? "Not attempted" : isCorrect ? "Correct" : "Incorrect"}
+                  </p>
+                  <p className="text-sm font-medium">
+                    {i + 1}. {question.text}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Your answer: {chosen === undefined ? "Not attempted" : question.options[chosen]}
+                  </p>
+                  <p className="text-xs font-semibold text-primary">
+                    Correct answer:{" "}
+                    {question.answer === undefined
+                      ? "Unavailable"
+                      : question.options[question.answer]}
+                  </p>
+                  {question.explanation && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Explanation: {question.explanation}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 flex gap-3">
+            <Button asChild className="rounded-lg bg-primary font-semibold text-primary-foreground">
+              <Link to={temporary ? "/test-series" : "/dashboard/tests"}>
+                {temporary ? "Back to Test Series" : "Go to results"}
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-lg border-border">
+              <Link to="/test-series">More tests</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
+    <div className="test-paper min-h-screen bg-background" data-testid="test-paper">
+      <header className="sticky top-0 z-20 border-b border-border bg-background">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:px-6">
           <p className="truncate text-sm font-semibold">{test.title}</p>
-          <span className="flex shrink-0 items-center gap-2 rounded-full bg-primary/10 px-3.5 py-1.5 text-sm font-semibold text-primary tabular-nums">
-            <Timer className="h-4 w-4" /> {clock}
+          <span className="flex shrink-0 items-center gap-2 rounded-lg border border-border px-3.5 py-1.5 text-sm font-bold text-primary tabular-nums">
+            <Timer className="h-4 w-4 text-primary" /> {clock}
           </span>
         </div>
-        <Progress value={((index + 1) / questions.length) * 100} className="h-1 rounded-none" />
+        <Progress
+          value={((index + 1) / questions.length) * 100}
+          className="h-1.5 rounded-none bg-primary/10"
+        />
       </header>
 
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <main className="min-w-0">
-          <p data-testid="attempt-context" className="mb-4 text-xs text-muted-foreground">
+          {!online && (
+            <p
+              role="status"
+              data-testid="test-offline-notice"
+              className="mb-4 rounded-xl border border-primary/30 p-3 text-sm"
+            >
+              Connection lost. Keep this page open; the timer does not pause. Answers cannot reach
+              the server until you reconnect, and late answers may not count. Refreshing a temporary
+              test loses it.
+            </p>
+          )}
+
+          {temporary && (
+            <p
+              role="status"
+              data-testid="temporary-test-notice"
+              className="mb-4 rounded-xl border border-primary/30 p-3 text-sm"
+            >
+              Temporary test · Answers, score and history are not saved to the database.
+              Refresh/close loses this session. Session checks are kept only in browser memory.
+            </p>
+          )}
+
+          <p
+            data-testid="attempt-context"
+            className="mb-4 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-border px-3.5 py-1 text-xs font-semibold text-primary"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
             {attempt.exam} · {attempt.subject} · {attempt.chapter}
           </p>
           {saveError && (
-            <p role="alert" className="mb-4 rounded-xl border p-3 text-sm">
-              Answers not yet saved: {saveError}. Submit Test will retry saving your current
-              answers.
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border border-border bg-primary/10 p-3 text-sm text-primary"
+            >
+              {temporary ? "Session checkpoint failed" : "Answers not yet saved"}: {saveError}.
+              Submit Test will retry your current answers.
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                disabled={!online || submit.isPending}
+                onClick={() => setRetryCheckpoint((value) => value + 1)}
+              >
+                Retry answer check
+              </Button>
             </p>
           )}
           {submit.isError && (
@@ -355,51 +504,67 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </p>
           )}
           {submit.isPending && (
-            <p role="status" className="mb-3 flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving result…
+            <p role="status" className="mb-3 flex items-center gap-2 text-primary">
+              <Loader2 className="h-4 w-4 animate-spin" />{" "}
+              {temporary ? "Calculating result…" : "Saving result…"}
             </p>
           )}
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Question {index + 1} of {questions.length} · {q.subject}
-          </p>
-          <h1
-            data-testid="test-question"
-            className="mt-3 whitespace-pre-line break-words text-lg font-semibold sm:text-xl"
-          >
-            {q.text}
-          </h1>
 
-          <div className="mt-6 space-y-3">
-            {q.options.map((opt, i) => (
-              <button
-                key={opt}
-                type="button"
-                data-testid="answer-option"
-                aria-pressed={answers[q.id] === i}
-                disabled={questionLocked || submit.isPending || (!isUnlimited && seconds <= 0)}
-                onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
-                className={cn(
-                  "flex w-full min-w-0 items-center gap-3 break-words rounded-2xl border bg-card p-4 text-left text-sm transition-colors",
-                  answers[q.id] === i ? "border-primary bg-primary/[0.06]" : "hover:bg-muted",
-                )}
-              >
-                <span
+          <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-lg border border-border bg-primary/10 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                Question {index + 1} of {questions.length}
+              </span>
+              <span className="rounded-lg border border-border bg-primary/10 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                {q.subject}
+              </span>
+            </div>
+            <h1
+              data-testid="test-question"
+              className="mt-3.5 whitespace-pre-line break-words text-lg font-bold leading-relaxed sm:text-xl"
+            >
+              {q.text}
+            </h1>
+          </div>
+
+          <div className="mt-6 space-y-3.5">
+            {q.options.map((opt, i) => {
+              const selected = answers[q.id] === i;
+              const palette = OPTION_STYLE;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  data-testid="answer-option"
+                  aria-pressed={selected}
+                  disabled={questionLocked || submit.isPending || (!isUnlimited && seconds <= 0)}
+                  onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
                   className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-semibold",
-                    answers[q.id] === i && "border-primary bg-primary text-primary-foreground",
+                    "flex w-full min-w-0 items-center gap-3.5 break-words rounded-2xl border p-4 text-left text-sm font-medium transition-colors duration-200",
+                    selected ? palette.active : palette.idle,
                   )}
                 >
-                  {String.fromCharCode(65 + i)}
-                </span>
-                {opt}
-              </button>
-            ))}
+                  <span
+                    className={cn(
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-xs font-semibold transition-colors",
+                      selected ? palette.badgeActive : palette.badgeIdle,
+                    )}
+                  >
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span className="min-w-0 flex-1">{opt}</span>
+                  {selected && (
+                    <CheckCircle2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Button
               variant="outline"
-              className="rounded-full"
+              className="rounded-lg border-border bg-card font-medium text-foreground hover:bg-muted"
               disabled={index === 0 || timerMode === "question"}
               onClick={() => setIndex((i) => i - 1)}
             >
@@ -407,7 +572,12 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
             </Button>
             <Button
               variant="outline"
-              className="rounded-full"
+              className={cn(
+                "rounded-lg font-bold transition-colors",
+                flagged.includes(q.id)
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted",
+              )}
               onClick={() =>
                 setFlagged((f) => (f.includes(q.id) ? f.filter((x) => x !== q.id) : [...f, q.id]))
               }
@@ -416,64 +586,98 @@ function TestPaper({ questions: dbQuestions }: { questions: TestAttemptQuestion[
               {flagged.includes(q.id) ? "Unflag" : "Flag"}
             </Button>
             {index < questions.length - 1 ? (
-              <Button className="rounded-full" onClick={() => setIndex((i) => i + 1)}>
+              <Button
+                className="rounded-lg bg-primary px-6 font-semibold text-primary-foreground"
+                onClick={() => setIndex((i) => i + 1)}
+              >
                 Next <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
               <Button
-                className="rounded-full"
+                className="rounded-lg bg-primary px-6 font-semibold text-primary-foreground"
                 disabled={submit.isPending}
                 onClick={() => submit.mutate()}
               >
-                {submit.isPending ? "Saving result…" : "Submit Test"}
+                {submit.isPending
+                  ? temporary
+                    ? "Calculating result…"
+                    : "Saving result…"
+                  : "Submit Test"}
               </Button>
             )}
           </div>
         </main>
 
-        <aside className="surface-panel h-fit p-5 lg:sticky lg:top-24">
-          <p className="text-sm font-semibold">Question palette</p>
-          <div className="mt-4 grid grid-cols-6 gap-2 lg:grid-cols-5">
+        <aside className="h-fit rounded-xl border border-border bg-card p-5 lg:sticky lg:top-24">
+          <p className="text-sm font-semibold">Questions</p>
+          <div className="mt-4 grid max-h-72 grid-cols-5 gap-2 overflow-y-auto p-1 sm:grid-cols-6 lg:grid-cols-5">
             {questions.map((question, i) => {
               const answered = answers[question.id] !== undefined;
+              const isCurrent = i === index;
+              const isFlagged = flagged.includes(question.id);
               return (
                 <button
                   key={question.id}
-                  aria-label={`Question ${i + 1}${answers[question.id] !== undefined ? ", answered" : ""}`}
-                  aria-current={i === index ? "step" : undefined}
+                  aria-label={`Question ${i + 1}${answered ? ", answered" : ", not answered"}${isFlagged ? ", flagged" : ""}`}
+                  aria-current={isCurrent ? "step" : undefined}
                   disabled={timerMode === "question" && i !== index}
                   onClick={() => setIndex(i)}
                   className={cn(
-                    "grid h-9 w-9 place-items-center rounded-lg border text-xs font-semibold transition-colors",
-                    i === index && "ring-2 ring-primary ring-offset-2 ring-offset-card",
-                    flagged.includes(question.id)
-                      ? "border-amber-500/60 bg-amber-500/15 text-amber-700"
-                      : answered
-                        ? "border-primary bg-primary/15 text-primary"
-                        : "text-muted-foreground",
+                    "relative grid h-10 w-full place-items-center rounded-lg border text-xs font-semibold transition-colors duration-150",
+                    isCurrent &&
+                      "border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background",
+                    !isCurrent &&
+                      isFlagged &&
+                      "border-dashed border-foreground bg-muted text-foreground",
+                    !isCurrent &&
+                      !isFlagged &&
+                      answered &&
+                      "border-primary/40 bg-primary/10 text-primary",
+                    !isCurrent &&
+                      !isFlagged &&
+                      !answered &&
+                      "border-border bg-background text-muted-foreground hover:border-primary/50",
                   )}
                 >
                   {i + 1}
+                  {isFlagged ? (
+                    <Flag aria-hidden="true" className="absolute right-0.5 top-0.5 h-2.5 w-2.5" />
+                  ) : answered ? (
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="absolute right-0.5 top-0.5 h-2.5 w-2.5"
+                    />
+                  ) : null}
                 </button>
               );
             })}
           </div>
-          <dl className="mt-5 space-y-1.5 text-xs text-muted-foreground">
-            <div className="flex justify-between">
-              <dt>Attempted</dt>
-              <dd>{attempted}</dd>
+          <dl className="mt-5 space-y-2 rounded-xl border border-border bg-background/60 p-3 text-xs font-semibold">
+            <div className="flex items-center justify-between text-primary">
+              <dt className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-lg bg-primary/10" />
+                Attempted
+              </dt>
+              <dd className="font-semibold">{attempted}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt>Flagged</dt>
-              <dd>{flagged.length}</dd>
+            <div className="flex items-center justify-between text-primary">
+              <dt className="flex items-center gap-1.5">
+                <Flag aria-hidden="true" className="h-3 w-3" />
+                Flagged
+              </dt>
+              <dd className="font-semibold">{flagged.length}</dd>
             </div>
           </dl>
           <Button
-            className="mt-5 w-full rounded-full"
+            className="mt-5 w-full rounded-lg bg-primary font-semibold text-primary-foreground"
             disabled={submit.isPending}
             onClick={() => submit.mutate()}
           >
-            {submit.isPending ? "Saving result…" : "Submit Test"}
+            {submit.isPending
+              ? temporary
+                ? "Calculating result…"
+                : "Saving result…"
+              : "Submit Test"}
           </Button>
         </aside>
       </div>

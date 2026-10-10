@@ -46,6 +46,10 @@ export type LectureRow = {
 };
 
 export type MaterialRow = {
+  content_deleted_at?: string | null;
+  body_storage_path?: string | null;
+  body_storage_sha256?: string | null;
+  body_storage_bytes?: number | null;
   id: string;
   course_id: string | null;
   lecture_id: string | null;
@@ -60,6 +64,7 @@ export type MaterialRow = {
   sort_order: number;
   description: string;
   thumbnail_url: string | null;
+  thumbnail_text?: string | null;
   module_title: string;
   batch: string;
   access_type: "course" | "free" | "paid";
@@ -70,6 +75,11 @@ export type MaterialRow = {
 };
 
 export type TestRow = {
+  content_deleted_at?: string | null;
+  easy_request_hash?: string | null;
+  thumbnail_url?: string | null;
+  thumbnail_text?: string | null;
+  assembly_source_ids?: string[];
   id: string;
   course_id: string | null;
   lecture_id: string | null;
@@ -98,6 +108,9 @@ export type TestRow = {
   generation_topic: string;
   generation_difficulty: "Easy" | "Moderate" | "Difficult" | "Mixed";
   generation_count: number;
+  syllabus_subject: string;
+  syllabus_chapter: string;
+  syllabus_topic: string;
   generation_marks?: number;
   generation_negative_marks?: number;
   created_at: string;
@@ -159,6 +172,16 @@ export type TestSeriesOverrideRow = {
   updated_at: string;
 };
 
+export type SyllabusNodeRow = {
+  id: string;
+  parent_id: string | null;
+  node_type: "subject" | "chapter" | "topic";
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TestAccessGrantRow = {
   id: string;
   test_id: string;
@@ -178,6 +201,10 @@ export type TestAccessGrantRow = {
 };
 
 export type TestQuestionRow = {
+  content_deleted_at?: string | null;
+  body_storage_path?: string | null;
+  body_storage_sha256?: string | null;
+  body_storage_bytes?: number | null;
   id: string;
   test_id: string;
   question_text: string;
@@ -444,6 +471,9 @@ export type LearningAttemptRow = {
   user_id: string;
   test_id: string | null;
   series_id: string | null;
+  subject?: string | null;
+  chapter?: string | null;
+  seed?: string | null;
   duration_seconds: number;
   question_timer_seconds: number;
   status: string;
@@ -481,6 +511,26 @@ export type DB = {
   };
   public: {
     Tables: {
+      kkcc_test_folders: TableDefinition<
+        {
+          id: string;
+          series_name: string;
+          subject: string;
+          chapter: string;
+          topic: string;
+          created_at: string;
+        },
+        {
+          id?: string;
+          series_name: string;
+          subject: string;
+          chapter: string;
+          topic: string;
+          created_at?: string;
+        },
+        { series_name?: string; subject?: string; chapter?: string; topic?: string }
+      >;
+
       learning_attempts: TableDefinition<
         LearningAttemptRow,
         Partial<LearningAttemptRow>,
@@ -494,6 +544,11 @@ export type DB = {
         Partial<MaterialRow>
       >;
       tests: TableDefinition<TestRow, WithGeneratedDefaults<TestRow>, Partial<TestRow>>;
+      syllabus_nodes: TableDefinition<
+        SyllabusNodeRow,
+        WithGeneratedDefaults<SyllabusNodeRow>,
+        Partial<SyllabusNodeRow>
+      >;
       test_access_grants: TableDefinition<
         TestAccessGrantRow,
         WithGeneratedDefaults<TestAccessGrantRow>,
@@ -518,6 +573,27 @@ export type DB = {
         TestSeriesOverrideRow,
         WithGeneratedDefaults<TestSeriesOverrideRow>,
         Partial<TestSeriesOverrideRow>
+      >;
+      kkcc_attempt_papers: TableDefinition<
+        { attempt_id: string; path: string; sha256: string; bytes: number; verified_at: string },
+        { attempt_id: string; path: string; sha256: string; bytes: number; verified_at?: string },
+        { path?: string; sha256?: string; bytes?: number; verified_at?: string }
+      >;
+      kkcc_removed_content_files: TableDefinition<
+        { bucket: string; path: string; created_at: string },
+        { bucket: string; path: string; created_at?: string },
+        { bucket?: string; path?: string }
+      >;
+      kkcc_test_questions: TableDefinition<
+        TestQuestionRow,
+        WithGeneratedDefaults<TestQuestionRow>,
+        Partial<TestQuestionRow>
+      >;
+      kkcc_tests: TableDefinition<TestRow, WithGeneratedDefaults<TestRow>, Partial<TestRow>>;
+      kkcc_materials: TableDefinition<
+        MaterialRow,
+        WithGeneratedDefaults<MaterialRow>,
+        Partial<MaterialRow>
       >;
       test_questions: TableDefinition<
         TestQuestionRow,
@@ -626,6 +702,99 @@ export type DB = {
     };
     Views: Record<string, never>;
     Functions: {
+      note_body_storage_status: {
+        Args: { p_actor: string };
+        Returns: Array<{ inline_count: number; inline_bytes: number; stored_count: number }>;
+      };
+      move_note_body_to_storage: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_source_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+        };
+        Returns: boolean;
+      };
+      get_test_retention: { Args: Record<string, never>; Returns: Json };
+      admin_test_retention: {
+        Args: {
+          p_action?: string;
+          p_enabled?: boolean;
+          p_before?: string;
+          p_confirmation?: string;
+        };
+        Returns: Json;
+      };
+      kkcc_storage_usage: { Args: Record<string, never>; Returns: Json };
+      manage_test_outline: {
+        Args: {
+          p_actor: string;
+          p_level: string;
+          p_action: string;
+          p_path: Json;
+          p_name: string;
+          p_expected_ids: string[];
+        };
+        Returns: Json;
+      };
+      admin_remove_old_content: {
+        Args: {
+          p_actor: string;
+          p_action: string;
+          p_before?: string;
+          p_confirmation?: string;
+          p_files?: Json;
+        };
+        Returns: Json;
+      };
+      restore_storage_sample_notes: { Args: { p_actor: string; p_rows: Json }; Returns: boolean };
+      publish_storage_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
+      test_body_storage_status: {
+        Args: { p_actor: string };
+        Returns: Array<{
+          source: string;
+          inline_count: number;
+          inline_bytes: number;
+          stored_count: number;
+        }>;
+      };
+      move_test_question_body: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_text_md5: string;
+          p_options_md5: string;
+          p_explanation_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+          p_legacy: boolean;
+        };
+        Returns: boolean;
+      };
+      move_legacy_note_body: {
+        Args: {
+          p_actor: string;
+          p_id: string;
+          p_updated: string | null;
+          p_source_md5: string;
+          p_path: string;
+          p_sha256: string;
+          p_bytes: number;
+        };
+        Returns: boolean;
+      };
+      publish_easy_text_test_v3: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
+      publish_easy_text_test_v2: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
+      publish_easy_text_test: { Args: { p_actor: string; p_payload: Json }; Returns: Json };
+      kkcc_space_report: {
+        Args: { p_cleanup?: boolean; p_before?: string };
+        Returns: Json;
+      };
       save_learning_attempt_answers: {
         Args: { p_actor: string; p_attempt: string; p_answers: Json; p_revision?: number };
         Returns: Json;

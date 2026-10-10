@@ -1,8 +1,30 @@
+import { materialAccessMode } from "./material-access-mode";
+import { readNoteBody } from "./note-body.server";
 import { isFreeCourse } from "@/lib/cms";
+import { notesPrintDocument } from "@/lib/notes-visuals";
 import type { StudentContext } from "@/lib/learning.server";
 import { readStudentAccess, unwrap } from "@/lib/learning.server";
 import { projectContent } from "@/lib/project-content.server";
-import { resolveContentUrl } from "@/lib/content-storage.server";
+import { resolveContentUrl, resolveNoteImages } from "@/lib/content-storage.server";
+
+function buildInlineNoteDataUrl(material: {
+  title?: string | null;
+  subject?: string | null;
+  chapter?: string | null;
+  material_type?: string | null;
+  description?: string | null;
+}) {
+  // Same builder the reader and the print button use: text goes in, headings,
+  // diagrams/charts and the KKCC watermark on every page come out.
+  const html = notesPrintDocument({
+    title: material.title || "KKCC Study Note",
+    subject: material.subject,
+    chapter: material.chapter,
+    materialType: material.material_type,
+    text: material.description ?? "",
+  });
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
 
 export async function materialForStudent(context: StudentContext, id: string) {
   const material = unwrap(
@@ -15,8 +37,7 @@ export async function materialForStudent(context: StudentContext, id: string) {
   );
   if (!material) throw new Error("Material not found.");
   const access = await readStudentAccess(context);
-  const mode =
-    material.access_type || (material.price > 0 || material.coin_price > 0 ? "paid" : "course");
+  const mode = materialAccessMode(material);
   let allowed = access.is_admin || mode === "free";
   if (!allowed && mode === "paid") {
     allowed = Boolean(
@@ -31,20 +52,28 @@ export async function materialForStudent(context: StudentContext, id: string) {
       ),
     );
   }
-  if (!allowed && mode === "course" && material.course_id) {
-    const course = unwrap(
-      await projectContent
-        .from("courses")
-        .select("*")
-        .eq("id", material.course_id)
-        .eq("status", "published")
-        .maybeSingle(),
-    );
-    allowed = Boolean(course && (isFreeCourse(course) || access.course_ids.includes(course.id)));
+  if (!allowed && mode === "course") {
+    if (!material.course_id) {
+      allowed = true;
+    } else {
+      const course = unwrap(
+        await projectContent
+          .from("courses")
+          .select("*")
+          .eq("id", material.course_id)
+          .eq("status", "published")
+          .maybeSingle(),
+      );
+      allowed = Boolean(course && (isFreeCourse(course) || access.course_ids.includes(course.id)));
+    }
   }
   if (!allowed)
     throw new Error(mode === "paid" ? "MATERIAL_ACCESS_REQUIRED" : "COURSE_ACCESS_REQUIRED");
-  const file_url = await resolveContentUrl(material.file_url);
-  if (!file_url) throw new Error("This material has no resource file. Contact KKCC.");
-  return { ok: true, material_id: material.id, file_url };
+  const description = await resolveNoteImages(await readNoteBody(material));
+  const resolvedUrl = await resolveContentUrl(material.file_url);
+  const file_url =
+    resolvedUrl && resolvedUrl !== "#"
+      ? resolvedUrl
+      : buildInlineNoteDataUrl({ ...material, description });
+  return { ok: true, material_id: material.id, file_url, description };
 }

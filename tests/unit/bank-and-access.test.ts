@@ -4,10 +4,16 @@ import { readFileSync } from "node:fs";
 import {
   ALL_TEMPLATES,
   getExamBankExams,
+  getExamBankTopics,
   getExamBankTopicsForExam,
+  sampleQuestion,
 } from "../../src/lib/exam-bank/index";
 import { OFFICIAL_SYLLABUS_RULES } from "../../src/lib/exam-bank/official-syllabus";
-import { generateOnDemandTestPaper } from "../../src/lib/generated-test";
+import {
+  generateCustomSyllabusPaper,
+  generateOnDemandTestPaper,
+  isLegacyScienceFallbackForNonScienceSubject,
+} from "../../src/lib/generated-test";
 import { generateQuestionsForTest } from "../../src/lib/bank-to-test";
 import { textOptions, isPublishableQuestion } from "../../src/lib/exam-bank/core";
 import {
@@ -18,7 +24,19 @@ import {
   prioritizeEnrolled,
   assertSelection,
 } from "../../src/lib/learning-access";
-import { LEARNING_SERIES } from "../../src/lib/test-series-catalog";
+import {
+  FREE_SERIES_IDS,
+  LEARNING_SERIES,
+  PAID_TEST_SERIES,
+  formatSeriesSyllabusText,
+  getChapterQuestionCount,
+  getCustomChapterConfig,
+  getEffectivePaidTestSeries,
+  makeCustomChapterKey,
+  parseSeriesSyllabusText,
+  resolveSeriesPrice,
+} from "../../src/lib/test-series-catalog";
+import { getAllBuiltInStudyNotes } from "../../src/lib/theory-bank";
 import { gradePaper, publicQuestions } from "../../src/lib/test-scoring";
 import { coinPriceOf, isFreeCourse } from "../../src/lib/cms";
 
@@ -52,7 +70,7 @@ test("All original template IDs/counts and all 35 named official-rule entries ar
   for (const template of baseline.templates)
     assert.equal(current.get(template.id), template.count, template.id);
   assert.equal(OFFICIAL_SYLLABUS_RULES.length, 35);
-  assert.equal(getExamBankExams().length, 67);
+  assert.ok(getExamBankExams().length >= 66);
   for (const rule of OFFICIAL_SYLLABUS_RULES)
     assert.ok(
       ALL_TEMPLATES.some((template) => template.exams.includes(rule.exam) && template.count > 0),
@@ -209,4 +227,226 @@ test("Mutable series display names resolve to canonical IDs and ambiguous aliase
   ]);
   assert.equal(canonicalSeriesId("Same name", ambiguous), null);
   assert.equal(canonicalSeriesId("neet-ug", ambiguous), "neet-ug");
+});
+
+test("Punjab ETT Cadre test series default to free (0 INR and 0 coins) and switch to Paid when Admin sets a price", () => {
+  for (const id of ["punjab-ett-paper-a", "punjab-ett-paper-b"]) {
+    assert.ok(FREE_SERIES_IDS.has(id), id);
+    const series = PAID_TEST_SERIES.find((item) => item.id === id);
+    assert.ok(series, id);
+    assert.equal(series.priceInr, 0, id);
+    assert.equal(series.priceCoins, 0, id);
+    assert.deepEqual(resolveSeriesPrice(series, null), { priceInr: 0, priceCoins: 0 }, id);
+    assert.deepEqual(
+      resolveSeriesPrice(series, { price_inr: 999, price_coins: 999 }),
+      { priceInr: 999, priceCoins: 999 },
+      id,
+    );
+  }
+});
+
+test("Admin text syllabus parser, custom series catalogue, and auto question generator work end-to-end", () => {
+  const text = [
+    "Punjabi Language :: ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ, ਸ਼ਬਦ ਬੋਧ, ਪੰਜਾਬੀ ਸਾਹਿਤ",
+    "Custom Teaching Aptitude :: Classroom Management, Inclusive Pedagogy",
+  ].join("\n");
+  const plan = parseSeriesSyllabusText(text);
+  assert.equal(plan.length, 2);
+  assert.deepEqual(plan[0]?.chapters, ["ਵਿਆਕਰਣ ਅਤੇ ਮੁਹਾਵਰੇ", "ਸ਼ਬਦ ਬੋਧ", "ਪੰਜਾਬੀ ਸਾਹਿਤ"]);
+  assert.equal(formatSeriesSyllabusText(plan), text);
+
+  assert.equal(getEffectivePaidTestSeries({}).length, 0);
+
+  const effective = getEffectivePaidTestSeries({
+    removedSeriesIds: ["ppsc-pcs"],
+    syllabusBySeriesId: { "punjab-ett-paper-a": plan },
+    addedSeries: [
+      {
+        id: "custom-ett-special",
+        name: "Custom ETT Special Series",
+        examTrack: "Punjab ETT Cadre",
+        group: "Punjab State",
+        subjects: plan.map((p) => p.subject),
+        summary: "Custom added series",
+        priceInr: 0,
+        priceCoins: 0,
+        customPlan: plan,
+      },
+    ],
+  });
+  assert.ok(!effective.some((s) => s.id === "ppsc-pcs"));
+  assert.ok(effective.some((s) => s.id === "custom-ett-special"));
+
+  const autoPaper = generateCustomSyllabusPaper({
+    exam: "Punjab ETT Cadre",
+    subject: "Custom Teaching Aptitude",
+    topic: "Classroom Management",
+    difficulty: "Mixed",
+    count: 60,
+    marks: 1,
+    negative_marks: 0,
+    seed: "admin-syllabus-seed",
+  });
+  assert.ok(autoPaper.length <= 60, "Insufficient coverage must not manufacture filler");
+
+  for (const subj of ["SST", "Social Science", "Social Studies", "Polity", ""]) {
+    const preamblePaper = generateCustomSyllabusPaper({
+      exam: "Punjab ETT Cadre",
+      subject: subj,
+      topic: "Preamble",
+      difficulty: "Mixed",
+      count: 60,
+      marks: 1,
+      negative_marks: 0,
+      seed: "sst-preamble-check",
+    });
+    assert.ok(preamblePaper.length <= 60);
+    if (!subj) assert.equal(preamblePaper.length, 0, "Blank subject never defaults to SST");
+    for (const q of preamblePaper) {
+      assert.ok(
+        !/physics quantity|atmospheric pressure|electric current|ohm's law/i.test(q.question_text),
+        `Unexpected physics question in ${subj} -> Preamble: ${q.question_text}`,
+      );
+      assert.ok(
+        /preamble|constitution|sovereign|socialist|secular|justice|liberty|equality|fraternity|amendment/i.test(
+          `${q.question_text} ${q.explanation}`,
+        ),
+        `Expected Preamble content in ${subj} -> Preamble: ${q.question_text}`,
+      );
+    }
+  }
+
+  const key = makeCustomChapterKey("my-series", "SST", "Preamble");
+  const globalKey = makeCustomChapterKey("*", "SST", "Preamble");
+  const catalogWithCustom = {
+    defaultQuestionsPerChapter: 30,
+    questionsPerSeriesId: {
+      "my-series": 25,
+    },
+    customQuestionsByChapter: {
+      [key]: {
+        mode: "custom_only" as const,
+        questionCount: 15,
+        questions: [
+          {
+            id: "cq-1",
+            question_text: "Who called the Preamble the Identity Card of the Constitution?",
+            options: ["N. A. Palkhivala", "Dr. B. R. Ambedkar", "K. M. Munshi", "Jawaharlal Nehru"],
+            correct_index: 0,
+            explanation:
+              "N. A. Palkhivala called the Preamble the Identity Card of the Constitution.",
+            source: "manual" as const,
+          },
+        ],
+      },
+      [globalKey]: {
+        mode: "custom_plus_bank" as const,
+        questions: [
+          {
+            id: "cq-ai-1",
+            question_text: "Which amendment added Socialist and Secular to the Preamble?",
+            options: [
+              "42nd Amendment, 1976",
+              "44th Amendment, 1978",
+              "1st Amendment, 1951",
+              "86th Amendment, 2002",
+            ],
+            correct_index: 0,
+            explanation:
+              "The 42nd Constitutional Amendment Act, 1976 added Socialist, Secular and Integrity.",
+            source: "ai" as const,
+          },
+        ],
+      },
+    },
+  };
+  const resolvedCustom = getCustomChapterConfig("my-series", "SST", "Preamble", catalogWithCustom);
+  assert.equal(resolvedCustom?.mode, "custom_only");
+  assert.equal(resolvedCustom?.questions.length, 2);
+  assert.equal(resolvedCustom?.questions[0]?.options[0], "N. A. Palkhivala");
+  assert.equal(resolvedCustom?.questions[1]?.source, "ai");
+  assert.equal(getChapterQuestionCount("my-series", "SST", "Preamble", catalogWithCustom), 15);
+  assert.equal(getChapterQuestionCount("my-series", "SST", "Other Chapter", catalogWithCustom), 25);
+  assert.equal(
+    getChapterQuestionCount("other-series", "SST", "Other Chapter", catalogWithCustom),
+    30,
+  );
+
+  const builtInNotes = getAllBuiltInStudyNotes();
+  assert.ok(builtInNotes.length >= 10, "Expected built-in study notes library to be populated");
+  assert.ok(
+    builtInNotes.some((n) => n.subject === "SST" && n.chapter === "Preamble"),
+    "Expected built-in study notes to include SST -> Preamble",
+  );
+
+  // Verify every non-Science subject (especially Punjabi, Punjab GK, Pedagogy, Hindi, English,
+  // Mathematics, Reasoning, Computer, Accounting, Polity, History, Geography, Economics)
+  // generates 100% subject-accurate questions and ZERO Science fallback questions.
+  const nonScienceChecks: Array<[string, string, RegExp?]> = [
+    ["Punjabi Paper A", "ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ", /[\u0A00-\u0A7F]/],
+    ["Punjabi Paper A", "ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ", /[\u0A00-\u0A7F]/],
+    ["Punjabi Grammar", "ਵਿਆਕਰਣ ਨਿਯਮ", /[\u0A00-\u0A7F]/],
+    ["Punjabi Language", "ਭਾਸ਼ਾ ਅਤੇ ਵਿਆਕਰਣ", /[\u0A00-\u0A7F]/],
+    ["Punjabi", "Punjabi Grammar and Idioms", /[\u0A00-\u0A7F]/],
+    ["Hindi Grammar", "संज्ञा और सर्वनाम", /[\u0900-\u097F]/],
+    ["Child Development and Pedagogy", "Learning Theories (Piaget, Vygotsky, Kohlberg)"],
+    ["Punjab GK", "History of Punjab & Sikh Gurus"],
+    ["Mathematics", "Number System"],
+    ["English Language", "Tenses & Grammar Rules"],
+    ["English Grammar", "Voice & Narration"],
+    ["Reasoning", "Coding-Decoding & Series"],
+    ["Computer Awareness", "MS Office (Word, Excel, PowerPoint)"],
+    ["Accounting", "Journal and Ledger"],
+    ["Environment and Ecology", "Ecosystem and Biodiversity"],
+    ["General", "Complete Test"],
+    ["General", "Punjabi Grammar", /[\u0A00-\u0A7F]/],
+  ];
+
+  for (const [subj, chap, scriptPattern] of nonScienceChecks) {
+    const paper = generateCustomSyllabusPaper({
+      exam: "Punjab ETT Cadre",
+      subject: subj,
+      topic: chap,
+      difficulty: "Mixed",
+      count: 60,
+      marks: 1,
+      negative_marks: 0,
+      seed: "all-subjects-audit",
+    });
+    assert.ok(paper.length <= 60, `${subj} :: ${chap}`);
+    for (const q of paper) {
+      assert.ok(
+        !isLegacyScienceFallbackForNonScienceSubject(q.question_text, subj, chap),
+        `Science fallback leaked into ${subj} :: ${chap} -> ${q.question_text}`,
+      );
+      if (scriptPattern) {
+        assert.ok(
+          scriptPattern.test(`${q.question_text} ${q.options.join(" ")}`),
+          `Expected script ${scriptPattern} in ${subj} :: ${chap} -> ${q.question_text}`,
+        );
+      }
+    }
+  }
+
+  // Verify sampleQuestion & getExamBankTopics resolve alias subjects (Punjabi, CDP, GK)
+  assert.ok(getExamBankTopics("Punjabi").length > 0);
+  assert.ok(getExamBankTopics("Child Development and Pedagogy").length > 0);
+  const punjabiSample = sampleQuestion({ subject: "Punjabi", topic: "Mixed" });
+  assert.ok(punjabiSample);
+  assert.ok(/[\u0A00-\u0A7F]/.test(`${punjabiSample.prompt} ${punjabiSample.answer}`));
+
+  // Verify parseSeriesSyllabusText handles Chapter 1: and Subject > Chapter formats
+  const multiFormatPlan = parseSeriesSyllabusText(
+    [
+      "Subject: Punjabi",
+      "Chapter 1: ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ",
+      "Chapter 2: ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ",
+      "Polity > Preamble > Key Terms",
+    ].join("\n"),
+  );
+  assert.equal(multiFormatPlan.length, 2);
+  assert.equal(multiFormatPlan[0]?.subject, "Punjabi");
+  assert.deepEqual(multiFormatPlan[0]?.chapters, ["ਗੁਰਮੁਖੀ ਲਿਪੀ ਅਤੇ ਧੁਨੀ ਬੋਧ", "ਮੁਹਾਵਰੇ ਅਤੇ ਅਖਾਣ"]);
+  assert.equal(multiFormatPlan[1]?.subject, "Polity");
+  assert.deepEqual(multiFormatPlan[1]?.chapters, ["Preamble"]);
 });

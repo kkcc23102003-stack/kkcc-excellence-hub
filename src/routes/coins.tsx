@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { format23Kaat, is23KaatUnlimited } from "@/lib/coin-display";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ArrowRight, Loader2, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, CreditCard, Loader2, PhoneCall, ShieldCheck, Sparkles } from "lucide-react";
 import { KaatCoin, KaatCoinStack } from "@/components/kkcc/kaat-coin";
 import { SiteLayout } from "@/components/kkcc/site-layout";
 import { CONVERSION_SENTENCE, RUPEES_PER_23KAAT } from "@/lib/coin-conversion";
@@ -11,9 +12,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { displayNameFromUser } from "@/lib/auth";
-import { getMy23KaatWallet, list23KaatCoinPackages } from "@/lib/coins.functions";
+import {
+  completeRazorpayCoinPackPurchase,
+  getMy23KaatWallet,
+  list23KaatCoinPackages,
+} from "@/lib/coins.functions";
 import { submitAdmissionEnquiry } from "@/lib/enquiries.functions";
+import {
+  EMPTY_PUBLIC_PAYMENT_SETTINGS,
+  getPublicPaymentSettings,
+} from "@/lib/platform-settings.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
+import { createCoinPackRazorpayOrder } from "@/lib/razorpay.functions";
+import { rememberPendingPayment, forgetPendingPayment } from "@/lib/pending-payments";
+import { RazorpayPaymentRecovery } from "@/components/kkcc/razorpay-payment-recovery";
 import { friendlyError } from "@/lib/storage";
 
 export const Route = createFileRoute("/coins")({
@@ -33,11 +45,11 @@ export const Route = createFileRoute("/coins")({
     ],
   }),
   loader: async () => {
-    const [packages, wallet] = await Promise.all([
+    const [packages, payment] = await Promise.all([
       safeServerCall(() => list23KaatCoinPackages(), []),
-      safeServerCall(() => getMy23KaatWallet(), { balance: 0, transactions: [], packages: [] }),
+      safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
     ]);
-    return { packages, wallet };
+    return { packages, payment };
   },
   component: CoinsPage,
 });
@@ -51,9 +63,119 @@ function CoinsPage() {
 }
 
 function CoinsPageContent() {
-  const { packages, wallet } = Route.useLoaderData();
+  const { packages, payment = EMPTY_PUBLIC_PAYMENT_SETTINGS } = Route.useLoaderData();
   const { user } = useAuthUser();
+  const fetchWallet = useServerFn(getMy23KaatWallet);
+  const walletQuery = useQuery({
+    queryKey: ["student", user?.id, "wallet"],
+    enabled: Boolean(user),
+    queryFn: () => fetchWallet(),
+    staleTime: 0,
+  });
+  const wallet = walletQuery.data || { balance: 0 };
+
+  const qc = useQueryClient();
   const sendEnquiry = useServerFn(submitAdmissionEnquiry);
+  const finishPackPurchase = useServerFn(completeRazorpayCoinPackPurchase);
+  const paymentConfigured = Boolean(payment.enabled && payment.razorpay_key_id);
+  const [payingPackId, setPayingPackId] = useState<string | null>(null);
+  const [recoveryNeeded, setRecoveryNeeded] = useState(false);
+
+  const handleRazorpayPackPurchase = async (pack: (typeof packages)[number]) => {
+    if (!user?.email) {
+      toast.info("Please login first to buy 23KAAT coins.");
+      return;
+    }
+    setPayingPackId(pack.id);
+    try {
+      const hasRzp = await new Promise<boolean>((resolve) => {
+        if (window.Razorpay) {
+          resolve(true);
+          return;
+        }
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.async = true;
+        s.onload = () => resolve(Boolean(window.Razorpay));
+        s.onerror = () => resolve(false);
+        document.body.appendChild(s);
+      });
+      if (!hasRzp || !window.Razorpay) {
+        throw new Error("Could not load Razorpay checkout. Please try again.");
+      }
+
+      // Server priced order: the amount cannot be edited from the browser and
+      // the pack id travels in the order notes for one-tap recovery.
+      const order = await createCoinPackRazorpayOrder({ data: { package_id: pack.id } });
+      const totalCoins = pack.coins + pack.bonus_coins;
+
+      const rzp = new window.Razorpay({
+        key: order.key_id || payment.razorpay_key_id,
+        ...(order.order_id ? { order_id: order.order_id } : {}),
+        amount: order.amount_paise || Math.round(pack.price * 100),
+        currency: "INR",
+        name: "KKCC Excellence Hub",
+        description: `${pack.title} — ${totalCoins} 23KAAT Coins`,
+        prefill: {
+          name: displayNameFromUser(user) || user.email,
+          email: user.email,
+        },
+        theme: { color: "#dc2626" },
+        handler: async (response: {
+          razorpay_payment_id?: string;
+          razorpay_order_id?: string;
+          razorpay_signature?: string;
+        }) => {
+          const paymentId = response.razorpay_payment_id || "";
+          if (!paymentId) {
+            setRecoveryNeeded(true);
+            toast.error("Razorpay did not return a Payment ID", {
+              description: "If money was deducted, recover it below with your Payment ID.",
+            });
+            return;
+          }
+          rememberPendingPayment({
+            payment_id: paymentId,
+            kind: "coin_pack",
+            item_id: pack.id,
+            title: `${pack.title} — ${totalCoins} coins`,
+            amount_inr: order.amount_inr || pack.price,
+          });
+          try {
+            const res = await finishPackPurchase({
+              data: {
+                package_id: pack.id,
+                razorpay_payment_id: paymentId,
+                razorpay_order_id: response.razorpay_order_id || order.order_id || "",
+                razorpay_signature: response.razorpay_signature || "",
+              },
+            });
+            forgetPendingPayment(paymentId);
+            window.dispatchEvent(new Event("kkcc:23kaat-refresh"));
+            void qc.invalidateQueries({ queryKey: ["student", user.id, "wallet"] });
+            toast.success(`+${res.credited} 23KAAT coins credited!`, {
+              description:
+                res.balance != null
+                  ? `New wallet balance: ${res.balance} coins.`
+                  : "Wallet updated.",
+            });
+            window.location.reload();
+          } catch (err) {
+            setRecoveryNeeded(true);
+            toast.error(friendlyError(err), {
+              description:
+                "Aapka Payment ID save kar liya gaya hai — neeche 'Verify & unlock' dabaakar coins turant paayein.",
+            });
+          }
+        },
+      });
+      rzp.open();
+    } catch (err) {
+      toast.error(friendlyError(err));
+    } finally {
+      setPayingPackId(null);
+    }
+  };
 
   const requestMutation = useMutation({
     mutationFn: (pack: (typeof packages)[number]) => {
@@ -67,13 +189,14 @@ function CoinsPageContent() {
           class_level: "",
           interest: `${pack.title} — ${totalCoins} 23KAAT`,
           source: "23kaat_coin_pack",
-          message: `I want to buy the ${pack.title}: ${totalCoins} 23KAAT coins for ₹${pack.price}. Please share payment steps and credit coins to my KKCC account after payment.`,
+          message: `I want to buy the ${pack.title}: ${totalCoins} 23KAAT coins for ₹${pack.price}. Please contact me for offline payment and credit coins to my KKCC account.`,
         },
       });
     },
     onSuccess: () => {
-      toast.success("Coin pack request sent", {
-        description: "The KKCC team will confirm payment and credit 23KAAT coins to your account.",
+      toast.success("Please contact Admin for offline payment", {
+        description:
+          "Your offline coin pack request has been sent to Admin. Once payment is confirmed, Admin will credit 23KAAT coins to your account.",
       });
     },
     onError: (error: Error) => toast.error(friendlyError(error)),
@@ -118,6 +241,13 @@ function CoinsPageContent() {
               <KaatCoinStack className="scale-150" />
             </div>
             <p className="relative text-sm text-muted-foreground">Current balance</p>
+            {walletQuery.isError && (
+              <p role="alert">
+                Balance could not load.{" "}
+                <Button onClick={() => void walletQuery.refetch()}>Retry wallet</Button>
+              </p>
+            )}
+
             <p className="relative mt-2 text-5xl font-black text-gradient-brand neon-text">
               {format23Kaat(wallet.balance)}
             </p>
@@ -134,6 +264,12 @@ function CoinsPageContent() {
           </div>
         </div>
       </section>
+
+      {(paymentConfigured || recoveryNeeded) && (
+        <section className="mx-auto w-full max-w-7xl px-4 pt-10 sm:px-6">
+          <RazorpayPaymentRecovery />
+        </section>
+      )}
 
       <section className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -178,21 +314,41 @@ function CoinsPageContent() {
                   <KaatCoin size="md" /> {totalCoins}
                 </p>
                 <p className="relative mt-1 text-sm text-muted-foreground">
-                  coins for ₹{pack.price}
+                  coins for ₹{pack.price} ·{" "}
+                  <span className="font-semibold">
+                    {paymentConfigured
+                      ? "Online Razorpay Active"
+                      : "Paid · Offline (Contact Admin)"}
+                  </span>
                 </p>
                 {user ? (
-                  <Button
-                    className="relative mt-5 w-full rounded-full"
-                    disabled={loading}
-                    onClick={() => requestMutation.mutate(pack)}
-                  >
-                    {loading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="mr-2 h-4 w-4" />
-                    )}
-                    Request this pack
-                  </Button>
+                  paymentConfigured ? (
+                    <Button
+                      className="relative mt-5 w-full rounded-full"
+                      disabled={payingPackId === pack.id}
+                      onClick={() => void handleRazorpayPackPurchase(pack)}
+                    >
+                      {payingPackId === pack.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CreditCard className="mr-2 h-4 w-4" />
+                      )}
+                      Buy Pack Online — ₹{pack.price}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="relative mt-5 w-full rounded-full"
+                      disabled={loading}
+                      onClick={() => requestMutation.mutate(pack)}
+                    >
+                      {loading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <PhoneCall className="mr-2 h-4 w-4" />
+                      )}
+                      Contact Admin (Offline — ₹{pack.price})
+                    </Button>
+                  )
                 ) : (
                   <Button asChild className="relative mt-5 w-full rounded-full">
                     <Link to="/login" search={{ redirectTo: "/coins" }}>

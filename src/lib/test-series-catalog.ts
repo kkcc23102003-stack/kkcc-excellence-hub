@@ -17,11 +17,11 @@
  */
 
 import {
-  countMatching,
-  getExamBankTopicsForExam,
-  getExamBankExams,
-  ACTIVE_TEMPLATES,
-} from "@/lib/exam-bank";
+  CATALOG_EXAMS_LIST,
+  CATALOG_SUBJECTS_BY_EXAM,
+  getCatalogQuestionCount,
+  getCatalogTopicsForExam,
+} from "@/lib/test-series-catalog-meta";
 import { DIFFICULTY_LADDER, type LadderLevel } from "@/lib/quiz-levels";
 import { advancedTestUrl } from "@/lib/question-routing";
 
@@ -74,6 +74,10 @@ export type PaidTestSeries = {
   summary: string;
   priceInr: number;
   priceCoins: number;
+  /** Optional custom/edited chapterwise syllabus saved by Admin. */
+  customPlan?: { subject: string; chapters: string[] }[];
+  /** Optional custom question count per chapter test set by Admin. */
+  questionsPerTest?: number;
 };
 
 export const PAID_TEST_SERIES: PaidTestSeries[] = [
@@ -1086,28 +1090,22 @@ const SERIES_DEMAND: Record<string, SeriesDemand> = {
  * They are free practice tracks, not fabricated official exams or paid products.
  */
 const CATALOG_EXAMS = new Set(PAID_TEST_SERIES.map((series) => series.examTrack));
-export const ADDITIONAL_PRACTICE_SERIES: PaidTestSeries[] = getExamBankExams()
-  .filter((exam) => !CATALOG_EXAMS.has(exam))
-  .map((exam) => ({
-    id: `practice-${exam
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/-$/, "")}`,
-    name: `${exam} Practice`,
-    examTrack: exam,
-    group: "High-Yield" as const,
-    subjects: [
-      ...new Set(
-        ACTIVE_TEMPLATES.filter((template) => template.exams.includes(exam)).map(
-          (template) => template.subject,
-        ),
-      ),
-    ].sort(),
-    summary:
-      "Practice from the existing project bank. Coverage and syllabus limitations are recorded in the bank audit.",
-    priceInr: 0,
-    priceCoins: 0,
-  }));
+export const ADDITIONAL_PRACTICE_SERIES: PaidTestSeries[] = CATALOG_EXAMS_LIST.filter(
+  (exam) => !CATALOG_EXAMS.has(exam),
+).map((exam) => ({
+  id: `practice-${exam
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-$/, "")}`,
+  name: `${exam} Practice`,
+  examTrack: exam,
+  group: "High-Yield" as const,
+  subjects: CATALOG_SUBJECTS_BY_EXAM[exam] ?? [],
+  summary:
+    "Practice from the existing project bank. Coverage and syllabus limitations are recorded in the bank audit.",
+  priceInr: 0,
+  priceCoins: 0,
+}));
 export const LEARNING_SERIES: PaidTestSeries[] = [
   ...PAID_TEST_SERIES,
   ...ADDITIONAL_PRACTICE_SERIES,
@@ -1124,15 +1122,379 @@ export type SubjectPlan = {
   chapters: string[];
 };
 
+export type CustomChapterQuestion = {
+  id: string;
+  question_text: string;
+  options: string[];
+  correct_index: number;
+  explanation?: string;
+  difficulty?: "Easy" | "Moderate" | "Difficult";
+  marks?: number;
+  negative_marks?: number;
+  source?: "manual" | "ai";
+};
+
+export type CustomChapterConfig = {
+  mode: "custom_only" | "custom_plus_bank";
+  questionCount?: number;
+  questions: CustomChapterQuestion[];
+};
+
+export type CustomSeriesCatalog = {
+  syllabusBySeriesId?: Record<string, SubjectPlan[]>;
+  removedSeriesIds?: string[];
+  addedSeries?: PaidTestSeries[];
+  includeBuiltIn?: boolean;
+  /** Keyed by makeCustomChapterKey(seriesId, subject, chapter) */
+  customQuestionsByChapter?: Record<string, CustomChapterConfig>;
+  /** Optional per-series question count per chapter test (e.g. 20, 30, 50, 60, 100) */
+  questionsPerSeriesId?: Record<string, number>;
+  /** Optional global default question count per chapter test */
+  defaultQuestionsPerChapter?: number;
+};
+
+export function makeCustomChapterKey(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+): string {
+  const sId = (seriesId || "*").trim().toLowerCase() || "*";
+  const subj = subject.trim().toLowerCase();
+  const chap = chapter.trim().toLowerCase();
+  return `${sId}::${subj}::${chap}`;
+}
+
+export function getCustomChapterConfig(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+  catalog: CustomSeriesCatalog = runtimeCustomCatalog,
+): CustomChapterConfig | undefined {
+  const map = catalog.customQuestionsByChapter;
+  if (!map) return undefined;
+  const exactKey = makeCustomChapterKey(seriesId, subject, chapter);
+  const globalKey = makeCustomChapterKey("*", subject, chapter);
+  const exact = exactKey !== globalKey ? map[exactKey] : undefined;
+  const globalCfg = map[globalKey];
+
+  if (!exact && !globalCfg) return undefined;
+
+  const combinedQuestions: CustomChapterQuestion[] = [];
+  const seenTexts = new Set<string>();
+  for (const q of [...(exact?.questions ?? []), ...(globalCfg?.questions ?? [])]) {
+    const norm = q.question_text.trim().toLowerCase();
+    if (!seenTexts.has(norm)) {
+      seenTexts.add(norm);
+      combinedQuestions.push(q);
+    }
+  }
+
+  const mode = exact?.mode ?? globalCfg?.mode ?? "custom_plus_bank";
+  const questionCount = exact?.questionCount ?? globalCfg?.questionCount;
+
+  if (combinedQuestions.length === 0 && questionCount === undefined) return undefined;
+  return {
+    mode,
+    ...(questionCount !== undefined ? { questionCount } : {}),
+    questions: combinedQuestions,
+  };
+}
+
+export function getChapterQuestionCount(
+  seriesId: string | undefined,
+  subject: string,
+  chapter: string,
+  catalog: CustomSeriesCatalog = runtimeCustomCatalog,
+): number {
+  const map = catalog.customQuestionsByChapter;
+  if (map) {
+    const exactKey = makeCustomChapterKey(seriesId, subject, chapter);
+    const exactCount = map[exactKey]?.questionCount;
+    if (typeof exactCount === "number" && exactCount >= 1) {
+      return Math.min(200, Math.round(exactCount));
+    }
+    const globalKey = makeCustomChapterKey("*", subject, chapter);
+    const globalCount = map[globalKey]?.questionCount;
+    if (typeof globalCount === "number" && globalCount >= 1) {
+      return Math.min(200, Math.round(globalCount));
+    }
+  }
+  if (seriesId && catalog.questionsPerSeriesId?.[seriesId]) {
+    const seriesCount = catalog.questionsPerSeriesId[seriesId]!;
+    if (seriesCount >= 1) return Math.min(200, Math.round(seriesCount));
+  }
+  if (seriesId) {
+    const added = (catalog.addedSeries ?? []).find((s) => s.id === seriesId);
+    if (added?.questionsPerTest && added.questionsPerTest >= 1) {
+      return Math.min(200, Math.round(added.questionsPerTest));
+    }
+  }
+  if (
+    typeof catalog.defaultQuestionsPerChapter === "number" &&
+    catalog.defaultQuestionsPerChapter >= 1
+  ) {
+    return Math.min(200, Math.round(catalog.defaultQuestionsPerChapter));
+  }
+  return QUESTIONS_PER_CHAPTER;
+}
+
+let runtimeCustomCatalog: CustomSeriesCatalog = {};
+
+export function setRuntimeCustomSeriesCatalog(catalog: CustomSeriesCatalog | null | undefined) {
+  runtimeCustomCatalog = catalog ?? {};
+}
+
+export function getRuntimeCustomSeriesCatalog(): CustomSeriesCatalog {
+  return runtimeCustomCatalog;
+}
+
+function splitChaptersTopLevel(input: string): string[] {
+  const out: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i]!;
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth += 1;
+      current += ch;
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      depth = Math.max(0, depth - 1);
+      current += ch;
+    } else if (depth === 0 && (ch === "," || ch === ";" || ch === "|")) {
+      if (current.trim()) out.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
+export function parseSeriesSyllabusText(text: string): SubjectPlan[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bySubject = new Map<string, string[]>();
+  let currentSubject = "";
+
+  const addChapters = (subject: string, rawChapters: string[]) => {
+    const cleanSubject = subject.replace(/^[#*\-\d.)\s]+/, "").trim();
+    if (!cleanSubject) return;
+    if (!bySubject.has(cleanSubject)) bySubject.set(cleanSubject, []);
+    const bucket = bySubject.get(cleanSubject)!;
+    for (const raw of rawChapters) {
+      const ch = raw.replace(/^[-*•\d.)\s]+/, "").trim();
+      if (ch && !bucket.includes(ch)) bucket.push(ch);
+    }
+  };
+
+  for (const line of lines) {
+    if (line.includes("::") || line.includes("->") || line.includes("=>")) {
+      const parts = line.split(/::|->|=>/);
+      const subj = (parts[0] ?? "").replace(/^subject\s*:\s*/i, "").trim();
+      const rest = parts.slice(1).join(" ");
+      const chapters = splitChaptersTopLevel(rest);
+      currentSubject = subj;
+      addChapters(subj, chapters);
+      continue;
+    }
+
+    if (line.includes(">")) {
+      const parts = line
+        .split(/\s*>\s*/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length >= 2) {
+        const subj = parts[0]!.replace(/^subject\s*:\s*/i, "").trim();
+        const ch = parts[1]!
+          .replace(/^(?:chapter|ch\.?|unit|topic)\s*(?:\d+\s*[-:.]\s*)?/i, "")
+          .trim();
+        currentSubject = subj;
+        if (ch) addChapters(subj, [ch]);
+        continue;
+      }
+    }
+
+    if (/^(?:#+\s*)?subject\s*:/i.test(line)) {
+      const after = line.replace(/^(?:#+\s*)?subject\s*:\s*/i, "").trim();
+      if (after.includes(":")) {
+        const [subj, ...rest] = after.split(":");
+        if (rest.length > 0) {
+          currentSubject = subj!.trim();
+          addChapters(currentSubject, splitChaptersTopLevel(rest.join(":")));
+        } else {
+          currentSubject = after;
+          if (!bySubject.has(currentSubject)) bySubject.set(currentSubject, []);
+        }
+      } else {
+        currentSubject = after;
+        if (!bySubject.has(currentSubject)) bySubject.set(currentSubject, []);
+      }
+      continue;
+    }
+
+    const chapterHeadingMatch = line.match(
+      /^(?:[-*•]\s*)?(?:chapter|ch\.?|unit|topic|ਭਾਗ|ਪਾਠ|ਅਧਿਆਇ)\s*(?:\d+\s*)?[-:.]\s*(.+)$/i,
+    );
+    if (chapterHeadingMatch && currentSubject) {
+      addChapters(currentSubject, splitChaptersTopLevel(chapterHeadingMatch[1]!.trim()));
+      continue;
+    }
+
+    if (/^(?:[-*•]|\d+[.)])\s+/.test(line) && currentSubject) {
+      addChapters(currentSubject, [line.replace(/^(?:[-*•]|\d+[.)])\s+/, "")]);
+      continue;
+    }
+
+    const colonIdx = line.indexOf(":");
+    if (colonIdx > 0 && colonIdx < line.length - 1) {
+      const prefix = line.slice(0, colonIdx).trim();
+      const rest = line.slice(colonIdx + 1).trim();
+      const isChapterOrNumberPrefix =
+        /^(?:chapter|ch\.?|unit|topic|part|section|paper|ਭਾਗ|ਪਾਠ|ਅਧਿਆਇ|\d+)\b/i.test(prefix);
+      if (isChapterOrNumberPrefix && currentSubject) {
+        addChapters(currentSubject, [line]);
+      } else {
+        currentSubject = prefix;
+        addChapters(prefix, splitChaptersTopLevel(rest));
+      }
+      continue;
+    }
+
+    if (currentSubject) {
+      addChapters(currentSubject, splitChaptersTopLevel(line));
+    } else {
+      currentSubject = line.replace(/^#+\s*/, "").trim();
+      if (currentSubject && !bySubject.has(currentSubject)) {
+        bySubject.set(currentSubject, []);
+      }
+    }
+  }
+
+  return [...bySubject.entries()]
+    .map(([subject, chapters]) => ({
+      subject,
+      chapters: chapters.length > 0 ? chapters : [`${subject} — Core Concepts & Practice`],
+    }))
+    .filter((item) => item.subject && item.chapters.length > 0);
+}
+
+export function formatSeriesSyllabusText(plan: SubjectPlan[]): string {
+  return plan
+    .filter((item) => item.subject && item.chapters.length > 0)
+    .map((item) => `${item.subject} :: ${item.chapters.join(", ")}`)
+    .join("\n");
+}
+
+export function parseCustomSeriesCatalog(raw: unknown): CustomSeriesCatalog {
+  if (!raw) return {};
+  try {
+    const parsed = (typeof raw === "string" ? JSON.parse(raw) : raw) as CustomSeriesCatalog;
+    if (!parsed || typeof parsed !== "object") return {};
+    return {
+      syllabusBySeriesId:
+        parsed.syllabusBySeriesId && typeof parsed.syllabusBySeriesId === "object"
+          ? parsed.syllabusBySeriesId
+          : {},
+      removedSeriesIds: Array.isArray(parsed.removedSeriesIds)
+        ? parsed.removedSeriesIds.filter((id): id is string => typeof id === "string")
+        : [],
+      addedSeries: Array.isArray(parsed.addedSeries)
+        ? parsed.addedSeries.filter((item): item is PaidTestSeries =>
+            Boolean(item && typeof item === "object" && typeof item.id === "string"),
+          )
+        : [],
+      includeBuiltIn: Boolean(parsed.includeBuiltIn),
+      customQuestionsByChapter:
+        parsed.customQuestionsByChapter && typeof parsed.customQuestionsByChapter === "object"
+          ? parsed.customQuestionsByChapter
+          : {},
+      questionsPerSeriesId:
+        parsed.questionsPerSeriesId && typeof parsed.questionsPerSeriesId === "object"
+          ? parsed.questionsPerSeriesId
+          : {},
+      ...(typeof parsed.defaultQuestionsPerChapter === "number"
+        ? { defaultQuestionsPerChapter: parsed.defaultQuestionsPerChapter }
+        : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function applyCustomCatalogToSeries(
+  series: PaidTestSeries,
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries {
+  const customPlan = custom.syllabusBySeriesId?.[series.id] ?? series.customPlan;
+  const questionsPerTest =
+    custom.questionsPerSeriesId?.[series.id] ??
+    series.questionsPerTest ??
+    custom.defaultQuestionsPerChapter;
+  const next: PaidTestSeries = {
+    ...series,
+    ...(questionsPerTest ? { questionsPerTest } : {}),
+  };
+  if (!customPlan || customPlan.length === 0) return next;
+  return {
+    ...next,
+    subjects: customPlan.map((item) => item.subject),
+    customPlan,
+  };
+}
+
+export function getEffectivePaidTestSeries(
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries[] {
+  const removed = new Set(custom.removedSeriesIds ?? []);
+  const added = (custom.addedSeries ?? [])
+    .filter((series) => !removed.has(series.id))
+    .map((series) => applyCustomCatalogToSeries(series, custom));
+  if (!custom.includeBuiltIn) {
+    return added;
+  }
+  const existingIds = new Set(added.map((series) => series.id));
+  const builtIn = PAID_TEST_SERIES.filter(
+    (series) => !removed.has(series.id) && !existingIds.has(series.id),
+  ).map((series) => applyCustomCatalogToSeries(series, custom));
+  return [...added, ...builtIn];
+}
+
+export function getEffectiveLearningSeries(
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+): PaidTestSeries[] {
+  const removed = new Set(custom.removedSeriesIds ?? []);
+  const paid = getEffectivePaidTestSeries(custom);
+  if (!custom.includeBuiltIn) {
+    return paid;
+  }
+  const existingIds = new Set(paid.map((series) => series.id));
+  const practice = ADDITIONAL_PRACTICE_SERIES.filter(
+    (series) => !removed.has(series.id) && !existingIds.has(series.id),
+  ).map((series) => applyCustomCatalogToSeries(series, custom));
+  return [...paid, ...practice];
+}
+
 /**
- * The chapterwise plan for a series, read live from the exam bank. Subjects
- * with no chapters for this exam are dropped rather than shown empty.
+ * The chapterwise plan for a series, read live from the exam bank or Admin custom syllabus.
+ * Subjects with no chapters for this exam are dropped rather than shown empty.
  */
-export function seriesPlan(series: PaidTestSeries): SubjectPlan[] {
+export function seriesPlan(
+  series: PaidTestSeries,
+  customPlanOverride?: SubjectPlan[],
+): SubjectPlan[] {
+  const override =
+    customPlanOverride ?? series.customPlan ?? runtimeCustomCatalog.syllabusBySeriesId?.[series.id];
+  if (override && override.length > 0) {
+    return override.filter((plan) => plan.subject && plan.chapters.length > 0);
+  }
   return series.subjects
     .map((subject) => ({
       subject,
-      chapters: getExamBankTopicsForExam(subject, series.examTrack),
+      chapters: getCatalogTopicsForExam(subject, series.examTrack),
     }))
     .filter((plan) => plan.chapters.length > 0);
 }
@@ -1162,18 +1524,31 @@ export type TestKind = "chapter" | "subject" | "combined";
  * actually serve this series. It is far larger than the papers themselves, so
  * a student who repeats a test does not meet the same paper twice.
  */
-export function seriesTotals(series: PaidTestSeries) {
-  const plan = seriesPlan(series);
+export function seriesTotals(series: PaidTestSeries, customPlanOverride?: SubjectPlan[]) {
+  const plan = seriesPlan(series, customPlanOverride);
   const chapters = plan.reduce((sum, item) => sum + item.chapters.length, 0);
   const chapterTests = chapters;
   const subjectTests = plan.length;
   const combinedTests = plan.length > 0 ? COMBINED_TESTS_PER_SERIES : 0;
+  const questionsPerChapter =
+    series.questionsPerTest ??
+    runtimeCustomCatalog.questionsPerSeriesId?.[series.id] ??
+    runtimeCustomCatalog.defaultQuestionsPerChapter ??
+    QUESTIONS_PER_CHAPTER;
+  const hasCustomPlan = Boolean(
+    customPlanOverride?.length ||
+    series.customPlan?.length ||
+    runtimeCustomCatalog.syllabusBySeriesId?.[series.id]?.length,
+  );
 
   // How much the bank could theoretically serve this exam.
-  const available = plan.reduce(
-    (sum, item) => sum + countMatching({ subject: item.subject, exam: series.examTrack }),
+  const bankAvailable = plan.reduce(
+    (sum, item) => sum + getCatalogQuestionCount(item.subject, series.examTrack),
     0,
   );
+  const available = hasCustomPlan
+    ? Math.max(bankAvailable, chapters * questionsPerChapter * 20, MIN_SERIES_POOL)
+    : bankAvailable;
 
   // What the series actually ships. Sized by exam demand, never smaller than
   // MIN_SERIES_POOL and never larger than MAX_SERIES_POOL, and never claiming
@@ -1190,8 +1565,9 @@ export function seriesTotals(series: PaidTestSeries) {
     subjectTests,
     combinedTests,
     tests: chapterTests + subjectTests + combinedTests,
+    questionsPerChapter,
     questions:
-      chapterTests * QUESTIONS_PER_CHAPTER +
+      chapterTests * questionsPerChapter +
       subjectTests * QUESTIONS_PER_SUBJECT_TEST +
       combinedTests * QUESTIONS_PER_COMBINED_TEST,
     /** Distinct questions this series ships, sized by exam demand. */
@@ -1205,13 +1581,18 @@ export function seriesTotals(series: PaidTestSeries) {
 /** The three layers of a series, described for the cards. */
 export function seriesLayers(series: PaidTestSeries) {
   const totals = seriesTotals(series);
+  const qCount = totals.questionsPerChapter;
+  const perLevel = Math.max(1, Math.round(qCount / 3));
   return [
     {
       kind: "chapter" as TestKind,
       label: "Chapterwise",
       tests: totals.chapterTests,
-      questionsPerTest: QUESTIONS_PER_CHAPTER,
-      detail: "One test per chapter, 20 Easy then 20 Moderate then 20 Difficult.",
+      questionsPerTest: qCount,
+      detail:
+        qCount === 60
+          ? "One test per chapter, 20 Easy then 20 Moderate then 20 Difficult."
+          : `One test per chapter (${qCount} MCQs — priority custom questions + ${perLevel} Easy / ${perLevel} Moderate / ${qCount - perLevel * 2} Difficult).`,
     },
     {
       kind: "subject" as TestKind,
@@ -1248,8 +1629,8 @@ export function seriesAdvancedTests(series: PaidTestSeries) {
 }
 
 /** Catalogue-wide totals for the page header. */
-export function catalogTotals() {
-  return PAID_TEST_SERIES.reduce(
+export function catalogTotals(custom: CustomSeriesCatalog = runtimeCustomCatalog) {
+  return getEffectivePaidTestSeries(custom).reduce(
     (acc, series) => {
       const totals = seriesTotals(series);
       return {
@@ -1276,8 +1657,28 @@ export const SERIES_GROUPS: SeriesGroup[] = [
   "High-Yield",
 ];
 
-export function seriesByGroup(group: SeriesGroup) {
-  return PAID_TEST_SERIES.filter((series) => series.group === group);
+export function seriesByGroup(
+  group: SeriesGroup,
+  custom: CustomSeriesCatalog = runtimeCustomCatalog,
+) {
+  return getEffectivePaidTestSeries(custom).filter((series) => series.group === group);
+}
+
+/** Series that default to free (₹0 / 0 coins) unless Admin sets a paid price in Admin Panel. */
+export const FREE_SERIES_IDS = new Set([
+  "punjab-ett-paper-a",
+  "punjab-ett-paper-b",
+  "punjab-ett-cadre",
+]);
+
+export function resolveSeriesPrice(
+  series: { id: string; examTrack?: string; priceInr: number; priceCoins: number },
+  override?: { price_inr?: number | null; price_coins?: number | null } | null,
+): { priceInr: number; priceCoins: number } {
+  return {
+    priceInr: Math.max(0, override?.price_inr ?? series.priceInr ?? 0),
+    priceCoins: Math.max(0, override?.price_coins ?? series.priceCoins ?? 0),
+  };
 }
 
 /** The three levels inside every chapter test, in attempt order. */

@@ -1,0 +1,14 @@
+Running 10 tests using 1 worker
+
+  ✓   1 tests/e2e/test-builders.spec.ts:71:1 › Easy free series name, edited explanations, publish, student attempt/result and Advanced edit persist (14.1s)
+  ✓   2 tests/e2e/test-builders.spec.ts:105:1 › Easy paid publishes correct prices, blocks unpaid student, offline grant unlocks only assigned student (17.8s)
+  ✓   3 tests/e2e/test-builders.spec.ts:165:1 › Advanced blank draft cannot publish; own bulk preview/publish retains series and questions (14.9s)
+  ✓   4 tests/e2e/test-builders.spec.ts:227:1 › Easy mobile: incomplete MCQs and zero-price paid publication are blocked; draft survives tab switch (6.0s)
+  ✓   5 tests/e2e/test-builders.spec.ts:255:1 › Advanced bank recipe keeps exam/subject/chapter and admin count through student result (14.2s)
+  ✓   6 tests/e2e/test-builders.spec.ts:324:1 › 1001 own MCQs preview in pages, publish intact, reload in Advanced and preserve paid settings (1.5m)
+  ✓   7 tests/e2e/test-builders.spec.ts:390:1 › Admin storage report checks and refreshes database and bucket usage without cleanup (2.9s)
+  ✓   8 tests/e2e/test-folders.spec.ts:9:1 › Subject/chapter/topic drafts persist; complete subject combines own questions and publishes a student-ready snapshot (48.0s)
+  ✓   9 tests/e2e/test-folders.spec.ts:208:1 › outline edit/remove/back controls persist changes and protect cancelled deletes (18.4s)
+  ✓  10 tests/e2e/test-paper-style.spec.ts:3:1 › single-accent test paper has neutral options, clear selection/flags, keyboard focus and mobile result (3.9s)
+
+  10 passed (4.3m)

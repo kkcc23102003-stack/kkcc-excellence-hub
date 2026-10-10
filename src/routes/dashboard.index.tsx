@@ -15,10 +15,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { getMyStudentSection } from "@/lib/enrollments.functions";
 import { listMySeriesAccess } from "@/lib/test-access.functions";
-import { PAID_TEST_SERIES } from "@/lib/test-series-catalog";
+import { getEffectivePaidTestSeries, PAID_TEST_SERIES } from "@/lib/test-series-catalog";
 import { getMy23KaatWallet } from "@/lib/coins.functions";
 import { useUiText } from "@/components/kkcc/ui-text-provider";
 import { KaatCoin, KaatCoinStack } from "@/components/kkcc/kaat-coin";
+import { StudentStudyPlanner } from "@/components/kkcc/student-study-planner";
 
 export const Route = createFileRoute("/dashboard/")({
   head: () => ({
@@ -159,6 +160,8 @@ function DashboardHome() {
         ))}
       </div>
 
+      <StudentStudyPlanner initialTargetExam={data.profile?.target_exam} />
+
       <section className="surface-panel relative overflow-hidden border-primary/25 p-6 shadow-[0_0_38px_color-mix(in_oklab,var(--primary)_12%,transparent)]">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#1bdfff,#63e675,#ffd071,#a977ff)]" />
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-primary/18 blur-3xl" />
@@ -211,7 +214,7 @@ function DashboardHome() {
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {data.seriesAccess.map((access) => {
-              const series = PAID_TEST_SERIES.find(
+              const series = [...getEffectivePaidTestSeries(), ...PAID_TEST_SERIES].find(
                 (item) =>
                   item.id.trim().toLowerCase() === access.series_id.trim().toLowerCase() ||
                   item.name.trim().toLowerCase() === access.series_id.trim().toLowerCase(),

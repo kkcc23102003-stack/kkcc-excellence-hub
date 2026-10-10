@@ -6,10 +6,10 @@ import { resolve } from "node:path";
  */
 import { createServer } from "node:http";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createFixtureDatabase, seedFixtureUsers, fixtureIds as ids } from "./database";
-import { getExamBankExams } from "../../src/lib/exam-bank/index";
+import { getExamBankExams, ACTIVE_TEMPLATES } from "../../src/lib/exam-bank/index";
 
 const database = await createFixtureDatabase();
 await seedFixtureUsers(database);
@@ -72,7 +72,98 @@ const sessionFor = (user: NonNullable<ReturnType<typeof users.get>>) => ({
   },
 });
 
-const runtime = "data/fixture-content.runtime.json";
+/** Demo note used by the local preview to prove the auto diagrams work. */
+/**
+ * A tiny inline "handwritten page" used by the demo note. Real uploads go to
+ * storage; this one is inline so the local preview works with no network.
+ */
+const DEMO_HANDWRITTEN_IMAGE = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+<rect width="640" height="360" fill="#fffdf5"/>
+<line x1="40" y1="70" x2="600" y2="70" stroke="#fcd34d" stroke-width="3"/>
+<text x="48" y="52" font-family="Georgia,serif" font-size="26" font-weight="bold" fill="#1e293b">GST — mera handwritten page</text>
+<text x="48" y="118" font-family="Georgia,serif" font-size="22" fill="#1d4ed8">GST = Rate x Base / 100</text>
+<text x="48" y="164" font-family="Georgia,serif" font-size="22" fill="#1d4ed8">Base 1000, Rate 18% -&gt; GST 180</text>
+<text x="48" y="210" font-family="Georgia,serif" font-size="22" fill="#b91c1c">CGST 9% + SGST 9% (intra-state)</text>
+<text x="48" y="256" font-family="Georgia,serif" font-size="22" fill="#047857">IGST 18% (inter-state)</text>
+<text x="48" y="318" font-family="Georgia,serif" font-size="20" font-style="italic" fill="#475569">Admin ne Samsung Notes jaise canvas me likha</text>
+</svg>`,
+)}`;
+
+const DEMO_NOTES_WITH_DIAGRAMS = `Types of GST
+
+- CGST — collected by the Centre on intra-state supply
+- SGST — collected by the State on intra-state supply
+- IGST — collected by the Centre on inter-state supply
+- UTGST — collected by Union Territories
+
+Registration process
+
+- Applicant files the REG-01 form online
+- Aadhaar authentication is completed
+- Officer verifies the documents
+- GSTIN is issued within 7 working days
+
+Rate structure
+
+1. GST slabs
+- 5 percent essential goods
+- 12 percent standard goods
+- 18 percent most services
+- 28 percent luxury goods
+
+Advantages
+- One nation, one tax
+- Removes cascading of taxes
+
+Disadvantages
+- Compliance cost for small firms
+- Multiple return filings
+
+Important milestones
+
+2017 GST came into force on 1 July
+2019 E-invoicing started for large firms
+2023 GSTR-3B automation expanded
+
+:::cycle GST money flow
+Consumer -> Business -> Government -> Public services -> Consumer
+:::
+
+Tax formulas (math typesetting)
+
+Amount = Rate \times Base
+\text{GST} = \frac{\text{Rate} \times \text{Base}}{100}
+Net price = Base + GST
+`;
+
+/**
+ * Punjabi note: the admin switched diagrams off for language subjects, so the
+ * reader shows clean text only — no tree, no chart.
+ */
+const DEMO_NOTES_TEXT_ONLY = `ਪੰਜਾਬੀ ਵਿਆਕਰਨ — ਨਾਂਵ
+
+ਨਾਂਵ (Noun)
+
+- ਕਿਸੇ ਵਿਅਕਤੀ, ਥਾਂ ਜਾਂ ਵਸਤੂ ਦੇ ਨਾਂ ਨੂੰ ਨਾਂਵ ਕਹਿੰਦੇ ਹਨ
+- ਨਾਂਵ ਦੇ ਪੰਜ ਭੇਦ ਹੁੰਦੇ ਹਨ
+- ਵਿਆਕਰਨ ਦੀ ਸਮਝ ਪੜ੍ਹਨ ਅਤੇ ਲਿਖਣ ਦੋਵਾਂ ਵਿੱਚ ਮਦਦ ਕਰਦੀ ਹੈ
+
+Examples
+
+- ਰਾਮ, ਦਿੱਲੀ, ਕਿਤਾਬ, ਪੰਜਾਬ
+- ਵਾਕ ਵਿੱਚ ਨਾਂਵ ਪਛਾਣਨਾ ਸਿੱਖੋ
+- ਰੋਜ਼ ਅਭਿਆਸ ਕਰੋ
+
+:::visuals {"mode":"none"}
+:::
+`;
+
+// Keep interactive preview edits separate from disposable automated browser data.
+const runtime =
+  process.env["KKCC_LIVE_PREVIEW"] === "1"
+    ? "data/preview-content.runtime.json"
+    : "data/fixture-content.runtime.json";
 const doc = JSON.parse(readFileSync("data/project-content.json", "utf8")) as {
   version: number;
   tables: Record<string, Record<string, unknown>[]>;
@@ -147,6 +238,92 @@ doc.tables["lectures"] = [
 ];
 doc.tables["materials"] = [
   {
+    // A language note where the admin switched auto diagrams OFF — pure text.
+    id: "12000000-0000-4000-8000-000000000004",
+    course_id: null,
+    lecture_id: null,
+    title: "ਪੰਜਾਬੀ ਵਿਆਕਰਨ — ਨਾਂਵ (text only, no diagrams)",
+    description: DEMO_NOTES_TEXT_ONLY,
+    subject: "Punjabi",
+    class_level: "Class 10",
+    chapter: "ਵਿਆਕਰਨ",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 3,
+    module_title: "Language",
+    batch: "",
+    material_type: "Notes",
+    access_type: "free",
+    price: 0,
+    coin_price: 0,
+    is_published: true,
+    sort_order: 1,
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    // A note with no PDF at all: the reader shows the text plus the diagrams and
+    // charts that are generated from it, and printing carries the KKCC watermark.
+    id: "12000000-0000-4000-8000-000000000002",
+    course_id: null,
+    lecture_id: null,
+    title: "GST — Notes with auto diagrams (demo)",
+    description: DEMO_NOTES_WITH_DIAGRAMS,
+    subject: "Commerce",
+    class_level: "Class 12",
+    chapter: "GST",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 6,
+    module_title: "Indirect Tax",
+    batch: "",
+    material_type: "Notes",
+    access_type: "free",
+    price: 0,
+    coin_price: 0,
+    is_published: true,
+    sort_order: 0,
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: "12000000-0000-4000-8000-000000000003",
+    title: "Paid Notes — buy from checkout (demo)",
+    description: [
+      "Advanced GST revision notes. Paid hai, to student checkout se kharid sakta hai.",
+      "",
+      "Rate structure",
+      "- 5 percent essential goods",
+      "- 18 percent most services",
+      "- 28 percent luxury goods",
+      "",
+      "Tax formulas",
+      "GST = \\frac{Rate \\times Base}{100}",
+      "",
+      "Admin par demo: ek diagram photo se replace, ek handwritten page add.",
+      `:::visuals {"replace":{"1":{"url":"${DEMO_HANDWRITTEN_IMAGE}","caption":"Handwritten GST page"}},"images":[{"url":"${DEMO_HANDWRITTEN_IMAGE}","caption":"Handwritten GST page"}]}`,
+      ":::",
+    ].join("\n"),
+    course_id: null,
+    lecture_id: null,
+    subject: "Commerce",
+    class_level: "Class 12",
+    chapter: "GST revision",
+    file_url: null,
+    thumbnail_url: null,
+    pages: 3,
+    module_title: "Indirect Tax",
+    batch: "",
+    material_type: "Notes",
+    access_type: "paid",
+    price: 99,
+    coin_price: 99,
+    is_published: true,
+    sort_order: 0,
+    created_at: now,
+    updated_at: now,
+  },
+  {
     id: "12000000-0000-4000-8000-000000000001",
     course_id: ids.course,
     lecture_id: null,
@@ -200,41 +377,105 @@ const testBase = {
   created_at: now,
   updated_at: now,
 };
-doc.tables["tests"] = [
-  { ...testBase, id: ids.test },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000002",
-    title: "Fixture Course-Linked Test",
-    course_id: ids.course,
-    series_name: "",
-    sort_order: 2,
-  },
-  {
-    ...testBase,
-    id: "20000000-0000-4000-8000-000000000003",
-    title: "Fixture Free Test",
-    is_paid: false,
-    series_name: "",
-    sort_order: 3,
-  },
-  ...getExamBankExams().map((exam, index) => ({
-    ...testBase,
-    id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-    title: `Fixture ${exam}`,
-    exam_track: exam,
-    generation_exam: exam,
-    generation_subject: "",
-    subject: exam,
-    series_name: "",
-    is_paid: false,
-    sort_order: index + 10,
-  })),
-];
+const isLivePreview = process.env["KKCC_LIVE_PREVIEW"] === "1";
+doc.tables["tests"] = isLivePreview
+  ? []
+  : [
+      { ...testBase, id: ids.test },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000002",
+        title: "Fixture Course-Linked Test",
+        course_id: ids.course,
+        series_name: "",
+        sort_order: 2,
+      },
+      {
+        ...testBase,
+        id: "20000000-0000-4000-8000-000000000003",
+        title: "Fixture Free Test",
+        is_paid: false,
+        series_name: "",
+        sort_order: 3,
+      },
+      ...getExamBankExams().map((exam, index) => ({
+        ...testBase,
+        id: `21000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        title: `Fixture ${exam}`,
+        exam_track: exam,
+        generation_exam: exam,
+        generation_subject: "",
+        // Exams are not subjects: use an actual scoped bank subject for this fixture.
+        subject: ACTIVE_TEMPLATES.find((template) => template.exams.includes(exam))!.subject,
+        series_name: "",
+        is_paid: false,
+        sort_order: index + 10,
+      })),
+    ];
 doc.tables["test_questions"] = [];
+doc.tables["test_series_overrides"] = [];
+if (!isLivePreview) {
+  doc.tables["site_settings"] = [
+    ...(doc.tables["site_settings"] || []).filter(
+      (row) => row["key"] !== "test_series_custom_catalog",
+    ),
+    {
+      id: "99000000-0000-4000-8000-000000000099",
+      key: "test_series_custom_catalog",
+      value: JSON.stringify({
+        includeBuiltIn: true,
+        removedSeriesIds: [],
+        addedSeries: [],
+        syllabusBySeriesId: {},
+      }),
+      category: "exam-bank",
+      label: "Custom Test Series & Text Syllabus Catalog",
+      updated_at: now,
+    },
+  ];
+} else {
+  doc.tables["site_settings"] = (doc.tables["site_settings"] || []).filter(
+    (row) => row["key"] !== "test_series_custom_catalog",
+  );
+}
 doc.tables["private_settings"] = [];
 mkdirSync("data", { recursive: true });
+if (process.env["KKCC_LIVE_PREVIEW"] === "1" && existsSync(runtime)) {
+  const previous = JSON.parse(readFileSync(runtime, "utf8"));
+  const adopted = previous.tables?.site_settings?.find(
+    (row: { key: string }) => row.key === "builtin_materials_adopted",
+  );
+  if (adopted)
+    doc.tables["site_settings"] = [
+      ...(doc.tables["site_settings"] || []).filter(
+        (row) => row["key"] !== "builtin_materials_adopted",
+      ),
+      adopted,
+    ];
+  if (Array.isArray(previous.tables?.materials))
+    doc.tables["materials"] = previous.tables.materials;
+}
 writeFileSync(runtime, JSON.stringify(doc), { mode: 0o600 });
+// Exercise the same managed test tables/RPC as production; other fixture CMS stays local.
+for (const table of ["tests", "test_questions"] as const) {
+  for (const row of doc.tables[table] ?? []) {
+    const columns = Object.keys(row);
+    const quoted = columns.map((key) => `"${key.replace(/"/g, '""')}"`).join(",");
+    await database.query(
+      `INSERT INTO public.kkcc_${table} (${quoted}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(",")}) ON CONFLICT(id) DO NOTHING`,
+      columns.map((key) => row[key]),
+    );
+  }
+}
+
+// Disposable migration fixture only; the interactive preview still starts with no prebuilt tests.
+if (!isLivePreview) {
+  await database.exec(`INSERT INTO public.kkcc_tests(id,title,subject,syllabus_subject,syllabus_chapter,question_source,is_published,is_paid,duration_minutes)
+ VALUES('82000000-0000-4000-8000-000000000001','Fixture Legacy Storage Test','Mathematics','Mathematics','Storage migration','manual',true,false,30);
+ INSERT INTO public.kkcc_test_questions(id,test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order)
+ VALUES('83000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001','Storage migration: what is 2 + 3?','Mathematics',ARRAY['4','5'],1,1,0,'Original migration explanation: two plus three is five.',0);`);
+}
+
 await database.query(
   "INSERT INTO public.coin_transactions(user_id,amount,source,reason) VALUES($1,1000,'admin_grant','fixture'),($2,1000,'admin_grant','fixture')",
   [ids.studentA, ids.studentB],
@@ -267,6 +508,9 @@ const types = new Map(
 );
 const scalar = (table: string, column: string, value: unknown) =>
   types.get(`${table}.${column}`) === "jsonb" ? JSON.stringify(value) : value;
+await database.exec(
+  "GRANT EXECUTE ON FUNCTION public.get_my_block_status() TO anon, authenticated;",
+);
 const server = createServer(async (req, res) => {
   const respond = (value: unknown, status = 200) => {
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -275,6 +519,103 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://fixture.invalid");
     if (url.pathname === "/health") return respond({ fixture: true });
+    if (url.pathname === "/zip") {
+      const zipPath = "full fledge kkcc excellence hub.zip";
+      if (!existsSync(zipPath)) return respond({ error: "ZIP file not found" }, 404);
+      const buf = readFileSync(zipPath);
+      res.writeHead(200, {
+        "content-type": "application/zip",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="full fledge kkcc excellence hub.zip"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/production.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-PRODUCTION-SQL.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-PRODUCTION-SQL.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/notes-supabase.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-NOTES-SUPABASE.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-NOTES-SUPABASE.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/space-saver.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-SPACE-SAVER.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SPACE-SAVER.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/download/cleaner.sql") {
+      const sqlPath = "KKCC-Excellence-Hub-SQL-CLEANER.sql";
+      const buf = readFileSync(sqlPath);
+      res.writeHead(200, {
+        "content-type": "application/sql; charset=utf-8",
+        "content-length": String(buf.length),
+        "content-disposition": 'attachment; filename="KKCC-Excellence-Hub-SQL-CLEANER.sql"',
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return;
+    }
+    if (url.pathname === "/sql") {
+      const cleanerSql = existsSync("KKCC-Excellence-Hub-SQL-CLEANER.sql")
+        ? readFileSync("KKCC-Excellence-Hub-SQL-CLEANER.sql", "utf8")
+        : "";
+      const productionSql = existsSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql")
+        ? readFileSync("KKCC-Excellence-Hub-PRODUCTION-SQL.sql", "utf8")
+        : "";
+      return respond({ ok: true, cleanerSql, productionSql });
+    }
+    if (url.pathname === "/clean") {
+      await database.exec("RESET ROLE");
+      const abandoned = await database.query(
+        "DELETE FROM public.learning_attempts WHERE status = 'started' RETURNING id",
+      );
+      const expiredGrants = await database.query(
+        "DELETE FROM public.test_access_grants WHERE revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < now()) RETURNING id",
+      );
+      await database.query(
+        "DELETE FROM public.series_access_grants WHERE revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < now())",
+      );
+      const counts = await database.query<{
+        profiles: number;
+        enrollments: number;
+        attempts: number;
+      }>(
+        "SELECT (SELECT count(*)::int FROM public.profiles) AS profiles, (SELECT count(*)::int FROM public.course_enrollments) AS enrollments, (SELECT count(*)::int FROM public.learning_attempts) AS attempts",
+      );
+      return respond({
+        ok: true,
+        cleanedAbandonedAttempts: abandoned.rows.length,
+        cleanedExpiredGrants: expiredGrants.rows.length,
+        ettSeriesFree: true,
+        stats: counts.rows[0] ?? { profiles: 0, enrollments: 0, attempts: 0 },
+        cleanedAt: new Date().toISOString(),
+      });
+    }
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const text = Buffer.concat(chunks).toString();
@@ -376,7 +717,23 @@ const server = createServer(async (req, res) => {
         return `$${params.length}`;
       };
       for (const [key, raw] of url.searchParams) {
-        if (["select", "limit", "offset", "order", "on_conflict"].includes(key)) continue;
+        if (["select", "limit", "offset", "order", "on_conflict", "columns"].includes(key))
+          continue;
+        if (key === "or") {
+          const terms = raw
+            .replace(/^\(|\)$/g, "")
+            .split(",")
+            .map((term) => {
+              const match = /^([a-z_]+)\.(is|lte|gt)\.(.*)$/.exec(term);
+              if (!match) throw new Error("Unsupported fixture OR condition");
+              const column = identifier(match[1]!);
+              if (match[2] === "is" && match[3] === "null") return `${column} IS NULL`;
+              if (match[2] === "is") throw new Error("Unsupported fixture IS condition");
+              return `${column} ${match[2] === "lte" ? "<=" : ">"} ${bind(match[3])}`;
+            });
+          condition.push(`(${terms.join(" OR ")})`);
+          continue;
+        }
         const dot = raw.indexOf(".");
         const op = raw.slice(0, dot);
         const value = raw.slice(dot + 1);
@@ -468,6 +825,13 @@ const server = createServer(async (req, res) => {
       return { rows: queried.rows, total: count.rows[0]?.total ?? 0 };
     });
     if ("rpc" in result) return respond(result.value);
+    // Match PostgREST JSON numerics; PGlite exposes PostgreSQL numeric as strings.
+    for (const row of result.rows as Record<string, unknown>[]) {
+      for (const key of Object.keys(row)) {
+        if (types.get(`${path}.${key}`) === "numeric" && typeof row[key] === "string")
+          row[key] = Number(row[key]);
+      }
+    }
     res.setHeader("content-range", `0-${Math.max(0, result.rows.length - 1)}/${result.total}`);
     if (req.method === "HEAD") {
       res.writeHead(200);
@@ -504,53 +868,69 @@ const server = createServer(async (req, res) => {
     );
   }
 });
-server.listen(4601, "0.0.0.0", () =>
-  console.log("LOCAL fixture backend ready on 4601; no production connection."),
-);
+const appPort = Number(process.env["PORT"]) || 3000;
 const env = {
   ...process.env,
+  VITE_KKCC_SANDBOX_PREVIEW: "1",
   VITE_SUPABASE_URL: "/__fixture__/supabase",
-  SUPABASE_URL: "http://127.0.0.1:4601",
+  SUPABASE_URL: `http://127.0.0.1:${appPort}/__fixture__/supabase`,
   VITE_SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_PUBLISHABLE_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
   KKCC_CONTENT_BACKEND: "file",
+  KKCC_FIXTURE_LOCAL_CMS: "1",
+  KKCC_TESTS_BACKEND: "supabase",
   KKCC_CONTENT_FILE: runtime,
   KKCC_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
 };
 Object.assign(process.env, env);
-const build = spawn(
-  process.execPath,
-  ["node_modules/vite/bin/vite.js", "build", "--mode", "fixture"],
-  { env, stdio: "inherit" },
-);
 let appServer: ReturnType<typeof createProductionServer> | undefined;
+let build: ReturnType<typeof spawn> | undefined;
 const stop = () => {
-  build.kill("SIGTERM");
+  build?.kill("SIGTERM");
   appServer?.close();
   server.close();
   void database.close().finally(() => process.exit(0));
 };
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
-build.on("exit", async (code) => {
-  if (code) {
-    server.close();
-    await database.close();
-    process.exit(code);
-  }
+
+async function startAppServer() {
   try {
     const module = await import(pathToFileURL(resolve("dist/server/server.js")).href);
-    appServer = createProductionServer(module.default || module, {
-      proxy: { prefix: "/__fixture__/supabase", target: "http://127.0.0.1:4601" },
+    const baseAppServer = createProductionServer(module.default || module);
+    appServer = createServer((req, res) => {
+      if (req.url && req.url.startsWith("/__fixture__/supabase")) {
+        req.url = req.url.slice("/__fixture__/supabase".length) || "/";
+        server.emit("request", req, res);
+        return;
+      }
+      baseAppServer.emit("request", req, res);
     });
-    appServer.listen(4600, "0.0.0.0", () =>
+    appServer.listen(appPort, "0.0.0.0", () =>
       console.log(
-        "LOCAL PRODUCTION-BUILD fixture ready on 4600; GoTrue/PostgREST emulated, actual SQL/RLS/app handlers.",
+        `LOCAL PRODUCTION-BUILD fixture ready on 0.0.0.0:${appPort}; GoTrue/PostgREST emulated, actual SQL/RLS/app handlers.`,
       ),
     );
   } catch (error) {
     console.error(error);
     stop();
   }
-});
+}
+
+if (process.env["SKIP_BUILD"] === "1" && existsSync(resolve("dist/server/server.js"))) {
+  await startAppServer();
+} else {
+  build = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "build", "--mode", "fixture"], {
+    env,
+    stdio: "inherit",
+  });
+  build.on("exit", async (code) => {
+    if (code) {
+      server.close();
+      await database.close();
+      process.exit(code);
+    }
+    await startAppServer();
+  });
+}

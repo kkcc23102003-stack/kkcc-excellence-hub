@@ -1,3 +1,9 @@
+import { ContentResetPanel } from "@/components/kkcc/content-reset-panel";
+import { TestBodyStoragePanel } from "@/components/kkcc/test-body-storage-panel";
+import { NoteBodyStoragePanel } from "@/components/kkcc/note-body-storage-panel";
+import { TestRetentionPanel } from "@/components/kkcc/test-retention-panel";
+import { StorageUsagePanel } from "@/components/kkcc/storage-usage-panel";
+import { SpaceSaverPanel } from "@/components/kkcc/space-saver-panel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -18,8 +24,8 @@ import { friendlyError } from "@/lib/storage";
 const PROVIDERS = [
   {
     value: "supabase",
-    label: "Legacy Supabase (read-only)",
-    hint: "Do not use for educational uploads. Select an external provider.",
+    label: "Supabase Storage",
+    hint: "Current storage. Upload PDFs, notes, thumbnails and other educational files here.",
   },
   {
     value: "cloudflare_r2",
@@ -59,7 +65,9 @@ export const Route = createFileRoute("/_authenticated/admin/storage")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <Button asChild className="mt-6 rounded-full">
           <Link to="/dashboard">Back to dashboard</Link>
         </Button>
@@ -130,6 +138,24 @@ function AdminStoragePage() {
     onError: (error: Error) => toast.error(friendlyError(error)),
   });
 
+  const useSupabase = useMutation({
+    mutationFn: () =>
+      save({
+        data: {
+          provider: "supabase",
+          bucket: "course-content",
+          region: "",
+          endpoint: "",
+          public_base_url: "",
+          migration_status: "idle",
+        },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "storage"] });
+      toast.success("Supabase Storage selected. Existing files have not been moved.");
+    },
+    onError: (error: Error) => toast.error(friendlyError(error)),
+  });
   const secrets = settingsQuery.data?.secrets;
   const external = provider !== "supabase" && provider !== "external_url";
 
@@ -138,7 +164,7 @@ function AdminStoragePage() {
       <PageHeader
         eyebrow="Admin panel"
         title="Storage provider"
-        description="Educational uploads go to external R2, AWS S3, Backblaze B2 or S3-compatible storage. Supabase stores only student/auth/access-related data."
+        description="Educational files use the selected provider. Supabase Storage is the current/default provider; S3/R2 can be enabled later without changing courses, tests or notes."
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
@@ -154,6 +180,33 @@ function AdminStoragePage() {
           </Button>
         </div>
 
+        <div className="mb-5 rounded-xl border p-4">
+          <h2 className="font-bold">Use Supabase for notes and study-material uploads</h2>
+          <p className="my-2 text-sm">
+            No S3 account needed. Protected buckets belong to Supabase too; keep paid content
+            private. Switching provider does not migrate old files—re-upload old attachments before
+            changing an already-used provider.
+          </p>
+          <Button
+            disabled={useSupabase.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Use Supabase course-content for new uploads? Existing files are not migrated. Old files on another provider may need re-uploading.",
+                )
+              )
+                useSupabase.mutate();
+            }}
+          >
+            Use Supabase Storage
+          </Button>
+        </div>
+        <TestRetentionPanel />
+        <ContentResetPanel />
+        <TestBodyStoragePanel />
+        <NoteBodyStoragePanel />
+        <StorageUsagePanel />
+        <SpaceSaverPanel />
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="surface-panel p-5">
             <Cloud className="h-9 w-9 text-primary" />

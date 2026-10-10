@@ -363,11 +363,30 @@ export const getAdminSystemHealth = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context);
     try {
-      const { data, error } = await context.supabase.rpc("get_kkcc_admin_system_health");
+      const { data, error } = await context.supabase.rpc("kkcc_storage_usage");
       if (error) throw new Error(error.message);
       return {
         available: true,
-        rows: (data ?? []) as AdminSystemHealthRow[],
+        rows: (() => {
+          const report = data as {
+            database_bytes: number;
+            checked_at: string;
+            buckets: Array<{ bucket: string; files: number; bytes: number; unknown_sizes: number }>;
+          };
+          return [
+            {
+              area: "database",
+              label: "Database used",
+              value: `${(report.database_bytes / 1048576).toFixed(2)} MB`,
+            },
+            ...report.buckets.map((b) => ({
+              area: "storage",
+              label: b.bucket,
+              value: `${b.files} files · ${(b.bytes / 1048576).toFixed(2)} MB (${b.unknown_sizes} unknown sizes)`,
+            })),
+            { area: "checked", label: "Measured at", value: report.checked_at },
+          ];
+        })() as AdminSystemHealthRow[],
       };
     } catch (error) {
       return {

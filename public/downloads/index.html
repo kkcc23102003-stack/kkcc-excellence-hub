@@ -1,29 +1,85 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KKCC Excellence Hub — Downloads</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #07110f; color: #fff8e7; }
-    main { width: min(720px, calc(100% - 32px)); padding: 32px; border: 1px solid rgba(24,244,214,.25); border-radius: 24px; background: #0d1411; }
-    p { color: #c9d7ce; line-height: 1.7; }
-    strong { color: #18f4d6; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>KKCC Excellence Hub Downloads</h1>
-    <p><strong>Legacy Supabase SQL downloads are retired.</strong></p>
-    <p>
-      The legacy SQL export area has been permanently retired. Educational questions and
-      learning content are bundled with the application and are not stored in Supabase.
-    </p>
-    <p>
-      Student authentication, profiles, enrolments, access grants and learning-attempt
-      records continue to use Supabase where required by the application.
-    </p>
-  </main>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KKCC Excellence Hub — Downloads</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #07110f;
+        color: #fff8e7;
+      }
+      main {
+        width: min(720px, calc(100% - 32px));
+        padding: 32px;
+        border: 1px solid rgba(24, 244, 214, 0.25);
+        border-radius: 24px;
+        background: #0d1411;
+      }
+      p {
+        color: #c9d7ce;
+        line-height: 1.7;
+      }
+      a {
+        color: #18f4d6;
+      }
+      strong {
+        color: #18f4d6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>KKCC Excellence Hub Downloads</h1>
+      <h2>Tests and notes in Supabase Storage</h2>
+      <p><a href="/KKCC-Excellence-Hub-TEST-BODIES.sql" download>Download Test Bodies SQL</a> · <a href="/downloads/TEST-BODIES-HINDI.md">Hindi setup / verified migration guide</a>. Questions/options/explanations in Supabase Storage; small metadata and student records remain in Database. Install SQL and redeploy, then Admin → Storage for confirmed migration.</p>
+
+      <p><strong>New: Free + paid notes/test thumbnails</strong></p>
+      <h2>New: Notes text → private Supabase Storage</h2>
+      <p><a href="/KKCC-Excellence-Hub-NOTE-BODIES.sql" download>Download Note Bodies SQL</a> · <a href="/downloads/NOTE-BODIES-HINDI.md">Hindi setup and safe migration guide</a>. Install SQL and redeploy; Admin → Materials / Storage offers verified 5-note migration batches. Metadata stays in Database. PDF links unchanged.</p>
+      <p>Image replace/remove ya editable text cover. <a href="/KKCC-Excellence-Hub-THUMBNAILS.sql" download>Download Thumbnail SQL</a> · <a href="/downloads/THUMBNAILS-HINDI.md">Hindi setup</a>. SQL run karke updated app deploy karein.</p>
+      <p><strong>New: Test result saving ON / OFF</strong></p>
+      <p>Supabase SQL Editor mein <a href="/KKCC-Excellence-Hub-TEST-PRIVACY.sql" download>Test Privacy SQL</a> run karein, phir updated app deploy karein. Default ON rahega; kuch automatically delete nahi hota. Admin → Storage → Test result storage se OFF karein. Old results ke liye counts check karein, DELETE TEST HISTORY type karein aur separate delete confirm karein. Accounts, payments, access aur questions safe rahenge. 5000 records per batch; zarurat ho to repeat karein.</p>
+      <p>OFF: answers/result sirf current browser memory mein; database/history nahi. Refresh/close se loss. ON: existing autosave/history. <a href="/downloads/TEST-PRIVACY-HINDI.md">Setup instructions</a></p>
+      <p><strong>Notes save/edit fix — Supabase setup</strong></p>
+      <p>
+        Existing app: back up first, run the Notes Supabase SQL once, configure the server-only
+        SUPABASE_SERVICE_ROLE_KEY on your hosting and redeploy the updated app. Never share the
+        service-role key or use a VITE_ prefix. No S3 account is needed for managed notes/settings.
+      </p>
+      <p>
+        <a href="/KKCC-Excellence-Hub-NOTES-SUPABASE.sql" download
+          >Download Notes Supabase Fix SQL</a
+        >
+      </p>
+      <p>
+        <a href="/KKCC-Excellence-Hub-SPACE-SAVER.sql" download
+          >Download Space Saver SQL (optional separate feature)</a
+        >
+      </p>
+      <p>
+        <a href="/KKCC-Excellence-Hub-PRODUCTION-SQL.sql" download>Full Production SQL</a> ·
+        <a href="/KKCC-Excellence-Hub-SQL-CLEANER.sql" download>Safe Cleaner installer</a>
+      </p>
+      <p>
+        <a
+          href="https://github.com/kkcc23102003-stack/kkcc-excellence-hub/raw/arena/01a10030-kkcc-excellence-hub/full%20fledge%20kkcc%20excellence%20hub.zip"
+          >Download updated project ZIP</a
+        >
+      </p>
+      <p>
+        For the notes fix, do not run every SQL file: use the Notes Supabase patch. Managed note
+        text uses database space; uploaded files use the configured storage provider. Template banks
+        stay in project files.
+      </p>
+    </main>
+  </body>
 </html>

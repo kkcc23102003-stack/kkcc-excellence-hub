@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { projectContent, readProjectDocument } from "../../src/lib/project-content.server";
@@ -7,6 +8,7 @@ import { projectContent, readProjectDocument } from "../../src/lib/project-conte
 test("Project content: persistent atomic writes, concurrency, IDs/counts, safe encryption and readonly failure", async () => {
   const folder = await mkdtemp(resolve("data", "adapter-test-"));
   process.env["KKCC_CONTENT_BACKEND"] = "file";
+  process.env["KKCC_FIXTURE_LOCAL_CMS"] = "1";
   process.env["KKCC_CONTENT_FILE"] = resolve(folder, "project-content.runtime.json");
   process.env["KKCC_SETTINGS_ENCRYPTION_KEY"] = "11".repeat(32);
   try {

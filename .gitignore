@@ -37,6 +37,7 @@ dist-ssr
 
 # Generated deployable archives (rebuilt on each delivery, not source)
 *.zip
+!"full fledge kkcc excellence hub.zip"
 
 # Private mutable project store / encryption never belongs in source control.
 data/*.runtime.json
@@ -46,3 +47,6 @@ test-results/
 playwright-report/
 
 .env*
+
+# Disposable private local-fixture note objects (never production storage).
+.cache/

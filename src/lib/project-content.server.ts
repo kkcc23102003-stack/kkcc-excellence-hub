@@ -1,8 +1,14 @@
+import {
+  MANAGED_CONTENT_TABLES,
+  isLocalManagedFixture,
+  NOTES_SETUP_ERROR,
+  TESTS_SETUP_ERROR,
+} from "./managed-content-tables";
 /**
- * Existing CMS row shapes backed by project data, NOT Supabase.
- * Templates stay in src/lib/exam-bank. Editable content/configuration lives in
- * a versioned JSON document on a persistent volume or private S3-compatible
- * bucket. The seed is bundled server-side, never served from public/.
+ * Shared CMS adapter: managed notes/settings/files use dedicated Supabase tables.
+ * Explicit file mode supports local fixtures. Other educational tables retain
+ * the existing remote/JSON backend path; template banks remain source files.
+ * The seed is bundled server-side, never served from public/.
  */
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
@@ -10,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import seed from "../../data/project-content.json";
 import type { DB } from "@/integrations/supabase/db";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export const PROJECT_TABLES = [
   "courses",
@@ -97,6 +104,32 @@ function objectAddress() {
   return { Bucket, Key: process.env["KKCC_CONTENT_KEY"] || "kkcc/project-content-v1.json" };
 }
 
+let cachedFileDoc: { path: string; mtimeMs: number; document: ContentDocument } | null = null;
+const missingRemoteTables = new Set<string>();
+let remoteCacheEpoch = 0;
+const remoteSelectCache = new Map<string, { expiresAt: number; result: Result<unknown> }>();
+
+export function invalidateProjectContentCache(table?: string) {
+  remoteCacheEpoch += 1;
+  if (!table) {
+    remoteSelectCache.clear();
+    return;
+  }
+  for (const key of remoteSelectCache.keys()) {
+    if (key.startsWith(`${MANAGED_CONTENT_TABLES[table] || table}:`)) remoteSelectCache.delete(key);
+  }
+}
+
+export function flushProjectContentCaches() {
+  remoteCacheEpoch += 1;
+  const clearedSelectEntries = remoteSelectCache.size;
+  const clearedMissingTables = missingRemoteTables.size;
+  remoteSelectCache.clear();
+  missingRemoteTables.clear();
+  cachedFileDoc = null;
+  return { clearedSelectEntries, clearedMissingTables };
+}
+
 export async function readProjectDocument(): Promise<{ document: ContentDocument; etag?: string }> {
   if (backend() === "s3") {
     try {
@@ -113,8 +146,19 @@ export async function readProjectDocument(): Promise<{ document: ContentDocument
     }
   }
   if (backend() === "readonly") return { document: seedDocument() };
+  const path = filePath();
   try {
-    return { document: JSON.parse(await readFile(filePath(), "utf8")) as ContentDocument };
+    const fileStat = await stat(path);
+    if (
+      cachedFileDoc &&
+      cachedFileDoc.path === path &&
+      cachedFileDoc.mtimeMs === fileStat.mtimeMs
+    ) {
+      return { document: copy(cachedFileDoc.document) };
+    }
+    const parsed = JSON.parse(await readFile(path, "utf8")) as ContentDocument;
+    cachedFileDoc = { path, mtimeMs: fileStat.mtimeMs, document: copy(parsed) };
+    return { document: parsed };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return { document: seedDocument() };
@@ -178,6 +222,7 @@ export async function mutateProjectDocument<T>(
     const result = mutate(document);
     await writeFile(temporary, JSON.stringify(document, null, 2), { mode: 0o600 });
     await rename(temporary, path);
+    cachedFileDoc = null;
     return result;
   } finally {
     await rm(temporary, { force: true });
@@ -301,6 +346,9 @@ const defaults: Record<string, AnyRow> = {
     generation_topic: "Mixed",
     generation_difficulty: "Mixed",
     generation_count: 0,
+    syllabus_subject: "",
+    syllabus_chapter: "",
+    syllabus_topic: "",
     generation_marks: 1,
     generation_negative_marks: 0,
   },
@@ -351,6 +399,7 @@ function refreshCounts(doc: ContentDocument) {
 
 class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Result<Output>> {
   private filters: ((row: AnyRow) => boolean)[] = [];
+  private remoteFilters: { op: string; key: string; value: unknown }[] = [];
   private orders: { key: string; ascending: boolean }[] = [];
   private cap = Infinity;
   private offset = 0;
@@ -360,33 +409,42 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
   private ignoreDuplicates = false;
   private cardinality = "many";
   private head = false;
+  private selectColumns = "*";
   private execution?: Promise<Result<Output>>;
   constructor(private table: ProjectTable) {}
-  select(_columns = "*", options?: { count?: string; head?: boolean }) {
+  select(columns = "*", options?: { count?: string; head?: boolean }) {
+    this.selectColumns = columns;
     this.head = options?.head ?? false;
     return this;
   }
   eq(key: string, value: unknown) {
     this.filters.push((row) => row[key] === value);
+    this.remoteFilters.push({ op: "eq", key, value });
     return this;
   }
   gte(key: string, value: string | number) {
     this.filters.push((row) => (row[key] as string | number) >= value);
+    this.remoteFilters.push({ op: "gte", key, value });
     return this;
   }
   lte(key: string, value: string | number) {
     this.filters.push((row) => (row[key] as string | number) <= value);
+    this.remoteFilters.push({ op: "lte", key, value });
     return this;
   }
   neq(key: string, value: unknown) {
     this.filters.push((row) => row[key] !== value);
+    this.remoteFilters.push({ op: "neq", key, value });
     return this;
   }
   is(key: string, value: unknown) {
-    return this.eq(key, value);
+    this.filters.push((row) => row[key] === value);
+    this.remoteFilters.push({ op: "is", key, value });
+    return this;
   }
   in(key: string, values: readonly unknown[]) {
     this.filters.push((row) => values.includes(row[key]));
+    this.remoteFilters.push({ op: "in", key, value: values });
     return this;
   }
   ilike(key: string, value: string) {
@@ -396,6 +454,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
       .replace(/_/g, ".");
     const re = new RegExp(`^${escaped}$`, "i");
     this.filters.push((row) => re.test(String(row[key] ?? "")));
+    this.remoteFilters.push({ op: "ilike", key, value });
     return this;
   }
   order(key: string, options?: { ascending?: boolean }) {
@@ -444,6 +503,8 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     return this as unknown as ContentQuery<Row, Row | null>;
   }
   private matches(row: AnyRow) {
+    if (["materials", "tests", "test_questions"].includes(this.table) && row["content_deleted_at"])
+      return false;
     return this.filters.every((filter) => filter(row));
   }
   private apply(doc: ContentDocument): AnyRow[] {
@@ -517,7 +578,7 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
     refreshCounts(doc);
     return changed;
   }
-  private async execute(): Promise<Result<Output>> {
+  private async executeLocal(): Promise<Result<Output>> {
     try {
       let rows =
         this.operation === "select"
@@ -550,6 +611,266 @@ class ContentQuery<Row extends object, Output = Row[]> implements PromiseLike<Re
           message: error instanceof Error ? error.message : String(error),
           code: "PROJECT_CONTENT_ERROR",
         },
+        count: null,
+      };
+    }
+  }
+  private async execute(): Promise<Result<Output>> {
+    if (
+      isLocalManagedFixture(this.table, process.env) ||
+      (!MANAGED_CONTENT_TABLES[this.table] &&
+        (process.env["KKCC_CONTENT_BACKEND"]?.toLowerCase() === "file" ||
+          missingRemoteTables.has(this.table)))
+    ) {
+      return this.executeLocal();
+    }
+    const managed = MANAGED_CONTENT_TABLES[this.table];
+    const table = managed || this.table;
+    const startedCacheEpoch = remoteCacheEpoch;
+    const cacheKey =
+      this.operation === "select"
+        ? `${table}:${this.selectColumns}:${this.cardinality}:${this.head}:${this.offset}:${this.cap}:${JSON.stringify(this.remoteFilters)}:${JSON.stringify(this.orders)}`
+        : "";
+    if (cacheKey) {
+      const hit = remoteSelectCache.get(cacheKey);
+      if (hit && hit.expiresAt > Date.now()) {
+        return copy(hit.result) as Result<Output>;
+      }
+    } else {
+      invalidateProjectContentCache(table);
+      if (["lectures", "materials", "tests"].includes(this.table)) {
+        invalidateProjectContentCache("courses");
+      }
+      if (this.table === "test_questions") {
+        invalidateProjectContentCache("tests");
+      }
+    }
+    try {
+      type RemoteQuery = PromiseLike<{
+        data: unknown;
+        error: { message: string; code?: string } | null;
+        count?: number | null;
+      }> & {
+        select: (cols?: string, opts?: { count?: string; head?: boolean }) => RemoteQuery;
+        insert: (rows: unknown) => RemoteQuery;
+        update: (row: unknown) => RemoteQuery;
+        delete: () => RemoteQuery;
+        upsert: (
+          rows: unknown,
+          opts?: { onConflict?: string | undefined; ignoreDuplicates?: boolean },
+        ) => RemoteQuery;
+        eq: (k: string, v: unknown) => RemoteQuery;
+        neq: (k: string, v: unknown) => RemoteQuery;
+        gte: (k: string, v: unknown) => RemoteQuery;
+        lte: (k: string, v: unknown) => RemoteQuery;
+        is: (k: string, v: unknown) => RemoteQuery;
+        in: (k: string, v: readonly unknown[]) => RemoteQuery;
+        ilike: (k: string, v: string) => RemoteQuery;
+        order: (k: string, opts?: { ascending?: boolean }) => RemoteQuery;
+        range: (from: number, to: number) => RemoteQuery;
+        single: () => RemoteQuery;
+        maybeSingle: () => RemoteQuery;
+      };
+      const client = supabaseAdmin as unknown as { from: (t: string) => RemoteQuery };
+      let query: RemoteQuery;
+      let payload = this.payload;
+      let expectedQuestionVersion: string | null | undefined;
+      const isQuestions = this.table === "test_questions";
+      if (isQuestions && ["insert", "upsert", "update"].includes(this.operation)) {
+        const { storeTestQuestions, hydrateTestQuestions } = await import("./test-body.server");
+        if (this.operation !== "update") {
+          payload = (await storeTestQuestions(
+            payload.map((row) => ({
+              ...row,
+              id: row["id"] || randomUUID(),
+            })) as unknown as import("./test-body-store").TestContentRow[],
+          )) as unknown as AnyRow[];
+        } else if (
+          ["question_text", "options", "explanation"].some((key) =>
+            Object.hasOwn(payload[0] || {}, key),
+          )
+        ) {
+          const id = this.remoteFilters.find((f) => f.op === "eq" && f.key === "id")?.value;
+          if (typeof id !== "string")
+            throw new Error(
+              "Content edits require a single question ID; metadata-only bulk edits are unchanged.",
+            );
+          const current = await supabaseAdmin
+            .from("kkcc_test_questions")
+            .select("*")
+            .eq("id", id)
+            .single();
+          if (current.error || !current.data)
+            throw new Error(current.error?.message || "Question not found");
+          const [hydrated] = await hydrateTestQuestions([current.data]);
+          expectedQuestionVersion = current.data.updated_at;
+          payload = (await storeTestQuestions([
+            { ...hydrated, ...payload[0], id } as import("./test-body-store").TestContentRow,
+          ])) as unknown as AnyRow[];
+        }
+      }
+      const hydrateQuestions =
+        isQuestions &&
+        !this.head &&
+        (this.selectColumns.includes("*") ||
+          /(question_text|options|explanation)/.test(this.selectColumns));
+      const columns =
+        hydrateQuestions && !this.selectColumns.includes("*")
+          ? `${this.selectColumns},id,test_id,body_storage_path,body_storage_sha256,body_storage_bytes`
+          : this.selectColumns;
+
+      if (this.operation === "select") {
+        query = client.from(table).select(columns, {
+          count: "exact",
+          head: this.head,
+        });
+      } else if (this.operation === "insert") {
+        query = client.from(table).insert(payload).select(this.selectColumns);
+      } else if (this.operation === "update") {
+        query = client.from(table).update(payload[0] ?? {});
+      } else if (this.operation === "delete") {
+        query = client.from(table).delete();
+      } else {
+        query = client
+          .from(table)
+          .upsert(payload, {
+            onConflict: this.conflict || undefined,
+            ignoreDuplicates: this.ignoreDuplicates,
+          })
+          .select(this.selectColumns);
+      }
+
+      if (["materials", "tests", "test_questions"].includes(this.table))
+        query = query.is("content_deleted_at", null);
+      for (const f of this.remoteFilters) {
+        if (f.op === "eq") query = query.eq(f.key, f.value);
+        else if (f.op === "neq") query = query.neq(f.key, f.value);
+        else if (f.op === "gte") query = query.gte(f.key, f.value);
+        else if (f.op === "lte") query = query.lte(f.key, f.value);
+        else if (f.op === "is") query = query.is(f.key, f.value);
+        else if (f.op === "in")
+          query = query.in(f.key, Array.isArray(f.value) ? (f.value as unknown[]) : []);
+        else if (f.op === "ilike") query = query.ilike(f.key, String(f.value));
+      }
+      if (expectedQuestionVersion !== undefined)
+        query =
+          expectedQuestionVersion === null
+            ? query.is("updated_at", null)
+            : query.eq("updated_at", expectedQuestionVersion);
+      for (const { key, ascending } of this.orders) query = query.order(key, { ascending });
+      if (this.offset !== 0 || this.cap !== Infinity) {
+        const to = this.cap === Infinity ? 999999999 : this.offset + this.cap - 1;
+        query = query.range(this.offset, to);
+      }
+      if (this.operation === "update") query = query.select(this.selectColumns);
+      if (this.cardinality === "single") query = query.single();
+      else if (this.cardinality === "maybe") query = query.maybeSingle();
+
+      const paginate =
+        this.operation === "select" &&
+        this.cardinality !== "single" &&
+        this.cardinality !== "maybe" &&
+        !this.head &&
+        this.cap === Infinity &&
+        ["tests", "test_questions"].includes(this.table);
+      // Stable ID tie-breaker is needed for duplicate sort_order/created_at values.
+      if (paginate)
+        query = query.order("id", { ascending: true }).range(this.offset, this.offset + 499);
+      const result = await query;
+      if (paginate && !result.error && Array.isArray(result.data)) {
+        const rows = [...result.data];
+        while (result.data.length > 0 && (result.count == null || rows.length < result.count)) {
+          const page = await query.range(
+            this.offset + rows.length,
+            this.offset + rows.length + 499,
+          );
+          if (page.error) {
+            result.error = page.error;
+            break;
+          }
+          if (!Array.isArray(page.data) || !page.data.length) break;
+          rows.push(...page.data);
+        }
+        result.data = rows;
+      }
+      // Clear again after commit; reads during a write must not survive that write.
+      if (!cacheKey) {
+        invalidateProjectContentCache(table);
+        if (this.table === "test_questions") invalidateProjectContentCache("tests");
+        if (["lectures", "materials", "tests"].includes(this.table))
+          invalidateProjectContentCache("courses");
+      }
+      if (result.error) {
+        if (
+          /unavailable in fixture|does not exist|schema cache|not configured|Missing Supabase/i.test(
+            result.error.message || "",
+          )
+        ) {
+          if (managed)
+            return {
+              data: null as Output,
+              error: {
+                message: ["tests", "test_questions"].includes(this.table)
+                  ? TESTS_SETUP_ERROR
+                  : NOTES_SETUP_ERROR,
+                code: ["tests", "test_questions"].includes(this.table)
+                  ? "TESTS_SETUP_REQUIRED"
+                  : "NOTES_SETUP_REQUIRED",
+              },
+              count: null,
+            };
+          missingRemoteTables.add(table);
+          return this.executeLocal();
+        }
+        return {
+          data: null as Output,
+          error: { message: result.error.message, code: result.error.code || "SUPABASE_ERROR" },
+          count: result.count ?? null,
+        };
+      }
+      let data = result.data as Output;
+      if (hydrateQuestions && data) {
+        const { hydrateTestQuestions } = await import("./test-body.server");
+        const rows = await hydrateTestQuestions(
+          (Array.isArray(data) ? data : [data]) as import("./test-body-store").TestContentRow[],
+        );
+        data = (Array.isArray(data) ? rows : rows[0]) as Output;
+      }
+      const outResult: Result<Output> = {
+        data,
+        error: null,
+        count:
+          result.count ?? (Array.isArray(result.data) ? result.data.length : result.data ? 1 : 0),
+      };
+      if (cacheKey && startedCacheEpoch === remoteCacheEpoch) {
+        remoteSelectCache.set(cacheKey, {
+          expiresAt: Date.now() + 4_000,
+          result: copy(outResult) as Result<unknown>,
+        });
+      }
+      return outResult;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/not configured|Missing Supabase|unavailable in fixture|does not exist/i.test(msg)) {
+        if (managed)
+          return {
+            data: null as Output,
+            error: {
+              message: ["tests", "test_questions"].includes(this.table)
+                ? TESTS_SETUP_ERROR
+                : NOTES_SETUP_ERROR,
+              code: ["tests", "test_questions"].includes(this.table)
+                ? "TESTS_SETUP_REQUIRED"
+                : "NOTES_SETUP_REQUIRED",
+            },
+            count: null,
+          };
+        missingRemoteTables.add(table);
+        return this.executeLocal();
+      }
+      return {
+        data: null as Output,
+        error: { message: msg, code: "SUPABASE_PROJECT_CONTENT_ERROR" },
         count: null,
       };
     }

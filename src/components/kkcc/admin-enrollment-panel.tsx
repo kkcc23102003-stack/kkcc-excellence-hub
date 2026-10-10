@@ -1,3 +1,4 @@
+import { StudentAccessRemoval } from "./student-access-removal";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -6,10 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import type { CourseRow, ProfileRow } from "@/integrations/supabase/db";
+import { getCustomSeriesCatalog } from "@/lib/content.functions";
 import { listAdminTests } from "@/lib/admin.functions";
 import { adminGrantEnrollment } from "@/lib/enrollments.functions";
 import { adminGrantSeriesAccess, adminGrantTestAccess } from "@/lib/test-access.functions";
-import { LEARNING_SERIES } from "@/lib/test-series-catalog";
+import {
+  getEffectiveLearningSeries,
+  LEARNING_SERIES,
+  setRuntimeCustomSeriesCatalog,
+} from "@/lib/test-series-catalog";
 import { invalidateLearningQueries } from "@/hooks/use-learning-access";
 
 export function AdminEnrollmentPanel({
@@ -29,6 +35,19 @@ export function AdminEnrollmentPanel({
   const [item, setItem] = useState("");
   const [validDays, setValidDays] = useState("0");
   const tests = useQuery({ queryKey: ["admin", "tests"], queryFn: () => fetchTests() });
+  const customCatalog = useQuery({
+    queryKey: ["public", "custom-series-catalog"],
+    queryFn: () => getCustomSeriesCatalog(),
+    staleTime: 60_000,
+  });
+  setRuntimeCustomSeriesCatalog(customCatalog.data);
+  const allSeries = (() => {
+    const map = new Map<string, (typeof LEARNING_SERIES)[number]>();
+    for (const series of [...getEffectiveLearningSeries(customCatalog.data), ...LEARNING_SERIES]) {
+      if (!map.has(series.id)) map.set(series.id, series);
+    }
+    return [...map.values()];
+  })();
   const choices =
     kind === "course"
       ? courses
@@ -38,7 +57,7 @@ export function AdminEnrollmentPanel({
         ? (tests.data ?? [])
             .filter((test) => test.is_published)
             .map((test) => ({ id: test.id, title: test.title }))
-        : LEARNING_SERIES.map((series) => ({
+        : allSeries.map((series) => ({
             id: series.id,
             title: `${series.name} · ${series.examTrack}`,
           }));
@@ -95,7 +114,10 @@ export function AdminEnrollmentPanel({
             id="enrollment-student"
             className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm"
             value={studentId}
-            onChange={(event) => setStudentId(event.target.value)}
+            onChange={(event) => {
+              setStudentId(event.target.value);
+              grant.reset();
+            }}
           >
             <option value="">Select Student</option>
             {profiles.map((profile) => (
@@ -172,6 +194,17 @@ export function AdminEnrollmentPanel({
           Enrollment verified. Student access is active.
         </p>
       )}
+      <StudentAccessRemoval
+        key={studentId}
+        userId={studentId}
+        onRemoved={() => grant.reset()}
+        studentLabel={profiles.find((p) => p.id === studentId)?.email || studentId}
+        titles={Object.fromEntries([
+          ...courses.map((c) => [`course:${c.id}`, c.title]),
+          ...(tests.data || []).map((t) => [`test:${t.id}`, t.title]),
+          ...allSeries.map((s) => [`series:${s.id}`, s.name]),
+        ])}
+      />
     </section>
   );
 }

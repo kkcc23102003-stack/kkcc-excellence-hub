@@ -14,6 +14,7 @@ import {
   getAdminPaymentSettings,
   saveAdminPaymentSettings,
 } from "@/lib/platform-settings.functions";
+import { AdminPaymentRecoveryTool } from "@/components/kkcc/admin-payment-recovery-tool";
 import { friendlyError } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/admin/payments")({
@@ -29,7 +30,9 @@ export const Route = createFileRoute("/_authenticated/admin/payments")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <Button asChild className="mt-6 rounded-full">
           <Link to="/dashboard">Back to dashboard</Link>
         </Button>
@@ -78,11 +81,19 @@ function AdminPaymentsPage() {
           offline_payment_instructions: offlineInstructions.trim(),
         },
       }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       setKeySecret("");
       setWebhookSecret("");
-      toast.success("Payment settings saved");
+      setEnabled(updated.enabled);
+      setMode(updated.mode);
+      setKeyId(updated.razorpay_key_id ?? "");
+      toast.success(
+        updated.enabled && updated.razorpay_key_id
+          ? `Razorpay (${updated.mode.toUpperCase()}) automatically connected across Batches, Test Series, Tests & 23KAAT Coin Packs!`
+          : "Payment settings saved (Offline Payment / Contact Admin mode active).",
+      );
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: ["public", "payment-settings"] });
     },
     onError: (error: Error) => toast.error(friendlyError(error)),
   });
@@ -103,11 +114,50 @@ function AdminPaymentsPage() {
             <Link to="/admin">Courses</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
+            <Link to="/admin/coupons">Coupon Codes (1%–100%)</Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="rounded-full">
             <Link to="/admin/students">Student access</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
             <Link to="/admin/storage">Storage</Link>
           </Button>
+        </div>
+
+        {/* Auto-Connect Status Banner */}
+        <div
+          className={`mb-6 rounded-2xl border p-5 ${
+            enabled && keyId.trim()
+              ? "border-emerald-500/40 bg-emerald-500/10"
+              : "border-amber-500/40 bg-amber-500/10"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black">
+                {enabled && keyId.trim()
+                  ? `Razorpay Auto-Connected Everywhere (${mode.toUpperCase()} Mode)`
+                  : "Offline Payment Mode Active (No Razorpay Key Active)"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {enabled && keyId.trim()
+                  ? "All Paid Batches (/courses), Paid Test Series (/test-series), Individual Tests, and 23KAAT Coin Packs (/coins) are automatically connected to Razorpay Online Checkout."
+                  : "As soon as you paste your Razorpay Key ID below and click Save, Razorpay will automatically connect across all Batches, Test Series, Paid Tests, and 23KAAT Coin Packs."}
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className={
+                enabled && keyId.trim()
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+                  : "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200"
+              }
+            >
+              {enabled && keyId.trim()
+                ? "Online Checkout Active"
+                : "Paid · Offline (Contact Admin)"}
+            </Badge>
+          </div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
@@ -149,12 +199,23 @@ function AdminPaymentsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="key-id">Razorpay key ID</Label>
+                  <Label htmlFor="key-id">Razorpay key ID (Auto-connects on save)</Label>
                   <Input
                     id="key-id"
                     value={keyId}
-                    onChange={(e) => setKeyId(e.target.value)}
-                    placeholder="rzp_test_..."
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setKeyId(val);
+                      const trimmed = val.trim();
+                      if (trimmed.length > 0) {
+                        setEnabled(true);
+                        if (trimmed.startsWith("rzp_live_")) setMode("live");
+                        else if (trimmed.startsWith("rzp_test_")) setMode("test");
+                      } else {
+                        setEnabled(false);
+                      }
+                    }}
+                    placeholder="rzp_test_... or rzp_live_..."
                   />
                 </div>
               </div>
@@ -237,6 +298,9 @@ function AdminPaymentsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Support tool: verify a Razorpay payment and unlock the student. */}
+        <AdminPaymentRecoveryTool />
       </div>
     </SiteLayout>
   );

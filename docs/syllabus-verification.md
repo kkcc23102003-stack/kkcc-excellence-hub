@@ -14,23 +14,23 @@ Each rule in that file carries the source document it came from.
 
 ## Status by exam
 
-| Exam | Official source reached | Verdict | Fixed |
-|---|---|---|---|
-| NEET UG | Yes — NMC (UGMEB) syllabus | **Wrong** | Yes |
-| JEE Main | Yes — NTA JEE (Main) syllabus | **Wrong** | Yes |
-| JEE Advanced | Yes — JAB / jeeadv.ac.in | Minor | Yes |
-| UPSC Civil Services | Yes — Exam Notice 05/2026-CSE PDF | Minor | Yes |
-| SSC CGL | Yes — official CGL 2025 notice PDF | Correct | n/a |
-| Punjab ETT Cadre | Yes — ERB Punjab revised scheme and syllabus | **Wrong** | Yes |
-| CTET | Yes — official CTET February 2026 Information Bulletin | **Incomplete** | Yes |
-| PSTET | Yes — SCERT Punjab PSTET structure and syllabus | **Missing entirely** | Yes |
-| Punjab Master Cadre | Yes — ERB Punjab subject syllabus notice | **Wrong** | Yes |
-| PSSSB / Patwari | Yes — PSSSB Advt. 02/2026 syllabus and scheme | **Wrong** | Yes |
-| Punjab PCS (PPSC) | Yes — PPSC combined competitive exam notification | **Wrong** | Yes |
-| NDA / CDS | Yes — UPSC NDA & NA (II) 2026 notification, Appendix I | **Wrong** | Yes |
-| SSC CHSL / MTS | Yes — SSC scheme of examination | **Wrong** | Yes |
-| Banking (IBPS) | Yes — IBPS CRP PO/MT structure | **Wrong** | Yes |
-| RRB NTPC / Group D / ALP | Yes — RRB CEN scheme of examination | **Wrong** | Yes |
+| Exam                     | Official source reached                                | Verdict              | Fixed |
+| ------------------------ | ------------------------------------------------------ | -------------------- | ----- |
+| NEET UG                  | Yes — NMC (UGMEB) syllabus                             | **Wrong**            | Yes   |
+| JEE Main                 | Yes — NTA JEE (Main) syllabus                          | **Wrong**            | Yes   |
+| JEE Advanced             | Yes — JAB / jeeadv.ac.in                               | Minor                | Yes   |
+| UPSC Civil Services      | Yes — Exam Notice 05/2026-CSE PDF                      | Minor                | Yes   |
+| SSC CGL                  | Yes — official CGL 2025 notice PDF                     | Correct              | n/a   |
+| Punjab ETT Cadre         | Yes — ERB Punjab revised scheme and syllabus           | **Wrong**            | Yes   |
+| CTET                     | Yes — official CTET February 2026 Information Bulletin | **Incomplete**       | Yes   |
+| PSTET                    | Yes — SCERT Punjab PSTET structure and syllabus        | **Missing entirely** | Yes   |
+| Punjab Master Cadre      | Yes — ERB Punjab subject syllabus notice               | **Wrong**            | Yes   |
+| PSSSB / Patwari          | Yes — PSSSB Advt. 02/2026 syllabus and scheme          | **Wrong**            | Yes   |
+| Punjab PCS (PPSC)        | Yes — PPSC combined competitive exam notification      | **Wrong**            | Yes   |
+| NDA / CDS                | Yes — UPSC NDA & NA (II) 2026 notification, Appendix I | **Wrong**            | Yes   |
+| SSC CHSL / MTS           | Yes — SSC scheme of examination                        | **Wrong**            | Yes   |
+| Banking (IBPS)           | Yes — IBPS CRP PO/MT structure                         | **Wrong**            | Yes   |
+| RRB NTPC / Group D / ALP | Yes — RRB CEN scheme of examination                    | **Wrong**            | Yes   |
 
 Anything marked "Not verified" is unchanged in the app. It is not claimed to be
 correct. It is queued for round 2.
@@ -159,14 +159,14 @@ knowledge; vocabulary; grammar.
 **Paper B** — 100 questions, **200 marks at two marks each**, 100 minutes,
 and the merit list rests on this paper alone:
 
-| Subject | Questions | Marks |
-|---|---|---|
-| Punjabi | 20 | 40 |
-| English | 10 | 20 |
-| Hindi | 10 | 20 |
-| General Science | 20 | 40 |
-| Social Studies | 20 | 40 |
-| Mathematics | 20 | 40 |
+| Subject         | Questions | Marks |
+| --------------- | --------- | ----- |
+| Punjabi         | 20        | 40    |
+| English         | 10        | 20    |
+| Hindi           | 10        | 20    |
+| General Science | 20        | 40    |
+| Social Studies  | 20        | 40    |
+| Mathematics     | 20        | 40    |
 
 **Six subjects. Nothing else is examined.**
 
@@ -190,14 +190,14 @@ subjects and 389 chapters** into a six-subject paper:
 **The fix.** ETT now holds 14 subjects and 217 chapters, mapping one to one
 onto the official six:
 
-| Official paper | Bank subjects |
-|---|---|
-| Punjabi | Punjabi Paper A · Punjabi Grammar · Punjabi Literature |
-| English | English Grammar · English Language |
-| Hindi | Hindi Grammar |
-| General Science | General Science · Science Class 9 · Science Class 10 |
-| Social Studies | SST · SST Class 9 · SST Class 10 |
-| Mathematics | Math Class 9 · Math Class 10 |
+| Official paper  | Bank subjects                                          |
+| --------------- | ------------------------------------------------------ |
+| Punjabi         | Punjabi Paper A · Punjabi Grammar · Punjabi Literature |
+| English         | English Grammar · English Language                     |
+| Hindi           | Hindi Grammar                                          |
+| General Science | General Science · Science Class 9 · Science Class 10   |
+| Social Studies  | SST · SST Class 9 · SST Class 10                       |
+| Mathematics     | Math Class 9 · Math Class 10                           |
 
 **The lesson.** Matching an exam at subject level is not enough. This one
 passed a subject-level check in round one and was still carrying 172 chapters
@@ -263,12 +263,12 @@ Appendix-I "The Scheme and Syllabus of Examination", read in full.
 
 Official scheme, confirmed verbatim:
 
-| Subject | Code | Duration | Marks |
-|---|---|---|---|
-| Mathematics | 01 | 2.5 hours | 300 |
-| General Ability Test | 02 | 2.5 hours | 600 |
-| Written total | | | 900 |
-| SSB Test / Interview | | | 900 |
+| Subject              | Code | Duration  | Marks |
+| -------------------- | ---- | --------- | ----- |
+| Mathematics          | 01   | 2.5 hours | 300   |
+| General Ability Test | 02   | 2.5 hours | 600   |
+| Written total        |      |           | 900   |
+| SSB Test / Interview |      |           | 900   |
 
 All papers objective type. Mathematics and Part B of the GAT are set
 bilingually. No calculator or log tables permitted.
@@ -384,14 +384,14 @@ marks, **qualifying only**, minimum 50 per cent, no negative marking.
 **Part B** — 100 questions, 100 marks, negative marking one fourth, evaluated
 only if Part A is cleared:
 
-| Section | Marks |
-|---|---|
-| General Knowledge and Current Affairs | 25 |
-| Logical Reasoning and Mental Ability | 25 |
-| English | 12 |
-| Punjabi | 13 |
-| Information and Communication Technology | 8 |
-| Punjab History and Culture | 17 |
+| Section                                  | Marks |
+| ---------------------------------------- | ----- |
+| General Knowledge and Current Affairs    | 25    |
+| Logical Reasoning and Mental Ability     | 25    |
+| English                                  | 12    |
+| Punjabi                                  | 13    |
+| Information and Communication Technology | 8     |
+| Punjab History and Culture               | 17    |
 
 Total 2 hours 30 minutes, OMR based. Patwari follows the same two-part
 pattern, with ICT 9 and Punjab History and Culture 16.
@@ -645,10 +645,10 @@ Lecturer (Cadre) recruitment notification for 1013 posts, `erd.punjab.gov.in`.
 **Two sections, 300 questions and 300 marks over five hours.** OMR, one mark
 per question, **no negative marking**.
 
-| Section | Content | Questions |
-|---|---|---|
-| I — General (2h 30m) | Punjabi 30, English 30, Teaching Aptitude 30, Mathematics General 30, General Knowledge 30 | 150 |
-| II — Concerned subject (2h 30m) | The one subject applied for | 150 |
+| Section                         | Content                                                                                    | Questions |
+| ------------------------------- | ------------------------------------------------------------------------------------------ | --------- |
+| I — General (2h 30m)            | Punjabi 30, English 30, Teaching Aptitude 30, Mathematics General 30, General Knowledge 30 | 150       |
+| II — Concerned subject (2h 30m) | The one subject applied for                                                                | 150       |
 
 **Twelve subjects only**, with the advertised vacancies: History 210 · English
 141 · Political Science 131 · Mathematics 105 · Punjabi 99 · Commerce 98 ·
@@ -672,13 +672,13 @@ Source: Consortium of National Law Universities, CLAT UG exam pattern.
 120 passage-based MCQs, 120 marks, 120 minutes, offline, **English only**,
 **+1 and −0.25**. Five sections:
 
-| Section | Questions | Weight |
-|---|---|---|
-| English Language | 22–26 | 20% |
-| Current Affairs including General Knowledge | 28–32 | 25% |
-| Legal Reasoning | 28–32 | 25% |
-| Logical Reasoning | 22–26 | 20% |
-| Quantitative Techniques | 10–14 | 10% |
+| Section                                     | Questions | Weight |
+| ------------------------------------------- | --------- | ------ |
+| English Language                            | 22–26     | 20%    |
+| Current Affairs including General Knowledge | 28–32     | 25%    |
+| Legal Reasoning                             | 28–32     | 25%    |
+| Logical Reasoning                           | 22–26     | 20%    |
+| Quantitative Techniques                     | 10–14     | 10%    |
 
 **The error.** **Quantitative Techniques was absent from the exam
 altogether.** A CLAT student using the app would never have been served a
@@ -717,11 +717,11 @@ to 9. Punjabi stays, correctly, as a compulsory subject.
 
 Source: ICAI, New Scheme of Education and Training.
 
-| Level | Official papers |
-|---|---|
-| **Foundation** | Accounting · Business Laws · Quantitative Aptitude · Business Economics — **four only** |
-| **Intermediate** | Advanced Accounting · Corporate and Other Laws · Taxation · Cost and Management Accounting · Auditing and Ethics · Financial Management and Strategic Management — **six** |
-| **Final** | Financial Reporting · Advanced Financial Management · Advanced Auditing, Assurance and Professional Ethics · Direct Tax Laws and International Taxation · Indirect Tax Laws · Integrated Business Solutions — **six** |
+| Level            | Official papers                                                                                                                                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Foundation**   | Accounting · Business Laws · Quantitative Aptitude · Business Economics — **four only**                                                                                                                               |
+| **Intermediate** | Advanced Accounting · Corporate and Other Laws · Taxation · Cost and Management Accounting · Auditing and Ethics · Financial Management and Strategic Management — **six**                                            |
+| **Final**        | Financial Reporting · Advanced Financial Management · Advanced Auditing, Assurance and Professional Ethics · Direct Tax Laws and International Taxation · Indirect Tax Laws · Integrated Business Solutions — **six** |
 
 **The errors.** Papers were leaking across levels in both directions:
 
@@ -747,17 +747,17 @@ carrying. So every verified exam is being re-walked at chapter level.
 subject-only, or lists its sections exhaustively, anything outside that list
 comes out.
 
-| Exam | Has an official general section? | Verdict |
-|---|---|---|
-| Punjab ETT Cadre | No — six named subjects in Paper B | **Corrected**, 389 → 217 chapters |
-| Punjab Master Cadre | No — 150 questions on one subject | **Corrected**, 3886 → 3456 chapters |
-| Punjab Lecturer Cadre | Yes — Section I carries General Knowledge 30 | Breadth is legitimate |
-| PSSSB, Patwari, Punjab Clerk | Yes — General Knowledge and Current Affairs 25 | Legitimate |
-| PPSC, Punjab PCS, UPSC CSE, CAPF, NDA/CDS | Yes — General Studies papers | Legitimate |
-| SSC CGL, CHSL, MTS, GD | Yes — General Awareness sections | Legitimate |
-| RRB NTPC, Group D, ALP | Yes — General Awareness sections | Legitimate |
-| CUET | Yes — Section III General Test | Legitimate |
-| NEET, JEE, CA, CLAT, boards | No | Already reduced to their exact papers |
+| Exam                                      | Has an official general section?               | Verdict                               |
+| ----------------------------------------- | ---------------------------------------------- | ------------------------------------- |
+| Punjab ETT Cadre                          | No — six named subjects in Paper B             | **Corrected**, 389 → 217 chapters     |
+| Punjab Master Cadre                       | No — 150 questions on one subject              | **Corrected**, 3886 → 3456 chapters   |
+| Punjab Lecturer Cadre                     | Yes — Section I carries General Knowledge 30   | Breadth is legitimate                 |
+| PSSSB, Patwari, Punjab Clerk              | Yes — General Knowledge and Current Affairs 25 | Legitimate                            |
+| PPSC, Punjab PCS, UPSC CSE, CAPF, NDA/CDS | Yes — General Studies papers                   | Legitimate                            |
+| SSC CGL, CHSL, MTS, GD                    | Yes — General Awareness sections               | Legitimate                            |
+| RRB NTPC, Group D, ALP                    | Yes — General Awareness sections               | Legitimate                            |
+| CUET                                      | Yes — Section III General Test                 | Legitimate                            |
+| NEET, JEE, CA, CLAT, boards               | No                                             | Already reduced to their exact papers |
 
 ### Punjab Master Cadre — corrected again
 
@@ -788,12 +788,12 @@ and Biology. A Commerce student had **nothing whatsoever** to practise on.
 
 **Official structure, now built:**
 
-| Paper | Parts |
-|---|---|
-| Accountancy 11 | Part A Financial Accounting I 56 (Theoretical Framework 12, Accounting Process 44) · Part B Financial Accounting II 24 |
-| Accountancy 12 | Accounting for Partnership Firms 36 · Accounting for Companies 24 · Financial Statements Analysis 20 |
-| Business Studies 11 | Part A Foundations of Business 40 (units 1-6) · Part B Finance and Trade 40 (units 7-10) |
-| Business Studies 12 | Part A Principles and Functions of Management 50 (units 1-8) · Part B Business Finance and Marketing 30 (units 9-12) |
+| Paper               | Parts                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Accountancy 11      | Part A Financial Accounting I 56 (Theoretical Framework 12, Accounting Process 44) · Part B Financial Accounting II 24 |
+| Accountancy 12      | Accounting for Partnership Firms 36 · Accounting for Companies 24 · Financial Statements Analysis 20                   |
+| Business Studies 11 | Part A Foundations of Business 40 (units 1-6) · Part B Finance and Trade 40 (units 7-10)                               |
+| Business Studies 12 | Part A Principles and Functions of Management 50 (units 1-8) · Part B Business Finance and Marketing 30 (units 9-12)   |
 
 `src/lib/exam-bank/commerce-school.ts` adds four subjects and fourteen
 chapters built on those units — theoretical framework; journal, ledger and
@@ -828,14 +828,14 @@ not a UPSC treatment of ancient India.
 
 **Official structure, now built:**
 
-| Paper | Structure |
-|---|---|
-| History XI | Unit I Early Societies 10 · Unit II Empires 20 · Unit III Changing Traditions 20 · Unit IV Towards Modernisation 25 · Map 5 |
-| History XII | Themes in Indian History Part I 25 · Part II 25 · Part III 25, four themes each |
-| Pol. Science XI | Part A Indian Constitution at Work 40 (ten chapters) · Part B Political Theory 40 (eight chapters) |
-| Pol. Science XII | Part A Contemporary World Politics, six chapters at 6 each · Part B Politics in India since Independence |
-| Geography XI | Fundamentals of Physical Geography · India Physical Environment |
-| Geography XII | Fundamentals of Human Geography · India People and Economy, with map work |
+| Paper            | Structure                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| History XI       | Unit I Early Societies 10 · Unit II Empires 20 · Unit III Changing Traditions 20 · Unit IV Towards Modernisation 25 · Map 5 |
+| History XII      | Themes in Indian History Part I 25 · Part II 25 · Part III 25, four themes each                                             |
+| Pol. Science XI  | Part A Indian Constitution at Work 40 (ten chapters) · Part B Political Theory 40 (eight chapters)                          |
+| Pol. Science XII | Part A Contemporary World Politics, six chapters at 6 each · Part B Politics in India since Independence                    |
+| Geography XI     | Fundamentals of Physical Geography · India Physical Environment                                                             |
+| Geography XII    | Fundamentals of Human Geography · India People and Economy, with map work                                                   |
 
 `src/lib/exam-bank/humanities-school.ts` adds **six subjects and ten
 chapters** on those units — Mesopotamia and the Roman and Mongol empires;
@@ -899,11 +899,10 @@ Punjab Police · PSEB Class 9-10 · CA Foundation · CA Intermediate · CA Final
 These have paying students and have NOT been read against an official
 document. Treat their chapter lists as unconfirmed:
 
-| Exam | Chapters | Why it matters |
-|---|---|---|
-| PSTET/CTET (combined tag) | 3241 | The two parents are verified, the merged tag is not |
-| State PSC | 2136 | Umbrella over many state commissions |
-
+| Exam                      | Chapters | Why it matters                                      |
+| ------------------------- | -------- | --------------------------------------------------- |
+| PSTET/CTET (combined tag) | 3241     | The two parents are verified, the merged tag is not |
+| State PSC                 | 2136     | Umbrella over many state commissions                |
 
 | ISC Class 11 / 12 | 414 / 404 | CISCE regulations |
 | CMA Intermediate | 492 | ICMAI |

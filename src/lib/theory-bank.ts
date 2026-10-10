@@ -635,3 +635,200 @@ export function theoryTotals(board: "ICSE" | "CBSE", classLevel: 9 | 10) {
     marks,
   };
 }
+
+export type BuiltInStudyNote = {
+  id: string;
+  title: string;
+  subject: string;
+  chapter: string;
+  class_level: string;
+  material_type: string;
+  pages: number;
+  description: string;
+};
+
+export const COMPETITIVE_STUDY_NOTES: BuiltInStudyNote[] = [
+  {
+    id: "note:sst:preamble",
+    title: "Preamble of the Indian Constitution — Complete Revision Notes",
+    subject: "SST",
+    chapter: "Preamble",
+    class_level: "Punjab ETT / PSTET / SSC / State Exams",
+    material_type: "Notes",
+    pages: 6,
+    description: `1. ORIGIN & ADOPTION OF THE PREAMBLE
+• Based on the 'Objectives Resolution' drafted and moved by Pandit Jawaharlal Nehru on 13 December 1946 and adopted by the Constituent Assembly on 22 January 1947.
+• Adopted by the Constituent Assembly on 26 November 1949 (celebrated as Constitution Day / Samvidhan Divas) and came into force on 26 January 1950.
+• Opening Words: "WE, THE PEOPLE OF INDIA..." — indicates that ultimate sovereignty rests with the people of India.
+
+2. NATURE OF THE INDIAN STATE (5 KEYWORDS IN EXACT ORDER)
+1) Sovereign — India is an independent authority, neither a dependency nor a dominion of any other nation.
+2) Socialist — Added by the 42nd Constitutional Amendment Act, 1976 (Democratic Socialism: mixed economy + welfare state).
+3) Secular — Added by the 42nd Amendment, 1976; the State treats all religions equally (Articles 25–28).
+4) Democratic — Representative parliamentary democracy based on universal adult franchise (Article 326).
+5) Republic — Elected Head of State (President of India), not a hereditary monarch.
+
+3. FOUR OBJECTIVES OF THE PREAMBLE
+• JUSTICE — Social, Economic, and Political (inspired by the Russian Revolution, 1917).
+• LIBERTY — of thought, expression, belief, faith, and worship (Fundamental Rights, Articles 19 & 25).
+• EQUALITY — of status and of opportunity (Articles 14–18).
+• FRATERNITY — assuring the dignity of the individual and the unity and integrity of the Nation ('and integrity' added by the 42nd Amendment, 1976).
+  (Liberty, Equality & Fraternity were inspired by the French Revolution, 1789.)
+
+4. LANDMARK SUPREME COURT CASES & AMENDMENTS
+• Berubari Union Case (1960): Held that the Preamble is NOT a part of the Constitution.
+• Kesavananda Bharati Case (1973): Overruled Berubari; held that the Preamble IS an integral part of the Constitution and can be amended under Article 368 without altering the Basic Structure.
+• LIC of India Case (1995): Reaffirmed that the Preamble is an integral part of the Constitution.
+• 42nd Constitutional Amendment Act (1976): The ONLY time the Preamble has been amended — added 'Socialist', 'Secular', and 'Integrity'.
+• Nature in Courts: The Preamble is non-justiciable (not directly enforceable in a court of law) and neither a source of power nor a limitation on legislature.
+
+5. FAMOUS QUOTES FOR EXAMS
+• N.A. Palkhivala: "Identity Card of the Constitution"
+• K.M. Munshi: "Horoscope of our Sovereign Democratic Republic"
+• Sir Ernest Barker: "Key-note to the Constitution"
+• ठाकुरदास भार्गव (Thakurdas Bhargava): "Soul of the Constitution"`,
+  },
+  {
+    id: "note:polity:fundamental-rights",
+    title: "Fundamental Rights (Articles 12–35) & Writs — High-Yield Notes",
+    subject: "Indian Polity",
+    chapter: "Fundamental Rights",
+    class_level: "Punjab ETT / PSTET / PSSSB / SSC",
+    material_type: "Notes",
+    pages: 8,
+    description: `1. PART III OF THE CONSTITUTION (ARTICLES 12 TO 35)
+• Borrowed from the US Constitution (Bill of Rights) and described as the 'Magna Carta of India'.
+• Originally 7 Fundamental Rights; the 44th Constitutional Amendment Act (1978) removed the Right to Property (Article 31) and made it a legal/constitutional right under Article 300A (Part XII).
+
+2. SIX FUNDAMENTAL RIGHTS AT PRESENT
+1) Right to Equality (Articles 14–18):
+   - Art 14: Equality before law & equal protection of laws
+   - Art 15: Prohibition of discrimination on grounds of religion, race, caste, sex or place of birth
+   - Art 16: Equality of opportunity in public employment
+   - Art 17: Abolition of Untouchability
+   - Art 18: Abolition of Titles (except military and academic)
+2) Right to Freedom (Articles 19–22):
+   - Art 19: Six freedoms (speech & expression, assembly, association, movement, residence, profession)
+   - Art 20: Protection in respect of conviction for offences
+   - Art 21: Protection of life and personal liberty
+   - Art 21A: Right to Elementary Education (6–14 years) — added by 86th Amendment Act, 2002
+   - Art 22: Protection against arrest and detention
+3) Right Against Exploitation (Articles 23–24):
+   - Art 23: Prohibition of human trafficking and forced labour (begar)
+   - Art 24: Prohibition of child labour (<14 years) in hazardous employment
+4) Right to Freedom of Religion (Articles 25–28)
+5) Cultural and Educational Rights of Minorities (Articles 29–30)
+6) Right to Constitutional Remedies (Article 32):
+   - Called the "Heart and Soul of the Constitution" by Dr. B.R. Ambedkar.
+   - Five Writs (Supreme Court under Art 32; High Courts under Art 226): Habeas Corpus, Mandamus, Prohibition, Certiorari, Quo-Warranto.
+   - Articles 20 and 21 can NEVER be suspended even during a National Emergency (Art 359).`,
+  },
+  {
+    id: "note:punjab-gk:history-culture",
+    title: "Punjab GK — Sikh Gurus, Rivers, History & Folk Culture Notes",
+    subject: "Punjab GK",
+    chapter: "Punjab History & Culture",
+    class_level: "Punjab ETT Cadre / PSSSB / Punjab Police",
+    material_type: "Notes",
+    pages: 10,
+    description: `1. GEOGRAPHY & RIVERS OF PUNJAB
+• Word 'Punjab' comes from Persian 'Panj' (Five) + 'Aab' (Water): Sutlej, Beas, Ravi, Chenab, Jhelum.
+• Present-day Indian Punjab has 3 perennial rivers: Sutlej, Beas, and Ravi (plus seasonal Ghaggar).
+• Regions of Punjab:
+  - Majha (Between Ravi & Beas): Amritsar, Gurdaspur, Tarn Taran, Pathankot
+  - Doaba (Between Beas & Sutlej): Jalandhar, Hoshiarpur, Kapurthala, SBS Nagar
+  - Malwa (South of Sutlej): Ludhiana, Patiala, Bathinda, Sangrur, Ferozepur, Fazilka, Mansa, Moga, Barnala, etc.
+
+2. TEN SIKH GURUS — KEY EXAM FACTS
+• Sri Guru Nanak Dev Ji (1469–1539): Founder of Sikhism; started Langar & Sangat; composed Japji Sahib, Asa di Var.
+• Sri Guru Angad Dev Ji: Standardized Gurmukhi script; promoted Mall Akhara.
+• Sri Guru Amar Das Ji: Established 22 Manjis; Goindwal Sahib Baoli; Anand Sahib.
+• Sri Guru Ram Das Ji: Founded Amritsar (Ramdaspur); composed Lavan.
+• Sri Guru Arjan Dev Ji: Compiled Adi Granth (1604); built Harmandir Sahib; first Sikh martyr (1606).
+• Sri Guru Hargobind Ji: Concept of Miri-Piri; built Akal Takht.
+• Sri Guru Tegh Bahadur Ji: 'Hind di Chadar'; martyred at Chandni Chowk, Delhi (1675); founded Anandpur Sahib.
+• Sri Guru Gobind Singh Ji: Founded Khalsa Panth on Baisakhi 1699 at Anandpur Sahib; Zafarnama; declared Sri Guru Granth Sahib Ji as eternal Guru (1708).`,
+  },
+  {
+    id: "note:cdp:theories",
+    title: "Child Development & Pedagogy — Piaget, Vygotsky, Kohlberg & NEP 2020",
+    subject: "Child Development & Pedagogy",
+    chapter: "Learning Theories & Inclusive Education",
+    class_level: "ETT Cadre / PSTET / CTET",
+    material_type: "Notes",
+    pages: 7,
+    description: `1. JEAN PIAGET'S COGNITIVE DEVELOPMENT THEORY (4 STAGES)
+• Sensorimotor Stage (0–2 years): Object permanence, learning through senses and motor actions.
+• Pre-operational Stage (2–7 years): Symbolic thought, egocentrism, animism, lack of conservation/reversibility.
+• Concrete Operational Stage (7–11 years): Conservation, classification, seriation, logical thinking about concrete objects.
+• Formal Operational Stage (11+ years): Abstract reasoning, hypothetical-deductive thinking.
+• Key Concepts: Schema, Assimilation, Accommodation, Equilibration.
+
+2. LEV VYGOTSKY'S SOCIO-CULTURAL THEORY
+• Learning occurs first through social interaction (Inter-psychological) and then internally (Intra-psychological).
+• ZPD (Zone of Proximal Development): Gap between what a learner can do independently and what they can achieve with guidance.
+• Scaffolding: Temporary support given by a More Knowledgeable Other (MKO).
+• Private Speech: Self-talk used by children to regulate their thinking (Vygotsky saw it as positive self-regulation).
+
+3. KOHLBERG'S MORAL DEVELOPMENT (3 LEVELS, 6 STAGES)
+• Pre-conventional: Obedience & Punishment (Stage 1), Individualism & Exchange / Tit-for-Tat (Stage 2).
+• Conventional: Good Boy / Nice Girl (Stage 3), Law & Order (Stage 4).
+• Post-conventional: Social Contract (Stage 5), Universal Ethical Principles (Stage 6).
+
+4. NEP 2020 & RTE ACT 2009 HIGHLIGHTS
+• NEP 2020 Curricular Structure: 5 + 3 + 3 + 4 (Foundational 3–8 yrs, Preparatory 8–11 yrs, Middle 11–14 yrs, Secondary 14–18 yrs).
+• RTE Act 2009: Free & compulsory education for children aged 6–14 years (Article 21A); 6–18 years for children with benchmark disabilities.`,
+  },
+  {
+    id: "note:math:formula-sheet",
+    title: "Mathematics Complete Formula Sheet — Arithmetic, Algebra & Mensuration",
+    subject: "Mathematics",
+    chapter: "Complete Formula & Shortcut Sheet",
+    class_level: "All Competitive & Board Exams",
+    material_type: "Formula Sheet",
+    pages: 5,
+    description: `1. PERCENTAGE, PROFIT & LOSS, SI & CI
+• Profit % = (Profit / CP) × 100 | Loss % = (Loss / CP) × 100
+• Successive change of a% and b% = (a + b + ab/100)%
+• Simple Interest (SI) = (P × R × T) / 100
+• Compound Interest Amount A = P(1 + R/100)^T | 2-Year CI − SI difference = P(R/100)^2
+
+2. NUMBER SYSTEM & ALGEBRA IDENTITIES
+• Sum of first n natural numbers = n(n + 1)/2
+• Sum of squares of first n natural numbers = n(n + 1)(2n + 1)/6
+• HCF × LCM = Product of two numbers
+• (a + b)^2 = a^2 + 2ab + b^2 | a^3 + b^3 + c^3 − 3abc = (a + b + c)(a^2 + b^2 + c^2 − ab − bc − ca)
+
+3. MENSURATION 2D & 3D
+• Equilateral Triangle: Area = (√3 / 4)a^2, Height = (√3 / 2)a
+• Circle: Area = πr^2, Circumference = 2πr
+• Cylinder: CSA = 2πrh, TSA = 2πr(r + h), Volume = πr^2h
+• Cone: Slant height l = √(r^2 + h^2), CSA = πrl, Volume = (1/3)πr^2h
+• Sphere: Surface Area = 4πr^2, Volume = (4/3)πr^3`,
+  },
+];
+
+export function formatTheoryChapterAsNote(chapter: TheoryChapter): BuiltInStudyNote {
+  const lines: string[] = [];
+  chapter.questions.forEach((q, idx) => {
+    lines.push(`Q${idx + 1}. ${q.q} [${q.marks} Marks · ${q.kind}]`);
+    q.points.forEach((pt) => {
+      lines.push(`  • ${pt}`);
+    });
+    lines.push("");
+  });
+  return {
+    id: `theory:${chapter.id}`,
+    title: `${chapter.chapter} — Complete Chapter Notes & Solved Q&A`,
+    subject: chapter.subject,
+    chapter: chapter.chapter,
+    class_level: `Class ${chapter.classLevel} (${chapter.boards.join(" / ")})`,
+    material_type: "Notes",
+    pages: Math.max(3, chapter.questions.length),
+    description: lines.join("\n").trim(),
+  };
+}
+
+export function getAllBuiltInStudyNotes(): BuiltInStudyNote[] {
+  return [...COMPETITIVE_STUDY_NOTES, ...THEORY_CHAPTERS.map(formatTheoryChapterAsNote)];
+}

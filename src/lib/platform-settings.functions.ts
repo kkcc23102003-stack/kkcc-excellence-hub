@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: Record<PublicSettingKey, string> = {
   razorpay_key_id: "",
   offline_payment_instructions:
     "Use the KKCC inquiry flow for UPI, cash or bank-transfer access. Course access is activated after the KKCC team confirms the payment.",
-  storage_provider: "external_url",
+  storage_provider: "supabase",
   storage_bucket: "course-content",
   storage_region: "",
   storage_endpoint: "",
@@ -168,14 +168,26 @@ async function readPrivateStatuses(supabase: SupabaseClient<Database>) {
   ) as Record<PrivateSecretKey, { configured: boolean; updated_at: string | null }>;
 }
 
+export const EMPTY_PUBLIC_PAYMENT_SETTINGS = {
+  enabled: false,
+  provider: "razorpay",
+  mode: "test" as "test" | "live",
+  razorpay_key_id: "",
+  offline_payment_instructions: DEFAULT_SETTINGS.offline_payment_instructions,
+};
+
 export const getPublicPaymentSettings = createServerFn({ method: "GET" }).handler(async () => {
   const supabase = publicClient();
   const settings = supabase ? await readPublicSettings(supabase) : { ...DEFAULT_SETTINGS };
+  const keyId = (settings.razorpay_key_id ?? "").trim();
+  const isEnabled = Boolean(keyId) && settings.payment_enabled !== "disabled_manual";
+  const detectedMode =
+    settings.payment_mode === "live" || keyId.startsWith("rzp_live_") ? "live" : "test";
   return {
-    enabled: settings.payment_enabled === "true",
+    enabled: isEnabled,
     provider: settings.payment_provider || "razorpay",
-    mode: settings.payment_mode === "live" ? "live" : "test",
-    razorpay_key_id: settings.razorpay_key_id,
+    mode: detectedMode as "test" | "live",
+    razorpay_key_id: keyId,
     offline_payment_instructions: settings.offline_payment_instructions,
   };
 });
@@ -188,13 +200,17 @@ export const getAdminPaymentSettings = createServerFn({ method: "GET" })
       readPublicSettings(context.supabase),
       readPrivateStatuses(context.supabase),
     ]);
+    const keyId = (settings.razorpay_key_id ?? "").trim();
+    const isEnabled = Boolean(keyId) && settings.payment_enabled !== "disabled_manual";
+    const detectedMode =
+      settings.payment_mode === "live" || keyId.startsWith("rzp_live_") ? "live" : "test";
 
     return {
       owner_email: OWNER_EMAIL,
-      enabled: settings.payment_enabled === "true",
+      enabled: isEnabled,
       provider: (settings.payment_provider || "razorpay") as "razorpay",
-      mode: settings.payment_mode === "live" ? "live" : "test",
-      razorpay_key_id: settings.razorpay_key_id,
+      mode: detectedMode as "test" | "live",
+      razorpay_key_id: keyId,
       offline_payment_instructions: settings.offline_payment_instructions,
       secrets: {
         razorpay_key_secret: privateStatuses.razorpay_key_secret,
@@ -208,11 +224,21 @@ export const saveAdminPaymentSettings = createServerFn({ method: "POST" })
   .validator((input: unknown) => paymentSchema.parse(input))
   .handler(async ({ context, data }) => {
     await assertAdmin(context);
+    const prevSettings = await readPublicSettings(context.supabase);
+    const keyId = data.razorpay_key_id.trim();
+    const keyJustAddedOrChanged = keyId.length > 0 && prevSettings.razorpay_key_id.trim() !== keyId;
+    const effectiveEnabled = keyId.length > 0 && (data.enabled || keyJustAddedOrChanged);
+    const effectiveMode: "test" | "live" = keyId.startsWith("rzp_live_")
+      ? "live"
+      : keyId.startsWith("rzp_test_")
+        ? "test"
+        : data.mode;
+
     await upsertPublicSettings(context.supabase, {
       payment_provider: data.provider,
-      payment_enabled: String(data.enabled),
-      payment_mode: data.mode,
-      razorpay_key_id: data.razorpay_key_id,
+      payment_enabled: !keyId ? "false" : effectiveEnabled ? "true" : "disabled_manual",
+      payment_mode: effectiveMode,
+      razorpay_key_id: keyId,
       offline_payment_instructions: data.offline_payment_instructions,
     });
     await upsertPrivateSettings(context.supabase, context.userId, {
@@ -222,10 +248,10 @@ export const saveAdminPaymentSettings = createServerFn({ method: "POST" })
     const privateStatuses = await readPrivateStatuses(context.supabase);
     return {
       owner_email: OWNER_EMAIL,
-      enabled: data.enabled,
+      enabled: effectiveEnabled,
       provider: data.provider,
-      mode: data.mode,
-      razorpay_key_id: data.razorpay_key_id,
+      mode: effectiveMode,
+      razorpay_key_id: keyId,
       offline_payment_instructions: data.offline_payment_instructions,
       secrets: {
         razorpay_key_secret: privateStatuses.razorpay_key_secret,

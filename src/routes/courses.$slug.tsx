@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import {
   PlayCircle,
@@ -10,11 +11,15 @@ import {
   Repeat,
   Video,
   Star,
+  Tag,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { SiteLayout } from "@/components/kkcc/site-layout";
 import { CourseThumb } from "@/components/kkcc/course-thumb";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Accordion,
   AccordionContent,
@@ -22,19 +27,24 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { FAQS } from "@/data/kkcc";
-import { coinPriceOf, coursePriceLabel, groupLectures, isFreeCourse } from "@/lib/cms";
+import { coinPriceOf, coursePriceLabel, formatINR, groupLectures, isFreeCourse } from "@/lib/cms";
 import { getCourseDetail } from "@/lib/content.functions";
+import { validateCouponForCourse } from "@/lib/coupons.functions";
+import {
+  EMPTY_PUBLIC_PAYMENT_SETTINGS,
+  getPublicPaymentSettings,
+} from "@/lib/platform-settings.functions";
 import { safeServerCall } from "@/lib/safe-server-call";
 import { KaatCoin } from "@/components/kkcc/kaat-coin";
 
 export const Route = createFileRoute("/courses/$slug")({
   loader: async ({ params }) => {
-    const detail = await safeServerCall(
-      () => getCourseDetail({ data: { slug: params.slug } }),
-      null,
-    );
+    const [detail, payment] = await Promise.all([
+      safeServerCall(() => getCourseDetail({ data: { slug: params.slug } }), null),
+      safeServerCall(() => getPublicPaymentSettings(), EMPTY_PUBLIC_PAYMENT_SETTINGS),
+    ]);
     if (!detail) throw notFound();
-    return detail;
+    return { ...detail, payment };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -65,10 +75,51 @@ const INCLUDES = [
 ];
 
 function CourseDetail() {
-  const { course, lectures } = Route.useLoaderData();
+  const { course, lectures, payment = EMPTY_PUBLIC_PAYMENT_SETTINGS } = Route.useLoaderData();
   const modules = groupLectures(lectures);
   const free = isFreeCourse(course);
   const coinPrice = coinPriceOf(course);
+  const paymentConfigured = Boolean(payment.enabled && payment.razorpay_key_id);
+  const [couponInput, setCouponInput] = useState("");
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+  const [previewCoupon, setPreviewCoupon] = useState<{
+    code: string;
+    discount_percent: number;
+    discount_amount: number;
+    final_amount: number;
+    final_coins?: number;
+  } | null>(null);
+
+  const handleCheckCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) {
+      toast.error("Please enter a coupon code first");
+      return;
+    }
+    setCheckingCoupon(true);
+    setPreviewCoupon(null);
+    try {
+      const res = await validateCouponForCourse({
+        data: { code, course_slug: course.slug, series_id: "", test_id: "" },
+      });
+      if (!res.valid) {
+        toast.error(res.message || "Invalid coupon code");
+        return;
+      }
+      setPreviewCoupon({
+        code: res.code,
+        discount_percent: res.discount_percent,
+        discount_amount: res.discount_amount,
+        final_amount: res.final_amount,
+        final_coins: res.final_coins,
+      });
+      toast.success(`${res.discount_percent}% coupon discount applied!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check coupon");
+    } finally {
+      setCheckingCoupon(false);
+    }
+  };
 
   return (
     <SiteLayout>
@@ -109,20 +160,90 @@ function CourseDetail() {
           <div className="surface-panel overflow-hidden p-0">
             <CourseThumb course={course} className="aspect-[16/9]" />
             <div className="p-6">
-              <div className="flex flex-wrap items-end gap-3">
-                <p className="font-display text-3xl font-bold">{coursePriceLabel(course)}</p>
-                {course.original_price > course.price && (
-                  <p className="pb-1 text-sm text-muted-foreground line-through">
-                    {coursePriceLabel({ price: course.original_price })}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <p className="font-display text-3xl font-bold">
+                    {previewCoupon
+                      ? previewCoupon.final_amount <= 0
+                        ? "Free (100% Coupon)"
+                        : formatINR(previewCoupon.final_amount)
+                      : coursePriceLabel(course)}
                   </p>
+                  {previewCoupon ? (
+                    <p className="pb-1 text-sm text-muted-foreground line-through">
+                      {coursePriceLabel(course)}
+                    </p>
+                  ) : course.original_price > course.price ? (
+                    <p className="pb-1 text-sm text-muted-foreground line-through">
+                      {coursePriceLabel({ price: course.original_price })}
+                    </p>
+                  ) : null}
+                </div>
+                {!free && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      paymentConfigured
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300"
+                    }
+                  >
+                    {paymentConfigured
+                      ? "Paid · Online / Offline"
+                      : "Paid · Offline (Contact Admin)"}
+                  </Badge>
                 )}
               </div>
               {!free && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary">
-                  <KaatCoin size="sm" /> {coinPrice} 23KAAT
-                  {coinPrice < course.price ? (
+                  <KaatCoin size="sm" />{" "}
+                  {previewCoupon?.final_coins !== undefined ? previewCoupon.final_coins : coinPrice}{" "}
+                  23KAAT
+                  {previewCoupon ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      ({previewCoupon.discount_percent}% OFF)
+                    </span>
+                  ) : coinPrice < course.price ? (
                     <span className="text-success">coin deal</span>
                   ) : null}
+                </div>
+              )}
+              {!free && (
+                <div className="mt-4 rounded-2xl border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Have a coupon code? (1% to 100% OFF)
+                  </p>
+                  <div className="mt-1.5 flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={couponInput}
+                        onChange={(e) => {
+                          setCouponInput(e.target.value.toUpperCase());
+                          setPreviewCoupon(null);
+                        }}
+                        placeholder="Enter coupon code"
+                        className="h-9 pl-8 font-mono text-xs uppercase"
+                        maxLength={40}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 rounded-lg text-xs"
+                      disabled={checkingCoupon || !couponInput.trim()}
+                      onClick={() => void handleCheckCoupon()}
+                    >
+                      {checkingCoupon ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                    </Button>
+                  </div>
+                  {previewCoupon && (
+                    <p className="mt-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      Coupon {previewCoupon.code} applied: {previewCoupon.discount_percent}% OFF
+                      (Saved {formatINR(previewCoupon.discount_amount)})
+                    </p>
+                  )}
                 </div>
               )}
               <div className="mt-5 space-y-2">
@@ -132,8 +253,18 @@ function CourseDetail() {
                       Start Free Course
                     </Link>
                   ) : (
-                    <Link to="/checkout" search={{ course: course.slug }}>
-                      Enroll Now
+                    <Link
+                      to="/checkout"
+                      search={{
+                        course: course.slug,
+                        ...(previewCoupon ? { coupon: previewCoupon.code } : {}),
+                      }}
+                    >
+                      {previewCoupon && previewCoupon.final_amount <= 0
+                        ? "Claim Free Batch with 100% Coupon"
+                        : paymentConfigured
+                          ? "Buy Batch Online"
+                          : "Buy Batch (Offline / Contact Admin)"}
                     </Link>
                   )}
                 </Button>
@@ -146,7 +277,9 @@ function CourseDetail() {
               <p className="mt-4 text-center text-xs text-muted-foreground">
                 {free
                   ? "No Razorpay/payment needed — start learning instantly."
-                  : "Secure checkout — payment gateway to be connected."}
+                  : paymentConfigured
+                    ? "Online payment (Razorpay) active — pay online, use 23KAAT coins, or contact Admin."
+                    : "Online payment (Razorpay) is currently off — please contact Admin for offline payment or use 23KAAT coins."}
               </p>
             </div>
           </div>

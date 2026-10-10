@@ -662,4 +662,883 @@ CREATE INDEX IF NOT EXISTS kkcc_attempt_history_user ON public.learning_attempts
 
 -- Stop historical educational uploads while preserving unrelated profile/avatar buckets.
 DO $$ DECLARE p record; BEGIN FOR p IN SELECT policyname FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND (coalesce(qual,'')||coalesce(with_check,'')) LIKE '%course-content%' LOOP EXECUTE format('DROP POLICY %I ON storage.objects',p.policyname); END LOOP; END $$;
+
+CREATE TABLE IF NOT EXISTS public.syllabus_nodes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_id uuid REFERENCES public.syllabus_nodes(id) ON DELETE CASCADE,
+  node_type text NOT NULL CHECK (node_type IN ('subject','chapter','topic')),
+  name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_syllabus_nodes_parent ON public.syllabus_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_syllabus_nodes_type_name ON public.syllabus_nodes(node_type, name);
+ALTER TABLE public.syllabus_nodes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Syllabus is publicly readable" ON public.syllabus_nodes;
+CREATE POLICY "Syllabus is publicly readable" ON public.syllabus_nodes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admins manage syllabus" ON public.syllabus_nodes;
+CREATE POLICY "Admins manage syllabus" ON public.syllabus_nodes FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'));
+GRANT SELECT ON public.syllabus_nodes TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.syllabus_nodes TO authenticated;
+GRANT ALL ON public.syllabus_nodes TO service_role;
+COMMIT;
+-- KKCC Free-plan space tools. Run ONCE in Supabase SQL Editor.
+-- Installing this file deletes NOTHING. Admin panel defaults to preview only.
+-- Back up before a confirmed cleanup. Submitted results/payments/users stay intact.
+BEGIN;
+CREATE OR REPLACE FUNCTION public.kkcc_space_report(
+  p_cleanup boolean DEFAULT false,
+  p_before timestamptz DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  cutoff timestamptz := coalesce(p_before, now() - interval '90 days');
+  candidates integer := 0;
+  removed integer := 0;
+  sizes jsonb;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'Admin access required' USING ERRCODE = '42501';
+  END IF;
+  IF cutoff > now() - interval '90 days' OR cutoff < timestamptz '2000-01-01' THEN
+    RAISE EXCEPTION 'Cutoff must be at least 90 days old';
+  END IF;
+  -- Bound work to 5,000 rows per confirmed batch. No cron, no silent deletion.
+  SELECT count(*) INTO candidates FROM (
+    SELECT id FROM public.learning_attempts
+    WHERE status = 'started' AND submitted_at IS NULL
+      AND started_at < cutoff AND duration_seconds >= 0
+      AND started_at + make_interval(secs => duration_seconds) < cutoff
+    ORDER BY started_at, id LIMIT 5000
+  ) eligible;
+  IF p_cleanup THEN
+    WITH eligible AS (
+      SELECT id FROM public.learning_attempts
+      WHERE status = 'started' AND submitted_at IS NULL
+        AND started_at < cutoff AND duration_seconds >= 0
+        AND started_at + make_interval(secs => duration_seconds) < cutoff
+      ORDER BY started_at, id LIMIT 5000 FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM public.learning_attempts a USING eligible e
+    WHERE a.id = e.id AND a.status = 'started' AND a.submitted_at IS NULL;
+    GET DIAGNOSTICS removed = ROW_COUNT;
+  END IF;
+  SELECT coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO sizes FROM (
+    SELECT c.relname AS name, pg_total_relation_size(c.oid) AS bytes
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r','m')
+    ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 12
+  ) t;
+  RETURN jsonb_build_object(
+    'database_bytes', pg_database_size(current_database()),
+    'tables', sizes, 'cutoff', cutoff, 'eligible_batch', candidates,
+    'deleted', removed, 'batch_limit', 5000, 'preview', NOT p_cleanup
+  );
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_space_report(boolean,timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.kkcc_space_report(boolean,timestamptz) TO authenticated;
+
+-- Disable the old destructive cleaner entry point. It used to delete 24-hour
+-- attempts and expire grants, and could run without checking the caller's role.
+-- Legacy callers now get a non-destructive, admin-only report.
+CREATE OR REPLACE FUNCTION public.kkcc_clean_database_bloat()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  RETURN public.kkcc_space_report(false, NULL);
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_clean_database_bloat() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.kkcc_clean_database_bloat() TO authenticated;
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+-- PostgreSQL autovacuum can reuse deleted space later. File size/billed usage
+-- need not shrink immediately. Do NOT run VACUUM FULL on a live app casually.
+-- This report is database size, NOT Supabase Storage object quota or billing.
+-- NOTES READ-ONLY FIX: durable Supabase notes/settings, no S3 required.
+-- Additive. Does not delete legacy data, student records or question banks.
+-- Deploy updated app alongside this migration. Never expose service_role in VITE_*.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.kkcc_materials (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ course_id uuid, lecture_id uuid,
+ title text NOT NULL DEFAULT '', description text NOT NULL DEFAULT '',
+ subject text NOT NULL DEFAULT '', chapter text NOT NULL DEFAULT '',
+ module_title text NOT NULL DEFAULT '', batch text NOT NULL DEFAULT '',
+ material_type text NOT NULL DEFAULT 'Notes', class_level text NOT NULL DEFAULT '',
+ pages integer NOT NULL DEFAULT 0, file_url text, thumbnail_url text,
+ access_type text NOT NULL DEFAULT 'free', price integer NOT NULL DEFAULT 0,
+ coin_price integer NOT NULL DEFAULT 0, is_published boolean NOT NULL DEFAULT false,
+ sort_order integer NOT NULL DEFAULT 0,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_site_settings (
+ key text PRIMARY KEY, value text NOT NULL DEFAULT '',
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_private_settings (
+ key text PRIMARY KEY, value text NOT NULL DEFAULT '', updated_by uuid,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_content_files (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider text NOT NULL DEFAULT 'supabase',
+ bucket text NOT NULL DEFAULT 'course-content', path text NOT NULL,
+ public_url text NOT NULL DEFAULT '', original_url text NOT NULL DEFAULT '',
+ mime_type text NOT NULL DEFAULT '', size_bytes bigint NOT NULL DEFAULT 0,
+ linked_table text NOT NULL DEFAULT '', linked_id uuid, created_by uuid,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- App server checks admin/student access before reading these tables.
+-- Browser roles must NEVER read private settings or paid note bodies directly.
+ALTER TABLE public.kkcc_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_site_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_private_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_content_files ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_materials,public.kkcc_site_settings,public.kkcc_private_settings,public.kkcc_content_files FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_materials,public.kkcc_site_settings,public.kkcc_private_settings,public.kkcc_content_files TO service_role;
+CREATE INDEX IF NOT EXISTS kkcc_materials_published_order ON public.kkcc_materials(is_published,sort_order);
+
+-- Copy matching old CMS rows once, without overwriting any newer admin edits.
+DO $$ BEGIN
+ IF to_regclass('public.materials') IS NOT NULL THEN
+   EXECUTE $copy$
+     INSERT INTO public.kkcc_materials
+     SELECT (jsonb_populate_record(NULL::public.kkcc_materials,
+       '{"title":"","description":"","subject":"","chapter":"","module_title":"","batch":"","material_type":"Notes","class_level":"","pages":0,"access_type":"free","price":0,"coin_price":0,"is_published":false,"sort_order":0}'::jsonb
+       || jsonb_build_object('created_at',now(),'updated_at',now()) || jsonb_strip_nulls(to_jsonb(m)))).*
+     FROM public.materials m ON CONFLICT(id) DO NOTHING
+   $copy$;
+ END IF;
+ IF to_regclass('public.site_settings') IS NOT NULL THEN
+   EXECUTE 'INSERT INTO public.kkcc_site_settings(key,value) SELECT key,coalesce(value,'''') FROM public.site_settings ON CONFLICT(key) DO NOTHING';
+ END IF;
+ IF to_regclass('public.private_settings') IS NOT NULL THEN
+   EXECUTE 'INSERT INTO public.kkcc_private_settings(key,value) SELECT key,coalesce(value,'''') FROM public.private_settings ON CONFLICT(key) DO NOTHING';
+ END IF;
+END $$;
+-- Do not overwrite an existing provider and break previously uploaded objects.
+INSERT INTO public.kkcc_site_settings(key,value) VALUES
+ ('storage_provider','supabase'),('storage_bucket','course-content')
+ON CONFLICT(key) DO NOTHING;
+INSERT INTO storage.buckets(id,name,public,file_size_limit)
+VALUES('course-content','course-content',false,47185920)
+ON CONFLICT(id) DO NOTHING;
+DROP POLICY IF EXISTS "KKCC notes admin upload" ON storage.objects;
+CREATE POLICY "KKCC notes admin upload" ON storage.objects FOR INSERT TO authenticated
+ WITH CHECK(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "KKCC notes admin update" ON storage.objects;
+CREATE POLICY "KKCC notes admin update" ON storage.objects FOR UPDATE TO authenticated
+ USING(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'))
+ WITH CHECK(bucket_id='course-content' AND public.has_role(auth.uid(),'admin'));
+NOTIFY pgrst,'reload schema';
+COMMIT;
+-- Existing file/S3 project-content documents are not in legacy SQL tables and
+-- are not copied by this SQL. Export/back up and import them separately if used.
+-- One-time test-builder fix: published tests/questions in Supabase, template BANK stays in source.
+-- Back up first. Additive migration; no student records or old CMS rows deleted.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.kkcc_tests (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), course_id uuid, lecture_id uuid,
+ title text NOT NULL DEFAULT '', instructions text NOT NULL DEFAULT '', subject text NOT NULL DEFAULT '',
+ duration_minutes integer DEFAULT 30, question_timer_seconds integer DEFAULT 0, timer_mode text DEFAULT 'test',
+ questions_count integer DEFAULT 0, total_marks numeric DEFAULT 0, is_published boolean DEFAULT false, sort_order integer DEFAULT 0,
+ exam_track text DEFAULT '', level text DEFAULT 'Mixed', series_name text DEFAULT '',
+ is_paid boolean DEFAULT false, price_inr integer DEFAULT 0, price_coins integer DEFAULT 0,
+ question_source text DEFAULT 'manual', generation_exam text DEFAULT 'All Exams', generation_subject text DEFAULT '',
+ generation_topic text DEFAULT 'Mixed', generation_difficulty text DEFAULT 'Mixed', generation_count integer DEFAULT 0,
+ generation_marks numeric DEFAULT 1, generation_negative_marks numeric DEFAULT 0,
+ syllabus_subject text DEFAULT '', syllabus_chapter text DEFAULT '', syllabus_topic text DEFAULT '',
+ easy_request_hash text, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.kkcc_test_questions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), test_id uuid NOT NULL REFERENCES public.kkcc_tests(id) ON DELETE CASCADE,
+ question_text text NOT NULL, subject text DEFAULT '', options text[] NOT NULL, correct_index integer NOT NULL,
+ marks numeric DEFAULT 1, negative_marks numeric DEFAULT 0, explanation text DEFAULT '', sort_order integer DEFAULT 0,
+ created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS kkcc_test_questions_order ON public.kkcc_test_questions(test_id,sort_order);
+ALTER TABLE public.kkcc_tests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kkcc_test_questions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_tests,public.kkcc_test_questions FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_tests,public.kkcc_test_questions TO service_role;
+-- Copy legacy rows using shared columns; do not replace newer managed edits.
+DO $$ DECLARE src text; dst text; cols text; BEGIN
+ FOREACH src IN ARRAY ARRAY['tests','test_questions'] LOOP
+  dst := 'kkcc_' || src;
+  IF to_regclass('public.' || src) IS NOT NULL THEN
+   SELECT string_agg(format('%I',s.column_name),',' ORDER BY s.ordinal_position) INTO cols
+   FROM information_schema.columns s JOIN information_schema.columns d ON d.column_name=s.column_name
+   WHERE s.table_schema='public' AND s.table_name=src AND d.table_schema='public' AND d.table_name=dst;
+   EXECUTE format('INSERT INTO public.%I (%s) SELECT %s FROM public.%I ON CONFLICT(id) DO NOTHING',dst,cols,cols,src);
+  END IF;
+ END LOOP;
+END $$;
+CREATE OR REPLACE FUNCTION public.kkcc_refresh_test_counts() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE tid uuid; BEGIN
+ tid := CASE WHEN TG_OP='DELETE' THEN OLD.test_id ELSE NEW.test_id END;
+ UPDATE public.kkcc_tests SET questions_count=(SELECT count(*) FROM public.kkcc_test_questions WHERE test_id=tid),
+ total_marks=coalesce((SELECT sum(marks) FROM public.kkcc_test_questions WHERE test_id=tid),0),updated_at=now()
+ WHERE id=tid AND question_source='manual';
+ RETURN NULL; END $$;
+DROP TRIGGER IF EXISTS kkcc_refresh_test_counts ON public.kkcc_test_questions;
+CREATE TRIGGER kkcc_refresh_test_counts AFTER INSERT OR UPDATE OR DELETE ON public.kkcc_test_questions FOR EACH ROW EXECUTE FUNCTION public.kkcc_refresh_test_counts();
+REVOKE ALL ON FUNCTION public.kkcc_refresh_test_counts() FROM PUBLIC,anon,authenticated;
+CREATE OR REPLACE FUNCTION public.publish_easy_text_test(p_actor uuid,p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tid uuid; q jsonb; n integer; pos integer:=0; fingerprint text; old_hash text; BEGIN
+ IF auth.role()<>'service_role' OR NOT public.has_role(p_actor,'admin') THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ tid := (p_payload->>'id')::uuid;
+ IF tid IS NULL OR jsonb_typeof(p_payload->'questions') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid questions'; END IF;
+ n:=jsonb_array_length(p_payload->'questions');
+ IF n NOT BETWEEN 1 AND 200 OR coalesce(length(trim(p_payload->>'subject')),0)=0 OR coalesce(length(trim(p_payload->>'chapter')),0)=0 OR coalesce(length(trim(p_payload->>'title')),0)<2 OR (p_payload->>'duration_minutes')::integer NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'Invalid test details'; END IF;
+ fingerprint:=md5(p_payload::text);
+ PERFORM pg_advisory_xact_lock(hashtext(tid::text));
+ SELECT easy_request_hash INTO old_hash FROM public.kkcc_tests WHERE id=tid;
+ IF FOUND THEN
+   IF old_hash IS DISTINCT FROM fingerprint THEN RAISE EXCEPTION 'Test already saved with different content. Open it in Advanced to edit.'; END IF;
+   RETURN jsonb_build_object('id',tid,'count',n);
+ END IF;
+ INSERT INTO public.kkcc_tests(id,title,instructions,subject,duration_minutes,syllabus_subject,syllabus_chapter,series_name,easy_request_hash,is_published,question_source)
+ VALUES(tid,p_payload->>'title','Answer every question. 1 mark each; no negative marking.',p_payload->>'subject',(p_payload->>'duration_minutes')::integer,p_payload->>'subject',p_payload->>'chapter',coalesce(p_payload->>'series_name',''),fingerprint,false,'manual');
+ FOR q IN SELECT value FROM jsonb_array_elements(p_payload->'questions') LOOP
+  IF coalesce(length(trim(q->>'question_text')),0)<3 OR jsonb_typeof(q->'options') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid question'; END IF;
+  IF jsonb_array_length(q->'options') NOT BETWEEN 2 AND 4 OR q->>'correct_index' IS NULL OR (q->>'correct_index')::integer NOT BETWEEN 0 AND jsonb_array_length(q->'options')-1 THEN RAISE EXCEPTION 'Invalid answer/options'; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(q->'options') v WHERE jsonb_typeof(v)<>'string' OR length(trim(v#>>'{}'))=0) OR (SELECT count(DISTINCT lower(trim(value))) FROM jsonb_array_elements_text(q->'options'))<>jsonb_array_length(q->'options') THEN RAISE EXCEPTION 'Empty/duplicate options'; END IF;
+  INSERT INTO public.kkcc_test_questions(test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order)
+  VALUES(tid,q->>'question_text',p_payload->>'subject',ARRAY(SELECT jsonb_array_elements_text(q->'options')),(q->>'correct_index')::integer,1,0,coalesce(q->>'explanation',''),pos);
+  pos:=pos+1;
+ END LOOP;
+ UPDATE public.kkcc_tests SET is_published=true WHERE id=tid;
+ RETURN jsonb_build_object('id',tid,'count',n);
+END $$;
+REVOKE ALL ON FUNCTION public.publish_easy_text_test(uuid,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_easy_text_test(uuid,jsonb) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Paid Easy Text Test; versioned RPC prevents old SQL from silently publishing paid content as free.
+BEGIN;
+CREATE OR REPLACE FUNCTION public.publish_easy_text_test_v2(p_actor uuid,p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tid uuid; q jsonb; n integer; pos integer:=0; fingerprint text; old_hash text; paid boolean; rupees integer; coins integer; BEGIN
+ IF auth.role()<>'service_role' OR NOT public.has_role(p_actor,'admin') THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ tid := (p_payload->>'id')::uuid;
+ IF tid IS NULL OR jsonb_typeof(p_payload->'questions') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid questions'; END IF;
+ n:=jsonb_array_length(p_payload->'questions');
+ IF n NOT BETWEEN 1 AND 200 OR coalesce(length(trim(p_payload->>'subject')),0)=0 OR coalesce(length(trim(p_payload->>'chapter')),0)=0 OR coalesce(length(trim(p_payload->>'title')),0)<2 OR (p_payload->>'duration_minutes')::integer NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'Invalid test details'; END IF;
+ paid := coalesce((p_payload->>'is_paid')::boolean,false);
+ rupees := coalesce((p_payload->>'price_inr')::integer,0);
+ coins := coalesce((p_payload->>'price_coins')::integer,0);
+ IF rupees NOT BETWEEN 0 AND 100000 OR coins NOT BETWEEN 0 AND 1000000 THEN RAISE EXCEPTION 'Invalid price'; END IF;
+ IF paid AND rupees=0 AND coins=0 THEN RAISE EXCEPTION 'A paid test needs a rupee price, a coin price, or both'; END IF;
+ IF NOT paid THEN rupees:=0; coins:=0; END IF;
+ fingerprint:=md5(p_payload::text);
+ PERFORM pg_advisory_xact_lock(hashtext(tid::text));
+ SELECT easy_request_hash INTO old_hash FROM public.kkcc_tests WHERE id=tid;
+ IF FOUND THEN
+   IF old_hash IS DISTINCT FROM fingerprint THEN RAISE EXCEPTION 'Test already saved with different content. Open it in Advanced to edit.'; END IF;
+   RETURN jsonb_build_object('id',tid,'count',n);
+ END IF;
+ INSERT INTO public.kkcc_tests(id,title,instructions,subject,duration_minutes,syllabus_subject,syllabus_chapter,series_name,easy_request_hash,is_published,question_source,is_paid,price_inr,price_coins)
+ VALUES(tid,p_payload->>'title','Answer every question. 1 mark each; no negative marking.',p_payload->>'subject',(p_payload->>'duration_minutes')::integer,p_payload->>'subject',p_payload->>'chapter',coalesce(p_payload->>'series_name',''),fingerprint,false,'manual',paid,rupees,coins);
+ FOR q IN SELECT value FROM jsonb_array_elements(p_payload->'questions') LOOP
+  IF coalesce(length(trim(q->>'question_text')),0)<3 OR jsonb_typeof(q->'options') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid question'; END IF;
+  IF jsonb_array_length(q->'options') NOT BETWEEN 2 AND 4 OR q->>'correct_index' IS NULL OR (q->>'correct_index')::integer NOT BETWEEN 0 AND jsonb_array_length(q->'options')-1 THEN RAISE EXCEPTION 'Invalid answer/options'; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(q->'options') v WHERE jsonb_typeof(v)<>'string' OR length(trim(v#>>'{}'))=0) OR (SELECT count(DISTINCT lower(trim(value))) FROM jsonb_array_elements_text(q->'options'))<>jsonb_array_length(q->'options') THEN RAISE EXCEPTION 'Empty/duplicate options'; END IF;
+  INSERT INTO public.kkcc_test_questions(test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order)
+  VALUES(tid,q->>'question_text',p_payload->>'subject',ARRAY(SELECT jsonb_array_elements_text(q->'options')),(q->>'correct_index')::integer,1,0,coalesce(q->>'explanation',''),pos);
+  pos:=pos+1;
+ END LOOP;
+ UPDATE public.kkcc_tests SET is_published=true WHERE id=tid;
+ RETURN jsonb_build_object('id',tid,'count',n);
+END $$;
+REVOKE ALL ON FUNCTION public.publish_easy_text_test_v2(uuid,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_easy_text_test_v2(uuid,jsonb) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Apply after the previous KKCC Publish Fix SQL. Additive; no saved content deleted.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.kkcc_test_folders (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ series_name text NOT NULL DEFAULT '', subject text NOT NULL,
+ chapter text NOT NULL DEFAULT '', topic text NOT NULL DEFAULT '',
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK(length(trim(subject))>0), CHECK(topic='' OR chapter<>''),
+ UNIQUE(series_name,subject,chapter,topic)
+);
+ALTER TABLE public.kkcc_test_folders ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_test_folders FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_test_folders TO service_role;
+ALTER TABLE public.kkcc_tests ADD COLUMN IF NOT EXISTS assembly_source_ids uuid[] NOT NULL DEFAULT '{}';
+CREATE OR REPLACE FUNCTION public.publish_easy_text_test_v3(p_actor uuid,p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tid uuid; q jsonb; n integer; pos integer:=0; fingerprint text; old_hash text; paid boolean; rupees integer; coins integer; BEGIN
+ IF auth.role()<>'service_role' OR NOT public.has_role(p_actor,'admin') THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ tid := (p_payload->>'id')::uuid;
+ IF tid IS NULL OR jsonb_typeof(p_payload->'questions') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid questions'; END IF;
+ n:=jsonb_array_length(p_payload->'questions');
+ IF n NOT BETWEEN 1 AND 200 OR coalesce(length(trim(p_payload->>'subject')),0)=0 OR coalesce(length(trim(p_payload->>'chapter')),0)=0 OR coalesce(length(trim(p_payload->>'title')),0)<2 OR (p_payload->>'duration_minutes')::integer NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'Invalid test details'; END IF;
+ paid := coalesce((p_payload->>'is_paid')::boolean,false);
+ rupees := coalesce((p_payload->>'price_inr')::integer,0);
+ coins := coalesce((p_payload->>'price_coins')::integer,0);
+ IF rupees NOT BETWEEN 0 AND 100000 OR coins NOT BETWEEN 0 AND 1000000 THEN RAISE EXCEPTION 'Invalid price'; END IF;
+ IF paid AND rupees=0 AND coins=0 THEN RAISE EXCEPTION 'A paid test needs a rupee price, a coin price, or both'; END IF;
+ IF NOT paid THEN rupees:=0; coins:=0; END IF;
+ fingerprint:=md5(p_payload::text);
+ PERFORM pg_advisory_xact_lock(hashtext(tid::text));
+ SELECT easy_request_hash INTO old_hash FROM public.kkcc_tests WHERE id=tid;
+ IF FOUND THEN
+   IF old_hash IS DISTINCT FROM fingerprint THEN RAISE EXCEPTION 'Test already saved with different content. Open it in Advanced to edit.'; END IF;
+   RETURN jsonb_build_object('id',tid,'count',n);
+ END IF;
+ INSERT INTO public.kkcc_tests(id,title,instructions,subject,duration_minutes,syllabus_subject,syllabus_chapter,series_name,easy_request_hash,is_published,question_source,is_paid,price_inr,price_coins,syllabus_topic,assembly_source_ids)
+ VALUES(tid,p_payload->>'title','Answer every question. 1 mark each; no negative marking.',p_payload->>'subject',(p_payload->>'duration_minutes')::integer,p_payload->>'subject',p_payload->>'chapter',coalesce(p_payload->>'series_name',''),fingerprint,false,'manual',paid,rupees,coins,coalesce(p_payload->>'topic',''),ARRAY(SELECT value::uuid FROM jsonb_array_elements_text(coalesce(p_payload->'assembly_source_ids','[]'::jsonb))));
+ FOR q IN SELECT value FROM jsonb_array_elements(p_payload->'questions') LOOP
+  IF coalesce(length(trim(q->>'question_text')),0)<3 OR jsonb_typeof(q->'options') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid question'; END IF;
+  IF jsonb_array_length(q->'options') NOT BETWEEN 2 AND 6 OR q->>'correct_index' IS NULL OR (q->>'correct_index')::integer NOT BETWEEN 0 AND jsonb_array_length(q->'options')-1 THEN RAISE EXCEPTION 'Invalid answer/options'; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(q->'options') v WHERE jsonb_typeof(v)<>'string' OR length(trim(v#>>'{}'))=0) OR (SELECT count(DISTINCT lower(trim(value))) FROM jsonb_array_elements_text(q->'options'))<>jsonb_array_length(q->'options') THEN RAISE EXCEPTION 'Empty/duplicate options'; END IF;
+  INSERT INTO public.kkcc_test_questions(test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order)
+  VALUES(tid,q->>'question_text',p_payload->>'subject',ARRAY(SELECT jsonb_array_elements_text(q->'options')),(q->>'correct_index')::integer,1,0,coalesce(q->>'explanation',''),pos);
+  pos:=pos+1;
+ END LOOP;
+ UPDATE public.kkcc_tests SET is_published=coalesce((p_payload->>'publish')::boolean,true) WHERE id=tid;
+ INSERT INTO public.kkcc_test_folders(series_name,subject,chapter,topic)
+ SELECT coalesce(p_payload->>'series_name',''),p_payload->>'subject',v.chapter,v.topic
+ FROM (VALUES ('',''),(p_payload->>'chapter',''),(p_payload->>'chapter',coalesce(p_payload->>'topic',''))) AS v(chapter,topic)
+ ON CONFLICT(series_name,subject,chapter,topic) DO NOTHING;
+ RETURN jsonb_build_object('id',tid,'count',n);
+END $$;
+REVOKE ALL ON FUNCTION public.publish_easy_text_test_v3(uuid,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_easy_text_test_v3(uuid,jsonb) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Requires the earlier Test Folders setup. Removes only the own-MCQ count quota.
+-- Existing data, role checks, validation and transactional publication are retained.
+BEGIN;
+DO $$
+DECLARE definition text;
+BEGIN
+ IF to_regprocedure('public.publish_easy_text_test_v3(uuid,jsonb)') IS NULL THEN
+  RAISE EXCEPTION 'Run KKCC-Excellence-Hub-TEST-FOLDERS.sql first';
+ END IF;
+ SELECT pg_get_functiondef('public.publish_easy_text_test_v3(uuid,jsonb)'::regprocedure) INTO definition;
+ IF position('n NOT BETWEEN 1 AND 200' in definition)>0 THEN
+  EXECUTE replace(definition,'n NOT BETWEEN 1 AND 200','n < 1');
+ END IF;
+END $$;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Requires Test Folders setup. Atomic rename/delete for the manual-test organiser only.
+BEGIN;
+CREATE OR REPLACE FUNCTION public.manage_test_outline(
+ p_actor uuid, p_level text, p_action text, p_path jsonb,
+ p_name text, p_expected_ids uuid[]
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+ s text:=coalesce(p_path->>'series_name',''); u text:=coalesce(p_path->>'subject','');
+ c text:=coalesce(p_path->>'chapter',''); t text:=coalesce(p_path->>'topic','');
+ ns text; nu text; nc text; nt text; old_name text; tids uuid[]; fids uuid[];
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT public.has_role(p_actor,'admin') THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ IF p_level NOT IN ('series','subject','chapter','topic') OR p_action NOT IN ('rename','delete') OR p_level IS NULL OR p_action IS NULL THEN RAISE EXCEPTION 'Invalid outline action'; END IF;
+ IF (p_level='series' AND (u<>'' OR c<>'' OR t<>'')) OR
+    (p_level='subject' AND (u='' OR c<>'' OR t<>'')) OR
+    (p_level='chapter' AND (u='' OR c='' OR t<>'')) OR
+    (p_level='topic' AND (u='' OR c='' OR t='')) THEN RAISE EXCEPTION 'Invalid outline path'; END IF;
+ LOCK TABLE public.kkcc_tests,public.kkcc_test_questions,public.kkcc_test_folders IN SHARE ROW EXCLUSIVE MODE;
+ SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO tids FROM public.kkcc_tests
+ WHERE question_source='manual' AND series_name=s
+ AND (u='' OR coalesce(nullif(syllabus_subject,''),subject)=u)
+ AND (c='' OR coalesce(syllabus_chapter,'')=c) AND (t='' OR coalesce(syllabus_topic,'')=t);
+ IF tids IS DISTINCT FROM ARRAY(SELECT DISTINCT x FROM unnest(coalesce(p_expected_ids,'{}'::uuid[])) x ORDER BY x) THEN
+  RAISE EXCEPTION 'Saved tests changed. Reload the organiser and confirm again.';
+ END IF;
+ SELECT coalesce(array_agg(id),'{}'::uuid[]) INTO fids FROM public.kkcc_test_folders
+ WHERE series_name=s AND (u='' OR subject=u) AND (c='' OR chapter=c) AND (t='' OR topic=t);
+ IF cardinality(fids)=0 AND cardinality(tids)=0 THEN RAISE EXCEPTION 'Folder no longer exists. Reload the organiser.'; END IF;
+ IF p_action='delete' THEN
+  DELETE FROM public.kkcc_tests WHERE id=ANY(tids);
+  DELETE FROM public.kkcc_test_folders WHERE id=ANY(fids);
+ ELSE
+  p_name:=trim(coalesce(p_name,''));
+  IF length(p_name)=0 OR length(p_name)>(CASE WHEN p_level='subject' THEN 80 ELSE 120 END) THEN RAISE EXCEPTION 'Invalid new name'; END IF;
+  old_name:=CASE p_level WHEN 'series' THEN s WHEN 'subject' THEN u WHEN 'chapter' THEN c ELSE t END;
+  IF p_name=old_name THEN RETURN jsonb_build_object('tests',cardinality(tids),'folders',cardinality(fids)); END IF;
+  ns:=CASE WHEN p_level='series' THEN p_name ELSE s END;
+  nu:=CASE WHEN p_level='subject' THEN p_name ELSE u END;
+  nc:=CASE WHEN p_level='chapter' THEN p_name ELSE c END;
+  nt:=CASE WHEN p_level='topic' THEN p_name ELSE t END;
+  IF EXISTS(SELECT 1 FROM public.kkcc_test_folders WHERE series_name=ns AND (nu='' OR subject=nu) AND (nc='' OR chapter=nc) AND (nt='' OR topic=nt)) OR
+     EXISTS(SELECT 1 FROM public.kkcc_tests WHERE question_source='manual' AND series_name=ns AND (nu='' OR coalesce(nullif(syllabus_subject,''),subject)=nu) AND (nc='' OR coalesce(syllabus_chapter,'')=nc) AND (nt='' OR coalesce(syllabus_topic,'')=nt)) THEN
+   RAISE EXCEPTION 'That name already exists here. Choose another name; folders will not be merged.';
+  END IF;
+  UPDATE public.kkcc_test_folders SET
+   series_name=CASE WHEN p_level='series' THEN p_name ELSE series_name END,
+   subject=CASE WHEN p_level='subject' THEN p_name ELSE subject END,
+   chapter=CASE WHEN p_level='chapter' THEN p_name ELSE chapter END,
+   topic=CASE WHEN p_level='topic' THEN p_name ELSE topic END WHERE id=ANY(fids);
+  UPDATE public.kkcc_tests SET
+   series_name=CASE WHEN p_level='series' THEN p_name ELSE series_name END,
+   subject=CASE WHEN p_level='subject' THEN p_name ELSE subject END,
+   syllabus_subject=CASE WHEN p_level='subject' THEN p_name ELSE syllabus_subject END,
+   syllabus_chapter=CASE WHEN p_level='chapter' THEN p_name ELSE syllabus_chapter END,
+   syllabus_topic=CASE WHEN p_level='topic' THEN p_name ELSE syllabus_topic END,
+   updated_at=now() WHERE id=ANY(tids);
+  -- Persisted attempt selections follow renamed subjects/chapters; question IDs and answers stay intact.
+  IF p_level IN ('subject','chapter') AND p_path ? 'encoded_old' AND p_path ? 'encoded_new' THEN
+   UPDATE public.learning_attempts a SET source_refs=ARRAY(
+    SELECT CASE WHEN left(ref,14)='__kkcc_meta__:' AND
+      split_part(ref,':',CASE WHEN p_level='subject' THEN 2 ELSE 3 END)=p_path->>'encoded_old'
+     THEN '__kkcc_meta__:' ||
+       CASE WHEN p_level='subject' THEN p_path->>'encoded_new' ELSE split_part(ref,':',2) END || ':' ||
+       CASE WHEN p_level='chapter' THEN p_path->>'encoded_new' ELSE split_part(ref,':',3) END || ':' || split_part(ref,':',4)
+     ELSE ref END FROM unnest(a.source_refs) WITH ORDINALITY AS refs(ref,ord) ORDER BY ord
+   ) WHERE a.test_id=ANY(tids);
+  END IF;
+  IF p_level='subject' THEN
+   UPDATE public.kkcc_test_questions SET subject=p_name,updated_at=now()
+   WHERE test_id=ANY(tids) AND (subject=u OR subject='' OR subject='General');
+  END IF;
+ END IF;
+ RETURN jsonb_build_object('tests',cardinality(tids),'folders',cardinality(fids));
+END $$;
+REVOKE ALL ON FUNCTION public.manage_test_outline(uuid,text,text,jsonb,text,uuid[]) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.manage_test_outline(uuid,text,text,jsonb,text,uuid[]) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Read-only usage report. Installs no cleanup/deletion job.
+BEGIN;
+CREATE OR REPLACE FUNCTION public.kkcc_storage_usage()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE buckets jsonb;
+BEGIN
+ IF NOT coalesce(public.has_role(auth.uid(),'admin'),false) THEN
+  RAISE EXCEPTION 'Admin access required';
+ END IF;
+ SELECT coalesce(jsonb_agg(to_jsonb(r)),'[]'::jsonb) INTO buckets FROM (
+  SELECT b.id AS bucket,
+   count(o.id) AS files,
+   coalesce(sum(CASE WHEN o.metadata->>'size' ~ '^[0-9]+$'
+     THEN (o.metadata->>'size')::numeric ELSE 0 END),0) AS bytes,
+   count(o.id) FILTER (WHERE o.metadata->>'size' IS NULL OR NOT (o.metadata->>'size' ~ '^[0-9]+$')) AS unknown_sizes
+  FROM storage.buckets b LEFT JOIN storage.objects o ON o.bucket_id=b.id
+  GROUP BY b.id ORDER BY b.id
+ ) r;
+ RETURN jsonb_build_object('database_bytes',pg_database_size(current_database()),
+  'buckets',buckets,'checked_at',now());
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_storage_usage() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.kkcc_storage_usage() TO authenticated;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Installs controls only. Existing results are NOT deleted automatically.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.kkcc_test_retention (
+ id boolean PRIMARY KEY DEFAULT true CHECK(id),
+ save_results boolean NOT NULL DEFAULT true,
+ epoch uuid NOT NULL DEFAULT gen_random_uuid(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO public.kkcc_test_retention(id) VALUES(true) ON CONFLICT DO NOTHING;
+ALTER TABLE public.kkcc_test_retention ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_test_retention FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_test_retention TO service_role;
+
+CREATE OR REPLACE FUNCTION public.get_test_retention() RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Sign in required'; END IF;
+ RETURN (SELECT jsonb_build_object('save_results',save_results,'epoch',epoch) FROM public.kkcc_test_retention WHERE id);
+END $$;
+REVOKE ALL ON FUNCTION public.get_test_retention() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.get_test_retention() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.guard_test_retention() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE enabled boolean;
+BEGIN
+ SELECT save_results INTO enabled FROM public.kkcc_test_retention WHERE id FOR SHARE;
+ IF NOT coalesce(enabled,false) THEN RAISE EXCEPTION 'Test result saving is OFF. Start a new temporary test.'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.guard_test_retention() FROM PUBLIC,anon,authenticated;
+DROP TRIGGER IF EXISTS guard_test_retention ON public.learning_attempts;
+CREATE TRIGGER guard_test_retention BEFORE INSERT OR UPDATE OF answers,status,score,total_marks,correct_count,attempted_count,answer_revision
+ON public.learning_attempts FOR EACH ROW EXECUTE FUNCTION public.guard_test_retention();
+
+CREATE OR REPLACE FUNCTION public.admin_test_retention(
+ p_action text DEFAULT 'preview', p_enabled boolean DEFAULT NULL,
+ p_before timestamptz DEFAULT NULL, p_confirmation text DEFAULT ''
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE policy public.kkcc_test_retention%ROWTYPE; removed integer:=0; cutoff timestamptz:=clock_timestamp();
+BEGIN
+ IF NOT coalesce(public.has_role(auth.uid(),'admin'),false) THEN RAISE EXCEPTION 'Admin access required'; END IF;
+ SELECT * INTO policy FROM public.kkcc_test_retention WHERE id FOR UPDATE;
+ IF p_action='set' THEN
+  IF p_enabled IS NULL THEN RAISE EXCEPTION 'Choose ON or OFF'; END IF;
+  UPDATE public.kkcc_test_retention SET save_results=p_enabled,
+   epoch=CASE WHEN save_results IS DISTINCT FROM p_enabled THEN gen_random_uuid() ELSE epoch END,
+   updated_at=clock_timestamp() WHERE id RETURNING * INTO policy;
+ ELSIF p_action='cleanup' THEN
+  IF policy.save_results THEN RAISE EXCEPTION 'Turn result saving OFF before cleanup'; END IF;
+  IF p_confirmation IS DISTINCT FROM 'DELETE TEST HISTORY' OR p_before IS NULL OR p_before>clock_timestamp() THEN RAISE EXCEPTION 'Preview and confirm DELETE TEST HISTORY first'; END IF;
+  cutoff:=p_before;
+  DELETE FROM public.learning_attempts WHERE id IN (
+   SELECT id FROM public.learning_attempts WHERE started_at<=cutoff ORDER BY started_at,id LIMIT 5000
+  );
+  GET DIAGNOSTICS removed=ROW_COUNT;
+ ELSIF p_action IS DISTINCT FROM 'preview' THEN RAISE EXCEPTION 'Invalid action';
+ END IF;
+ RETURN jsonb_build_object('save_results',policy.save_results,'epoch',policy.epoch,
+  'cutoff',cutoff,'deleted',removed,'batch_limit',5000,
+  'history_count',(SELECT count(*) FROM public.learning_attempts),
+  'submitted_count',(SELECT count(*) FROM public.learning_attempts WHERE status='submitted'),
+  'eligible_count',(SELECT count(*) FROM public.learning_attempts WHERE started_at<=cutoff));
+END $$;
+REVOKE ALL ON FUNCTION public.admin_test_retention(text,boolean,timestamptz,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.admin_test_retention(text,boolean,timestamptz,text) TO authenticated;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Additive: preserves all notes, tests, questions, prices and student records.
+-- Requires the existing KKCC Notes + Publish Fix setup.
+BEGIN;
+ALTER TABLE public.kkcc_materials ADD COLUMN IF NOT EXISTS thumbnail_text text;
+ALTER TABLE public.kkcc_tests ADD COLUMN IF NOT EXISTS thumbnail_url text;
+ALTER TABLE public.kkcc_tests ADD COLUMN IF NOT EXISTS thumbnail_text text;
+INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+VALUES ('kkcc-thumbnails','kkcc-thumbnails',true,4194304,
+ ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO NOTHING;
+-- Only server-admin uploads; no anonymous/student write policy is added.
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+-- Installs private note-file support only. Does NOT move/delete existing text.
+BEGIN;
+ALTER TABLE public.kkcc_materials ADD COLUMN IF NOT EXISTS body_storage_path text;
+ALTER TABLE public.kkcc_materials ADD COLUMN IF NOT EXISTS body_storage_sha256 text;
+ALTER TABLE public.kkcc_materials ADD COLUMN IF NOT EXISTS body_storage_bytes bigint DEFAULT 0;
+INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+VALUES('kkcc-note-bodies','kkcc-note-bodies',false,1048576,ARRAY['text/plain'])
+ON CONFLICT(id) DO NOTHING;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM storage.buckets WHERE id='kkcc-note-bodies' AND public)
+ THEN RAISE EXCEPTION 'kkcc-note-bodies must be a PRIVATE bucket'; END IF;
+END $$;
+-- A restrictive policy also blocks this bucket if older permissive policies are broad.
+DROP POLICY IF EXISTS kkcc_note_bodies_server_only ON storage.objects;
+CREATE POLICY kkcc_note_bodies_server_only ON storage.objects
+AS RESTRICTIVE FOR ALL TO anon,authenticated
+USING(bucket_id <> 'kkcc-note-bodies')
+WITH CHECK(bucket_id <> 'kkcc-note-bodies');
+-- File access is through the authorized service-role server only.
+CREATE OR REPLACE FUNCTION public.move_note_body_to_storage(
+ p_actor uuid,p_id uuid,p_updated timestamptz,p_source_md5 text,
+ p_path text,p_sha256 text,p_bytes bigint
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE changed integer;
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false)
+ THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ IF p_path IS NULL OR p_path NOT LIKE p_id::text || '/%.txt'
+ OR p_path LIKE '%..%' OR p_sha256 IS NULL OR p_sha256 !~ '^[a-f0-9]{64}$'
+ OR p_bytes IS NULL OR p_bytes NOT BETWEEN 1 AND 1048576
+ THEN RAISE EXCEPTION 'Invalid verified note reference'; END IF;
+ UPDATE public.kkcc_materials SET description='',body_storage_path=p_path,
+ body_storage_sha256=p_sha256,body_storage_bytes=p_bytes,updated_at=clock_timestamp()
+ WHERE id=p_id AND body_storage_path IS NULL
+ AND updated_at IS NOT DISTINCT FROM p_updated
+ AND md5(coalesce(description,''))=p_source_md5;
+ GET DIAGNOSTICS changed=ROW_COUNT;
+ RETURN changed=1;
+END $$;
+REVOKE ALL ON FUNCTION public.move_note_body_to_storage(uuid,uuid,timestamptz,text,text,text,bigint) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.move_note_body_to_storage(uuid,uuid,timestamptz,text,text,text,bigint) TO service_role;
+-- Counts are computed in PostgreSQL; preview never downloads all legacy bodies.
+CREATE OR REPLACE FUNCTION public.note_body_storage_status(p_actor uuid)
+RETURNS TABLE(inline_count bigint,inline_bytes bigint,stored_count bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false)
+ THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ RETURN QUERY SELECT
+ count(*) FILTER(WHERE body_storage_path IS NULL AND coalesce(description,'')<>''),
+ coalesce(sum(octet_length(description)) FILTER(WHERE body_storage_path IS NULL),0)::bigint,
+ count(*) FILTER(WHERE body_storage_path IS NOT NULL)
+ FROM public.kkcc_materials;
+END $$;
+REVOKE ALL ON FUNCTION public.note_body_storage_status(uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.note_body_storage_status(uuid) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Additive installer. Does NOT migrate/delete existing content or student data.
+BEGIN;
+ALTER TABLE public.kkcc_test_questions ADD COLUMN IF NOT EXISTS body_storage_path text;
+ALTER TABLE public.kkcc_test_questions ADD COLUMN IF NOT EXISTS body_storage_sha256 text;
+ALTER TABLE public.kkcc_test_questions ADD COLUMN IF NOT EXISTS body_storage_bytes bigint DEFAULT 0;
+INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+VALUES('kkcc-test-bodies','kkcc-test-bodies',false,16777216,ARRAY['application/json']) ON CONFLICT(id) DO NOTHING;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM storage.buckets WHERE id='kkcc-test-bodies' AND public)
+THEN RAISE EXCEPTION 'kkcc-test-bodies must be PRIVATE'; END IF; END $$;
+DROP POLICY IF EXISTS kkcc_test_bodies_server_only ON storage.objects;
+CREATE POLICY kkcc_test_bodies_server_only ON storage.objects AS RESTRICTIVE FOR ALL TO anon,authenticated
+USING(bucket_id <> 'kkcc-test-bodies') WITH CHECK(bucket_id <> 'kkcc-test-bodies');
+-- Historical tables: references only; rows, IDs and FKs are preserved.
+DO $$ DECLARE tab text; BEGIN
+ FOREACH tab IN ARRAY ARRAY['materials','test_questions'] LOOP
+  IF to_regclass('public.'||tab) IS NOT NULL THEN
+   EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS body_storage_path text',tab);
+   EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS body_storage_sha256 text',tab);
+   EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS body_storage_bytes bigint DEFAULT 0',tab);
+   EXECUTE format('GRANT SELECT,UPDATE ON public.%I TO service_role',tab);
+  END IF;
+ END LOOP;
+END $$;
+CREATE OR REPLACE FUNCTION public.move_test_question_body(
+ p_actor uuid,p_id uuid,p_updated timestamptz,p_text_md5 text,p_options_md5 text,p_explanation_md5 text,
+ p_path text,p_sha256 text,p_bytes bigint,p_legacy boolean DEFAULT false
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE changed integer;
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false) THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ IF p_path IS NULL OR p_path LIKE '%..%' OR p_sha256 IS NULL OR p_sha256 !~ '^[a-f0-9]{64}$'
+ OR p_bytes IS NULL OR p_bytes NOT BETWEEN 1 AND 16777216 THEN RAISE EXCEPTION 'Invalid verified test reference'; END IF;
+ IF p_legacy THEN
+ UPDATE public.test_questions SET question_text='',options='{}',explanation='',
+ body_storage_path=p_path,body_storage_sha256=p_sha256,body_storage_bytes=p_bytes,updated_at=clock_timestamp()
+ WHERE id=p_id AND body_storage_path IS NULL AND p_path LIKE test_id::text || '/%.json'
+ AND updated_at IS NOT DISTINCT FROM p_updated
+ AND md5(question_text)=p_text_md5 AND md5(array_to_json(options)::text)=p_options_md5
+ AND md5(coalesce(explanation,''))=p_explanation_md5;
+ ELSE
+ UPDATE public.kkcc_test_questions SET question_text='',options='{}',explanation='',
+ body_storage_path=p_path,body_storage_sha256=p_sha256,body_storage_bytes=p_bytes,updated_at=clock_timestamp()
+ WHERE id=p_id AND body_storage_path IS NULL AND p_path LIKE test_id::text || '/%.json'
+ AND updated_at IS NOT DISTINCT FROM p_updated
+ AND md5(question_text)=p_text_md5 AND md5(array_to_json(options)::text)=p_options_md5
+ AND md5(coalesce(explanation,''))=p_explanation_md5;
+ END IF;
+ GET DIAGNOSTICS changed=ROW_COUNT; RETURN changed=1;
+END $$;
+REVOKE ALL ON FUNCTION public.move_test_question_body(uuid,uuid,timestamptz,text,text,text,text,text,bigint,boolean) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.move_test_question_body(uuid,uuid,timestamptz,text,text,text,text,text,bigint,boolean) TO service_role;
+CREATE OR REPLACE FUNCTION public.test_body_storage_status(p_actor uuid)
+RETURNS TABLE(source text,inline_count bigint,inline_bytes bigint,stored_count bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false) THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ RETURN QUERY SELECT 'questions'::text,count(*) FILTER(WHERE body_storage_path IS NULL),
+ coalesce(sum(octet_length(question_text)+octet_length(array_to_json(options)::text)+octet_length(coalesce(explanation,''))) FILTER(WHERE body_storage_path IS NULL),0)::bigint,
+ count(*) FILTER(WHERE body_storage_path IS NOT NULL) FROM public.kkcc_test_questions;
+ IF to_regclass('public.test_questions') IS NOT NULL THEN
+ RETURN QUERY EXECUTE 'SELECT ''legacy-questions''::text,count(*) FILTER(WHERE body_storage_path IS NULL),coalesce(sum(octet_length(question_text)+octet_length(array_to_json(options)::text)+octet_length(coalesce(explanation,''''))) FILTER(WHERE body_storage_path IS NULL),0)::bigint,count(*) FILTER(WHERE body_storage_path IS NOT NULL) FROM public.test_questions'; END IF;
+ IF to_regclass('public.materials') IS NOT NULL THEN
+ RETURN QUERY EXECUTE 'SELECT ''legacy-notes''::text,count(*) FILTER(WHERE body_storage_path IS NULL AND coalesce(description,'''')<>''''),coalesce(sum(octet_length(description)) FILTER(WHERE body_storage_path IS NULL),0)::bigint,count(*) FILTER(WHERE body_storage_path IS NOT NULL) FROM public.materials'; END IF;
+
+END $$;
+REVOKE ALL ON FUNCTION public.test_body_storage_status(uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.test_body_storage_status(uuid) TO service_role;
+CREATE OR REPLACE FUNCTION public.move_legacy_note_body(
+ p_actor uuid,p_id uuid,p_updated timestamptz,p_source_md5 text,
+ p_path text,p_sha256 text,p_bytes bigint
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE changed integer;
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false)
+ THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ IF p_path IS NULL OR p_path NOT LIKE p_id::text || '/%.txt'
+ OR p_path LIKE '%..%' OR p_sha256 IS NULL OR p_sha256 !~ '^[a-f0-9]{64}$'
+ OR p_bytes IS NULL OR p_bytes NOT BETWEEN 1 AND 1048576
+ THEN RAISE EXCEPTION 'Invalid verified note reference'; END IF;
+ UPDATE public.materials SET description='',body_storage_path=p_path,
+ body_storage_sha256=p_sha256,body_storage_bytes=p_bytes,updated_at=clock_timestamp()
+ WHERE id=p_id AND body_storage_path IS NULL
+ AND updated_at IS NOT DISTINCT FROM p_updated
+ AND md5(coalesce(description,''))=p_source_md5;
+ GET DIAGNOSTICS changed=ROW_COUNT;
+ RETURN changed=1;
+END $$;
+REVOKE ALL ON FUNCTION public.move_legacy_note_body(uuid,uuid,timestamptz,text,text,text,bigint) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.move_legacy_note_body(uuid,uuid,timestamptz,text,text,text,bigint) TO service_role;
+CREATE OR REPLACE FUNCTION public.publish_storage_text_test(p_actor uuid,p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tid uuid; q jsonb; n integer; pos integer:=0; fingerprint text; old_hash text; paid boolean; rupees integer; coins integer; BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false) THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ tid := (p_payload->>'id')::uuid;
+ IF tid IS NULL OR jsonb_typeof(p_payload->'questions') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid questions'; END IF;
+ n:=jsonb_array_length(p_payload->'questions');
+ IF n < 1 OR coalesce(length(trim(p_payload->>'subject')),0)=0 OR coalesce(length(trim(p_payload->>'chapter')),0)=0 OR coalesce(length(trim(p_payload->>'title')),0)<2 OR (p_payload->>'duration_minutes')::integer NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'Invalid test details'; END IF;
+ paid := coalesce((p_payload->>'is_paid')::boolean,false);
+ rupees := coalesce((p_payload->>'price_inr')::integer,0);
+ coins := coalesce((p_payload->>'price_coins')::integer,0);
+ IF rupees NOT BETWEEN 0 AND 100000 OR coins NOT BETWEEN 0 AND 1000000 THEN RAISE EXCEPTION 'Invalid price'; END IF;
+ IF paid AND rupees=0 AND coins=0 THEN RAISE EXCEPTION 'A paid test needs a rupee price, a coin price, or both'; END IF;
+ IF NOT paid THEN rupees:=0; coins:=0; END IF;
+ fingerprint:=p_payload->>'_request_hash';
+ IF fingerprint IS NULL OR fingerprint !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'Invalid request fingerprint'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtext(tid::text));
+ SELECT easy_request_hash INTO old_hash FROM public.kkcc_tests WHERE id=tid;
+ IF FOUND THEN
+   IF old_hash IS DISTINCT FROM fingerprint THEN RAISE EXCEPTION 'Test already saved with different content. Open it in Advanced to edit.'; END IF;
+   RETURN jsonb_build_object('id',tid,'count',n);
+ END IF;
+ INSERT INTO public.kkcc_tests(id,title,instructions,subject,duration_minutes,syllabus_subject,syllabus_chapter,series_name,easy_request_hash,is_published,question_source,is_paid,price_inr,price_coins,syllabus_topic,assembly_source_ids)
+ VALUES(tid,p_payload->>'title','Answer every question. 1 mark each; no negative marking.',p_payload->>'subject',(p_payload->>'duration_minutes')::integer,p_payload->>'subject',p_payload->>'chapter',coalesce(p_payload->>'series_name',''),fingerprint,false,'manual',paid,rupees,coins,coalesce(p_payload->>'topic',''),ARRAY(SELECT value::uuid FROM jsonb_array_elements_text(coalesce(p_payload->'assembly_source_ids','[]'::jsonb))));
+ FOR q IN SELECT value FROM jsonb_array_elements(p_payload->'questions') LOOP
+  IF q->>'body_storage_path' IS NULL OR q->>'body_storage_path' NOT LIKE tid::text || '/%.json'
+  OR q->>'body_storage_path' LIKE '%..%' OR q->>'body_storage_sha256' IS NULL
+  OR q->>'body_storage_sha256' !~ '^[a-f0-9]{64}$'
+  OR coalesce((q->>'body_storage_bytes')::bigint,0) NOT BETWEEN 1 AND 16777216
+  OR q->>'id' IS NULL OR coalesce((q->>'option_count')::integer,0) NOT BETWEEN 2 AND 6
+  OR q->>'correct_index' IS NULL OR (q->>'correct_index')::integer NOT BETWEEN 0 AND (q->>'option_count')::integer-1
+  THEN RAISE EXCEPTION 'Invalid verified question reference'; END IF;
+  INSERT INTO public.kkcc_test_questions(id,test_id,question_text,subject,options,correct_index,marks,negative_marks,explanation,sort_order,body_storage_path,body_storage_sha256,body_storage_bytes)
+  VALUES((q->>'id')::uuid,tid,'',p_payload->>'subject','{}',(q->>'correct_index')::integer,1,0,'',pos,q->>'body_storage_path',q->>'body_storage_sha256',(q->>'body_storage_bytes')::bigint);
+  pos:=pos+1;
+ END LOOP;
+ UPDATE public.kkcc_tests SET is_published=coalesce((p_payload->>'publish')::boolean,true) WHERE id=tid;
+ INSERT INTO public.kkcc_test_folders(series_name,subject,chapter,topic)
+ SELECT coalesce(p_payload->>'series_name',''),p_payload->>'subject',v.chapter,v.topic
+ FROM (VALUES ('',''),(p_payload->>'chapter',''),(p_payload->>'chapter',coalesce(p_payload->>'topic',''))) AS v(chapter,topic)
+ ON CONFLICT(series_name,subject,chapter,topic) DO NOTHING;
+ RETURN jsonb_build_object('id',tid,'count',n);
+END $$;
+REVOKE ALL ON FUNCTION public.publish_storage_text_test(uuid,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_storage_text_test(uuid,jsonb) TO service_role;
+NOTIFY pgrst,'reload schema';
+COMMIT;
+
+-- Requires Note Bodies + Test Bodies setup. Installer itself deletes NOTHING.
+BEGIN;
+DO $$ DECLARE tab text; BEGIN
+ FOREACH tab IN ARRAY ARRAY['kkcc_materials','kkcc_tests','kkcc_test_questions','materials','tests','test_questions'] LOOP
+  IF to_regclass('public.'||tab) IS NOT NULL THEN
+   EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS content_deleted_at timestamptz',tab);
+  END IF;
+ END LOOP;
+END $$;
+-- Question-paper snapshots preserve student result/review without retaining the old library.
+INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+VALUES('kkcc-result-papers','kkcc-result-papers',false,16777216,ARRAY['application/json']) ON CONFLICT(id) DO NOTHING;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM storage.buckets WHERE id='kkcc-result-papers' AND public) THEN RAISE EXCEPTION 'Result paper bucket must be PRIVATE'; END IF; END $$;
+DROP POLICY IF EXISTS kkcc_result_papers_server_only ON storage.objects;
+CREATE POLICY kkcc_result_papers_server_only ON storage.objects AS RESTRICTIVE FOR ALL TO anon,authenticated
+USING(bucket_id <> 'kkcc-result-papers') WITH CHECK(bucket_id <> 'kkcc-result-papers');
+CREATE TABLE IF NOT EXISTS public.kkcc_attempt_papers(
+ attempt_id uuid PRIMARY KEY REFERENCES public.learning_attempts(id) ON DELETE CASCADE,
+ path text NOT NULL,sha256 text NOT NULL,bytes bigint NOT NULL
+);
+ALTER TABLE public.kkcc_attempt_papers ADD COLUMN IF NOT EXISTS verified_at timestamptz NOT NULL DEFAULT clock_timestamp();
+ALTER TABLE public.kkcc_attempt_papers ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_attempt_papers FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_attempt_papers TO service_role;
+CREATE TABLE IF NOT EXISTS public.kkcc_removed_content_files(
+ bucket text NOT NULL CHECK(bucket IN ('kkcc-note-bodies','kkcc-test-bodies')),
+ path text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(bucket,path)
+);
+ALTER TABLE public.kkcc_removed_content_files ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kkcc_removed_content_files FROM PUBLIC,anon,authenticated;
+GRANT ALL ON public.kkcc_removed_content_files TO service_role;
+CREATE OR REPLACE FUNCTION public.kkcc_content_file_referenced(p_bucket text,p_path text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tab text; found_ref boolean; BEGIN
+ FOREACH tab IN ARRAY CASE WHEN p_bucket='kkcc-note-bodies' THEN ARRAY['kkcc_materials','materials'] ELSE ARRAY['kkcc_test_questions','test_questions'] END LOOP
+  IF to_regclass('public.'||tab) IS NOT NULL THEN
+   EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I WHERE body_storage_path=$1)',tab) INTO found_ref USING p_path;
+   IF found_ref THEN RETURN true; END IF;
+  END IF;
+ END LOOP; RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION public.kkcc_content_file_referenced(text,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.kkcc_content_file_referenced(text,text) TO service_role;
+CREATE OR REPLACE FUNCTION public.admin_remove_old_content(
+ p_actor uuid,p_action text DEFAULT 'preview',p_before timestamptz DEFAULT NULL,
+ p_confirmation text DEFAULT '',p_files jsonb DEFAULT '[]'
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE tab text; ids uuid[]; n bigint; counts jsonb:='{}'; cutoff timestamptz:=coalesce(p_before,clock_timestamp()); bucket_name text; total bigint:=0;
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false) THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ IF p_action NOT IN ('preview','remove','files','ack') THEN RAISE EXCEPTION 'Invalid action'; END IF;
+ IF p_action='files' THEN
+  DELETE FROM public.kkcc_removed_content_files WHERE public.kkcc_content_file_referenced(bucket,path);
+  RETURN coalesce((SELECT jsonb_agg(to_jsonb(f)) FROM (SELECT bucket,path FROM public.kkcc_removed_content_files
+   WHERE NOT public.kkcc_content_file_referenced(bucket,path) ORDER BY created_at,bucket,path LIMIT 100) f),'[]');
+ END IF;
+ IF p_action='ack' THEN
+  DELETE FROM public.kkcc_removed_content_files f USING jsonb_to_recordset(p_files) AS done(bucket text,path text)
+   WHERE f.bucket=done.bucket AND f.path=done.path;
+  RETURN jsonb_build_object('ok',true);
+ END IF;
+ IF p_action='remove' THEN
+  IF p_confirmation IS DISTINCT FROM 'DELETE OLD NOTES AND TESTS' OR p_before IS NULL OR p_before>clock_timestamp()
+  THEN RAISE EXCEPTION 'Review and confirm deletion first'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('kkcc-library-removal'));
+  LOCK TABLE public.learning_attempts IN SHARE ROW EXCLUSIVE MODE;
+  IF EXISTS(SELECT 1 FROM public.learning_attempts a LEFT JOIN public.kkcc_attempt_papers p ON p.attempt_id=a.id WHERE p.attempt_id IS NULL OR p.verified_at < p_before)
+  THEN RAISE EXCEPTION 'Protect existing attempt papers before deleting content; retry preparation'; END IF;
+
+ END IF;
+ FOREACH tab IN ARRAY ARRAY['kkcc_tests','kkcc_test_questions','kkcc_materials','tests','test_questions','materials'] LOOP
+  IF to_regclass('public.'||tab) IS NULL THEN CONTINUE; END IF;
+  IF p_action='remove' THEN
+   EXECUTE format('SELECT array_agg(id) FROM (SELECT id FROM public.%I WHERE content_deleted_at IS NULL AND coalesce(created_at,''epoch'')<=$1 ORDER BY id LIMIT 500 FOR UPDATE) chosen',tab) INTO ids USING cutoff;
+   IF coalesce(cardinality(ids),0)>0 THEN
+    IF tab IN ('kkcc_materials','materials','kkcc_test_questions','test_questions') THEN
+     bucket_name:=CASE WHEN tab IN ('kkcc_materials','materials') THEN 'kkcc-note-bodies' ELSE 'kkcc-test-bodies' END;
+     EXECUTE format('INSERT INTO public.kkcc_removed_content_files(bucket,path) SELECT $1,body_storage_path FROM public.%I WHERE id=ANY($2) AND body_storage_path IS NOT NULL ON CONFLICT DO NOTHING',tab) USING bucket_name,ids;
+    END IF;
+    IF tab IN ('kkcc_materials','materials') THEN
+     EXECUTE format('UPDATE public.%I SET description='''',file_url=NULL,thumbnail_url=NULL,is_published=false,body_storage_path=NULL,body_storage_sha256=NULL,body_storage_bytes=0,content_deleted_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=ANY($1)',tab) USING ids;
+    ELSIF tab IN ('kkcc_test_questions','test_questions') THEN
+     EXECUTE format('UPDATE public.%I SET question_text='''',options=''{}'',explanation='''',body_storage_path=NULL,body_storage_sha256=NULL,body_storage_bytes=0,content_deleted_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=ANY($1)',tab) USING ids;
+    ELSE
+     EXECUTE format('UPDATE public.%I SET instructions='''',is_published=false,content_deleted_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=ANY($1)',tab) USING ids;
+    END IF;
+   END IF;
+  END IF;
+  EXECUTE format('SELECT count(*) FROM public.%I WHERE content_deleted_at IS NULL AND coalesce(created_at,''epoch'')<=$1',tab) INTO n USING cutoff;
+  counts:=counts||jsonb_build_object(tab,n); total:=total+n;
+ END LOOP;
+ IF p_action='remove' THEN
+  INSERT INTO public.kkcc_site_settings(key,value) VALUES('builtin_materials_adopted','true') ON CONFLICT(key) DO UPDATE SET value='true';
+ END IF;
+ RETURN jsonb_build_object('cutoff',cutoff,'counts',counts,'remaining',total,'pending_files',(SELECT count(*) FROM public.kkcc_removed_content_files));
+END $$;
+REVOKE ALL ON FUNCTION public.admin_remove_old_content(uuid,text,timestamptz,text,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_remove_old_content(uuid,text,timestamptz,text,jsonb) TO service_role;
+CREATE OR REPLACE FUNCTION public.restore_storage_sample_notes(p_actor uuid,p_rows jsonb)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r public.kkcc_materials; BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR NOT coalesce(public.has_role(p_actor,'admin'),false) THEN RAISE EXCEPTION 'Admin server only'; END IF;
+ FOR r IN SELECT * FROM jsonb_populate_recordset(NULL::public.kkcc_materials,p_rows) LOOP
+  IF coalesce(r.description,'')<>'' OR r.body_storage_path IS NULL OR r.body_storage_path NOT LIKE r.id::text||'/%.txt' OR r.body_storage_sha256 IS NULL OR r.body_storage_sha256 !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'Verified Storage body required'; END IF;
+  r.content_deleted_at:=NULL;
+  INSERT INTO public.kkcc_materials SELECT r.* ON CONFLICT(id) DO UPDATE SET
+   description='',title=excluded.title,subject=excluded.subject,chapter=excluded.chapter,class_level=excluded.class_level,
+   course_id=excluded.course_id,lecture_id=excluded.lecture_id,module_title=excluded.module_title,batch=excluded.batch,
+   file_url=excluded.file_url,thumbnail_url=excluded.thumbnail_url,material_type=excluded.material_type,pages=excluded.pages,
+   access_type=excluded.access_type,price=excluded.price,coin_price=excluded.coin_price,is_published=excluded.is_published,
+   body_storage_path=excluded.body_storage_path,body_storage_sha256=excluded.body_storage_sha256,body_storage_bytes=excluded.body_storage_bytes,
+   created_at=excluded.created_at,updated_at=excluded.updated_at,content_deleted_at=NULL
+  WHERE kkcc_materials.content_deleted_at IS NOT NULL;
+ END LOOP; RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION public.restore_storage_sample_notes(uuid,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.restore_storage_sample_notes(uuid,jsonb) TO service_role;
+-- Tombstones must not be offered for migration again.
+DO $$ DECLARE fn regprocedure; definition text; BEGIN
+ FOREACH fn IN ARRAY ARRAY['public.test_body_storage_status(uuid)'::regprocedure,'public.note_body_storage_status(uuid)'::regprocedure] LOOP
+  SELECT pg_get_functiondef(fn) INTO definition;
+  definition:=replace(definition,'WHERE body_storage_path IS NULL','WHERE content_deleted_at IS NULL AND body_storage_path IS NULL');
+  definition:=replace(definition,'WHERE body_storage_path IS NOT NULL','WHERE content_deleted_at IS NULL AND body_storage_path IS NOT NULL');
+  EXECUTE definition;
+ END LOOP;
+END $$;
+NOTIFY pgrst,'reload schema';
 COMMIT;

@@ -77,7 +77,14 @@ export function generateQuestionsForTest(input: {
       const index = cursors[k]!();
       if (index === null) continue;
       const q = template.at(index);
-      if (!q || !isPublishableQuestion(q) || !checkDeterministicQuality(q).publishable) continue;
+      if (
+        !q ||
+        q.subject !== template.subject ||
+        q.topic !== template.topic ||
+        !isPublishableQuestion(q) ||
+        !checkDeterministicQuality(q).publishable
+      )
+        continue;
       const key = q.prompt.trim().toLocaleLowerCase().replace(/\s+/g, " ");
       if (seen.has(key)) continue;
       const answer = q.answer.trim();

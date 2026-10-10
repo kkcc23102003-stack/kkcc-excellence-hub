@@ -1,3 +1,4 @@
+import { ContentThumbnail } from "@/components/kkcc/content-thumbnail";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { FileText, Search } from "lucide-react";
@@ -31,14 +32,18 @@ function MaterialsPage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<string>("All");
 
+  const combinedMaterials = materials; // Server already applies admin overrides and sample visibility.
+
   const filtered = useMemo(
     () =>
-      materials.filter(
+      combinedMaterials.filter(
         (m) =>
           (type === "All" || m.material_type === type) &&
-          (m.title + m.subject + m.chapter).toLowerCase().includes(query.trim().toLowerCase()),
+          (m.title + " " + m.subject + " " + m.chapter + " " + (m.description || ""))
+            .toLowerCase()
+            .includes(query.trim().toLowerCase()),
       ),
-    [materials, query, type],
+    [combinedMaterials, query, type],
   );
 
   return (
@@ -82,6 +87,11 @@ function MaterialsPage() {
             key={m.id}
             className="surface-panel flex min-w-0 flex-col gap-4 p-4 sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
           >
+            {(m.thumbnail_url || m.thumbnail_text) && (
+              <div className="w-full sm:w-40">
+                <ContentThumbnail value={m} title={m.title} kind="materials" id={m.id} />
+              </div>
+            )}
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
               <FileText className="h-5 w-5" />
             </span>
@@ -116,10 +126,18 @@ function MaterialsPage() {
               )}
               <MaterialAccessButton
                 fileUrl={m.file_url}
-                materialId={m.id}
+                materialId={
+                  m.id.startsWith("note:") || m.id.startsWith("theory:") ? undefined : m.id
+                }
                 accessType={m.access_type}
                 price={m.price}
                 coinPrice={m.coin_price}
+                courseId={m.course_id}
+                title={m.title}
+                subject={m.subject}
+                chapter={m.chapter}
+                description={m.description}
+                materialType={m.material_type}
                 className="w-full sm:w-auto sm:whitespace-nowrap"
               />
             </div>

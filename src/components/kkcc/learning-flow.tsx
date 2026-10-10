@@ -1,3 +1,4 @@
+import { rememberTemporaryTest } from "@/lib/temporary-test-memory";
 import { useRef } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -46,12 +47,14 @@ export function LearningFlow({
       }
       return startAttempt({ data: { request_id: request, ...selection, subject, chapter } });
     },
-    onSuccess: (result) =>
-      navigate({
+    onSuccess: (result) => {
+      if (result.temporary) rememberTemporaryTest(result);
+      return navigate({
         to: "/test/$id",
         params: { id: selection.test_id || "series" },
-        search: { attempt: result.attempt.id },
-      }),
+        search: { attempt: result.attempt.id, ...(result.temporary ? { temporary: true } : {}) },
+      });
+    },
     onError: (error) => toast.error(error.message),
   });
   const learning = planQuery.data;
@@ -159,6 +162,14 @@ export function LearningFlow({
                   <ChevronLeft className="h-4 w-4" /> Chapters
                 </Button>
                 <h1 className="mt-3 text-2xl font-black">Start Test</h1>
+                {!learning.save_results && (
+                  <p role="status" className="mt-4 rounded-xl border border-primary/30 p-4 text-sm">
+                    Temporary test — your answers, score and attempt history will not be saved to
+                    the database. Result appears only on this page. Refresh/close loses progress and
+                    result; no resume or saved analytics.
+                  </p>
+                )}
+
                 <article className="surface-panel mt-5 max-w-2xl p-6">
                   <ClipboardList className="h-6 w-6 text-primary" />
                   <h2 className="mt-3 text-lg font-bold">

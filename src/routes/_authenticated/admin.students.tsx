@@ -35,7 +35,9 @@ export const Route = createFileRoute("/_authenticated/admin/students")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <Button asChild className="mt-6 rounded-full">
           <Link to="/dashboard">Back to dashboard</Link>
         </Button>

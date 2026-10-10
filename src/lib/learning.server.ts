@@ -8,7 +8,18 @@ import type {
   SeriesAccessGrantRow,
 } from "@/integrations/supabase/db";
 import { projectContent } from "@/lib/project-content.server";
-import { LEARNING_SERIES, seriesPlan } from "@/lib/test-series-catalog";
+import {
+  FREE_SERIES_IDS,
+  LEARNING_SERIES,
+  getChapterQuestionCount,
+  getCustomChapterConfig,
+  getEffectiveLearningSeries,
+  parseCustomSeriesCatalog,
+  resolveSeriesPrice,
+  seriesPlan,
+  setRuntimeCustomSeriesCatalog,
+  type CustomSeriesCatalog,
+} from "@/lib/test-series-catalog";
 import {
   canonicalSeriesId,
   seriesAliases,
@@ -17,7 +28,34 @@ import {
   assertSelection,
 } from "@/lib/learning-access";
 import { ACTIVE_TEMPLATES, getExamBankTopicsForExam } from "@/lib/exam-bank";
-import { generateOnDemandTestPaper } from "@/lib/generated-test";
+import {
+  generateCustomSyllabusPaper,
+  generateOnDemandTestPaper,
+  isLegacyScienceFallbackForNonScienceSubject,
+  resolveCandidateBankSubjects,
+  type GeneratedTestQuestion,
+} from "@/lib/generated-test";
+
+export const CUSTOM_SERIES_CATALOG_KEY = "test_series_custom_catalog";
+
+export async function readCustomSeriesCatalog(): Promise<CustomSeriesCatalog> {
+  try {
+    const row = await projectContent
+      .from("site_settings")
+      .select("*")
+      .eq("key", CUSTOM_SERIES_CATALOG_KEY)
+      .maybeSingle();
+    if (row.error || !row.data?.value) {
+      setRuntimeCustomSeriesCatalog({});
+      return {};
+    }
+    const parsed = parseCustomSeriesCatalog(row.data.value);
+    setRuntimeCustomSeriesCatalog(parsed);
+    return parsed;
+  } catch {
+    return {};
+  }
+}
 
 export type StudentContext = { supabase: SupabaseClient<DB>; userId: string };
 export function unwrap<T>(result: { data: T; error: { message: string } | null }) {
@@ -85,6 +123,7 @@ export async function readStudentAccess(context: StudentContext): Promise<Studen
         .order("created_at", { ascending: false }),
       context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" }),
       projectContent.from("test_series_overrides").select("*"),
+      readCustomSeriesCatalog(),
     ]);
   const aliases = seriesAliases(unwrap(aliasesResult));
   const enrollments = (unwrap(enrollmentsResult) ?? []).filter((enrollment) =>
@@ -121,8 +160,14 @@ export function testPermission(test: TestRow, access: StudentAccess) {
   return { allowed: !test.is_paid, reason: test.is_paid ? ("locked" as const) : ("free" as const) };
 }
 export async function effectiveSeries(id: string) {
+  const custom = await readCustomSeriesCatalog();
+  const activePool = getEffectiveLearningSeries(custom);
   const canonical = canonicalSeriesId(id);
-  const series = LEARNING_SERIES.find((item) => item.id === canonical);
+  const series =
+    activePool.find((item) => item.id === canonical) ??
+    LEARNING_SERIES.find(
+      (item) => item.id === canonical && !(custom.removedSeriesIds ?? []).includes(item.id),
+    );
   if (!series) throw new Error("Test series not found.");
   const override = unwrap(
     await projectContent
@@ -131,12 +176,12 @@ export async function effectiveSeries(id: string) {
       .eq("series_id", series.id)
       .maybeSingle(),
   );
+  const price = resolveSeriesPrice(series, override);
   return {
     ...series,
     name: override?.name ?? series.name,
     summary: override?.summary ?? series.summary,
-    priceInr: override?.price_inr ?? series.priceInr,
-    priceCoins: override?.price_coins ?? series.priceCoins,
+    ...price,
     enabled: override?.enabled ?? true,
   };
 }
@@ -156,40 +201,106 @@ export type LearningSelection = {
   chapter?: string | undefined;
 };
 
+function inferSubjectFromTestMetadata(test: TestRow): string {
+  const direct =
+    test.syllabus_subject?.trim() ||
+    (test.subject && test.subject.trim() !== "General" ? test.subject.trim() : "") ||
+    (test.generation_subject && test.generation_subject.trim() !== "General"
+      ? test.generation_subject.trim()
+      : "");
+  if (direct) return direct;
+  const title = (test.title || "").trim();
+  const lowerTitle = title.toLowerCase();
+  if (
+    title &&
+    lowerTitle !== "new test" &&
+    lowerTitle !== "test" &&
+    lowerTitle !== "mock test" &&
+    lowerTitle !== "practice test"
+  ) {
+    const inferred = resolveCandidateBankSubjects(title, test.syllabus_chapter || "");
+    if (inferred.length > 0 && inferred[0] !== "General Awareness") {
+      return inferred[0]!;
+    }
+  }
+  return "";
+}
+
 /** Preserves manual questions and uses their original subject/chapter metadata. */
 export async function individualTestPlan(test: TestRow) {
-  if (test.question_source === "deterministic") {
+  const buildDeterministicPlan = () => {
     const exam = resolveTestExam(test);
     const availableSubjects = allExamSubjects(exam);
-    const subjects = test.generation_subject
-      ? [test.generation_subject]
+    const explicitSubject = inferSubjectFromTestMetadata(test);
+    const subjects = explicitSubject
+      ? [explicitSubject]
       : availableSubjects.includes(test.subject)
         ? [test.subject]
         : availableSubjects;
-    return subjects
+    const explicitTopic =
+      test.syllabus_chapter ||
+      (test.generation_topic && test.generation_topic !== "Mixed" ? test.generation_topic : "");
+    const mapped = subjects
       .map((subject) => {
-        const topics = getExamBankTopicsForExam(subject, exam);
-        return {
-          subject,
-          chapters:
-            test.generation_topic && test.generation_topic !== "Mixed"
-              ? topics.filter((topic) => topic === test.generation_topic)
-              : topics,
-        };
+        let topics = getExamBankTopicsForExam(subject, exam);
+        if (topics.length === 0) {
+          topics = getExamBankTopicsForExam(subject, "All Exams");
+        }
+        if (topics.length === 0) {
+          const candidates = resolveCandidateBankSubjects(subject, explicitTopic);
+          for (const cand of candidates) {
+            const candTopics = getExamBankTopicsForExam(cand, exam);
+            const fallbackCandTopics =
+              candTopics.length > 0 ? candTopics : getExamBankTopicsForExam(cand, "All Exams");
+            if (fallbackCandTopics.length > 0) {
+              topics = fallbackCandTopics;
+              break;
+            }
+          }
+        }
+        if (explicitTopic) {
+          const matched = topics.filter((topic) => topic === explicitTopic);
+          if (matched.length > 0) return { subject, chapters: matched };
+          return { subject, chapters: [explicitTopic] };
+        }
+        return { subject, chapters: topics };
       })
       .filter((item) => item.chapters.length > 0);
+    if (mapped.length > 0) return mapped;
+    if (explicitSubject) {
+      return [{ subject: explicitSubject, chapters: [explicitTopic || "Complete Test"] }];
+    }
+    return [
+      {
+        subject: test.subject || "General Awareness",
+        chapters: [explicitTopic || "Complete Test"],
+      },
+    ];
+  };
+
+  if (test.question_source === "deterministic") {
+    return buildDeterministicPlan();
   }
-  const questions = unwrap(
+  const rawQuestions = unwrap(
     await projectContent
       .from("test_questions")
       .select("*")
       .eq("test_id", test.id)
       .order("sort_order"),
   );
+  const fallbackSubject = inferSubjectFromTestMetadata(test) || test.subject || "General";
+  const fallbackChapter =
+    test.syllabus_chapter ||
+    (test.generation_topic && test.generation_topic !== "Mixed"
+      ? test.generation_topic
+      : "Complete Test");
+  const questions = rawQuestions;
+  if (questions.length === 0) return [];
   const plan = new Map<string, Set<string>>();
   for (const question of questions) {
-    const subject = question.subject || test.subject || "General";
-    const chapter = (question as TestQuestionRow & { chapter?: string }).chapter || "Complete Test";
+    const subject =
+      question.subject && question.subject !== "General" ? question.subject : fallbackSubject;
+    const chapter = (question as TestQuestionRow & { chapter?: string }).chapter || fallbackChapter;
     if (!plan.has(subject)) plan.set(subject, new Set());
     plan.get(subject)!.add(chapter);
   }
@@ -233,6 +344,7 @@ export async function learningPlan(context: StudentContext, selection: LearningS
     kind: "series" as const,
     id: permission.series.id,
     title: permission.series.name,
+    series_paid: permission.series.priceInr > 0 || permission.series.priceCoins > 0,
     exam: permission.series.examTrack,
     series_id: permission.series.id,
     plan: seriesPlan(permission.series),
@@ -251,40 +363,191 @@ export async function buildSelectedPaper(
   assertSelection(learning.plan, selection.subject, selection.chapter);
   if (learning.test?.question_source === "manual") {
     const test = learning.test;
-    const rows = unwrap(
+    const rawRows = unwrap(
       await projectContent
         .from("test_questions")
         .select("*")
         .eq("test_id", test.id)
         .order("sort_order"),
     );
-    const questions = rows.filter(
+    const fallbackSubject = inferSubjectFromTestMetadata(test) || test.subject || "General";
+    const fallbackChapter =
+      test.syllabus_chapter ||
+      (test.generation_topic && test.generation_topic !== "Mixed"
+        ? test.generation_topic
+        : "Complete Test");
+    const rows = rawRows;
+    const matchedRows = rows.filter(
       (question) =>
-        (question.subject || test.subject || "General") === selection.subject &&
-        ((question as TestQuestionRow & { chapter?: string }).chapter || "Complete Test") ===
+        (question.subject && question.subject !== "General"
+          ? question.subject
+          : fallbackSubject) === selection.subject &&
+        ((question as TestQuestionRow & { chapter?: string }).chapter || fallbackChapter) ===
           selection.chapter,
     );
-    if (!questions.length) throw new Error("No published questions exist for this test selection.");
-    return {
-      test: {
-        ...test,
-        questions_count: questions.length,
-        total_marks: questions.reduce((sum, question) => sum + question.marks, 0),
-      },
-      questions,
-    };
+    const questions = matchedRows;
+    if (questions.length > 0) {
+      return {
+        test: {
+          ...test,
+          questions_count: questions.length,
+          total_marks: questions.reduce((sum, question) => sum + question.marks, 0),
+        },
+        questions,
+      };
+    }
+    throw new Error(
+      "No manual questions match this subject/chapter. Admin must correct the test selection; no bank questions were substituted.",
+    );
   }
   const recipe = learning.test;
-  const questions = generateOnDemandTestPaper({
+  const effectiveSubject =
+    selection.subject === "General" && recipe
+      ? inferSubjectFromTestMetadata(recipe) || selection.subject
+      : selection.subject;
+  const customCatalog = await readCustomSeriesCatalog();
+  const configuredChapterCount = getChapterQuestionCount(
+    learning.series_id ?? undefined,
+    effectiveSubject,
+    selection.chapter,
+    customCatalog,
+  );
+  const targetCount = recipe?.generation_count || configuredChapterCount;
+  const defaultMarks = recipe?.generation_marks ?? 1;
+  const defaultNegative = recipe?.generation_negative_marks ?? 0;
+
+  // Check if Admin added custom questions for this (series_id, subject, chapter) or globally for (subject, chapter)
+  const customChapter = getCustomChapterConfig(
+    learning.series_id ?? undefined,
+    effectiveSubject,
+    selection.chapter,
+    customCatalog,
+  );
+  const validCustomQuestions = (customChapter?.questions ?? []).filter(
+    (q) =>
+      !isLegacyScienceFallbackForNonScienceSubject(
+        q.question_text,
+        effectiveSubject,
+        selection.chapter!,
+      ),
+  );
+  const customMapped: GeneratedTestQuestion[] = validCustomQuestions.map((q, idx) => ({
+    id: `custom-q:${q.id || idx + 1}`,
+    source_id: `custom-q:${q.id || idx + 1}`,
+    template_id: `admin:custom:${idx + 1}`,
+    template_index: idx + 1,
+    question_text: q.question_text,
+    subject: selection.subject!,
+    options: q.options,
+    correct_index: q.correct_index,
+    explanation: q.explanation || `Verified answer: ${q.options[q.correct_index] ?? ""}`,
     exam: learning.exam,
-    subject: selection.subject,
-    topic: selection.chapter,
-    difficulty: recipe?.generation_difficulty || "Mixed",
-    count: recipe?.generation_count || 60,
-    marks: recipe?.generation_marks ?? 1,
-    negative_marks: recipe?.generation_negative_marks ?? 0,
-    seed,
-  });
+    chapter: selection.chapter!,
+    topic: selection.chapter!,
+    difficulty: q.difficulty || "Moderate",
+    question_type: "single-choice",
+    provenance: "practice",
+    marks: q.marks ?? defaultMarks,
+    negative_marks: q.negative_marks ?? defaultNegative,
+    sort_order: idx,
+    created_at: "",
+    updated_at: "",
+  }));
+
+  // Also check if an individual deterministic test has manual questions added in test_questions
+  let manualTestRows: GeneratedTestQuestion[] = [];
+  if (learning.test) {
+    const rawRows =
+      unwrap(
+        await projectContent
+          .from("test_questions")
+          .select("*")
+          .eq("test_id", learning.test.id)
+          .order("sort_order"),
+      ) ?? [];
+    const filteredRows = rawRows.filter((q) => {
+      const rowChapter =
+        (q as TestQuestionRow & { chapter?: string }).chapter ||
+        learning.test?.syllabus_chapter ||
+        (learning.test?.generation_topic !== "Mixed" ? learning.test?.generation_topic : "") ||
+        "Complete Test";
+      if (rowChapter !== selection.chapter) return false;
+      if (
+        isLegacyScienceFallbackForNonScienceSubject(
+          q.question_text,
+          effectiveSubject,
+          selection.chapter!,
+        )
+      ) {
+        return false;
+      }
+      const rowSubj = (q.subject || "").trim();
+      if (!rowSubj || rowSubj === "General") {
+        // Only include generic rows when the test itself is explicitly for this subject
+        const testSubj = inferSubjectFromTestMetadata(learning.test!);
+        return Boolean(testSubj) && testSubj.toLowerCase() === effectiveSubject.toLowerCase();
+      }
+      return rowSubj.toLowerCase() === effectiveSubject.toLowerCase();
+    });
+    manualTestRows = filteredRows.map((q, idx) => ({
+      id: q.id,
+      source_id: q.id,
+      template_id: `test:manual:${idx + 1}`,
+      template_index: idx + 1,
+      question_text: q.question_text,
+      subject: selection.subject!,
+      options: q.options,
+      correct_index: q.correct_index,
+      explanation: q.explanation || `Verified answer: ${q.options[q.correct_index] ?? ""}`,
+      exam: learning.exam,
+      chapter: selection.chapter!,
+      topic: selection.chapter!,
+      difficulty: "Moderate",
+      question_type: "single-choice",
+      provenance: "practice",
+      marks: q.marks ?? defaultMarks,
+      negative_marks: q.negative_marks ?? defaultNegative,
+      sort_order: idx,
+      created_at: q.created_at,
+      updated_at: q.updated_at,
+    }));
+  }
+
+  const allAdminCustom = [...customMapped, ...manualTestRows];
+
+  let questions: GeneratedTestQuestion[] = [];
+  if (customChapter?.mode === "custom_only") {
+    const cap = customChapter.questionCount
+      ? Math.min(allAdminCustom.length, customChapter.questionCount)
+      : allAdminCustom.length;
+    questions = allAdminCustom.slice(0, cap).map((q, idx) => ({ ...q, sort_order: idx }));
+  } else {
+    const priorityCustom = allAdminCustom.slice(0, targetCount);
+    const remainingCount = Math.max(0, targetCount - priorityCustom.length);
+    const paperRecipe = {
+      exam: learning.exam,
+      subject: effectiveSubject,
+      topic: selection.chapter,
+      difficulty: recipe?.generation_difficulty || ("Mixed" as const),
+      count: remainingCount > 0 ? remainingCount : targetCount,
+      marks: defaultMarks,
+      negative_marks: defaultNegative,
+      seed,
+    };
+    const generated = generateCustomSyllabusPaper(paperRecipe).map((q) => ({
+      ...q,
+      subject: selection.subject!,
+    }));
+    const combined =
+      remainingCount > 0
+        ? [...priorityCustom, ...generated.slice(0, remainingCount)]
+        : priorityCustom;
+    questions = (combined.length > 0 ? combined : generated).map((q, idx) => ({
+      ...q,
+      sort_order: idx,
+    }));
+  }
+
   if (!questions.length)
     throw new Error(
       `Question coverage is missing for ${learning.exam} / ${selection.subject} / ${selection.chapter}. No unrelated questions have been substituted.`,
@@ -298,7 +561,7 @@ export async function buildSelectedPaper(
     instructions:
       "Practice questions from the existing project bank. Easy → Moderate → Difficult. Actual available question count is shown; no questions are invented to fill a paper.",
     subject: selection.subject,
-    duration_minutes: 60,
+    duration_minutes: Math.max(15, questions.length),
     question_timer_seconds: 0,
     timer_mode: "test",
     questions_count: questions.length,
@@ -317,12 +580,16 @@ export async function buildSelectedPaper(
     generation_topic: selection.chapter,
     generation_difficulty: "Mixed",
     generation_count: questions.length,
+    syllabus_subject: selection.subject,
+    syllabus_chapter: selection.chapter,
+    syllabus_topic: "",
     created_at: now,
     updated_at: now,
   };
   return {
     test: {
       ...test,
+      is_paid: learning.kind === "series" ? learning.series_paid : test.is_paid,
       questions_count: questions.length,
       total_marks: questions.reduce((sum, question) => sum + question.marks, 0),
     },
@@ -332,9 +599,9 @@ export async function buildSelectedPaper(
 export function allExamSubjects(exam: string) {
   return [
     ...new Set(
-      ACTIVE_TEMPLATES.filter((template) => template.count > 0 && template.exams.includes(exam)).map(
-        (template) => template.subject,
-      ),
+      ACTIVE_TEMPLATES.filter(
+        (template) => template.count > 0 && (exam === "All Exams" || template.exams.includes(exam)),
+      ).map((template) => template.subject),
     ),
   ].sort();
 }

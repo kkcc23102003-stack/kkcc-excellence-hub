@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,32 +9,38 @@ export function PwaUpdateNotice() {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [showCacheTool, setShowCacheTool] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const approvedReload = useRef(false);
+  const hasUpdate = Boolean(waitingWorker) || updateReady;
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    let refreshing = false;
+    let active = true;
+    const cleanups: Array<() => void> = [];
+    const hadController = Boolean(navigator.serviceWorker.controller);
     const onControllerChange = () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
+      // Activation/first install must never silently discard an in-memory test or editor.
+      if (approvedReload.current) window.location.reload();
+      else if (hadController) setUpdateReady(true);
     };
-
     const watchRegistration = (registration: ServiceWorkerRegistration | undefined) => {
-      if (!registration) return;
+      if (!active || !registration) return;
       if (registration.waiting) setWaitingWorker(registration.waiting);
-
-      registration.addEventListener("updatefound", () => {
+      const watchWorker = () => {
         const worker = registration.installing;
         if (!worker) return;
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        const changed = () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller)
             setWaitingWorker(worker);
-          }
-        });
-      });
+        };
+        worker.addEventListener("statechange", changed);
+        cleanups.push(() => worker.removeEventListener("statechange", changed));
+      };
+      registration.addEventListener("updatefound", watchWorker);
+      cleanups.push(() => registration.removeEventListener("updatefound", watchWorker));
+      watchWorker();
     };
-
     navigator.serviceWorker
       .getRegistration()
       .then(watchRegistration)
@@ -42,7 +48,11 @@ export function PwaUpdateNotice() {
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
     const timer = window.setTimeout(() => {
-      if (window.localStorage.getItem(CACHE_HELPER_DISMISSED_KEY) === "1") return;
+      try {
+        if (window.localStorage.getItem(CACHE_HELPER_DISMISSED_KEY) === "1") return;
+      } catch {
+        /* restricted storage: keep tool usable */
+      }
       const nav = performance.getEntriesByType("navigation")[0] as
         PerformanceNavigationTiming | undefined;
       const slowLoad = (nav?.duration ?? 0) > 3000;
@@ -51,18 +61,28 @@ export function PwaUpdateNotice() {
     }, 4200);
 
     return () => {
+      active = false;
+      cleanups.forEach((cleanup) => cleanup());
       window.clearTimeout(timer);
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);
 
+  const confirmReload = () =>
+    window.confirm(
+      "Reload KKCC now? Finish your test or save your edits first. Temporary test progress/results will be lost.",
+    );
   const updateNow = () => {
-    if (!waitingWorker) return;
+    if (!confirmReload()) return;
+    approvedReload.current = true;
     setReloading(true);
-    waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    if (waitingWorker?.state === "installed") waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    else window.location.reload();
   };
 
   const clearCacheAndReload = async () => {
+    if (!confirmReload()) return;
+    approvedReload.current = true;
     setReloading(true);
     try {
       if ("caches" in window) {
@@ -80,7 +100,7 @@ export function PwaUpdateNotice() {
     }
   };
 
-  if (!waitingWorker && !showCacheTool) return null;
+  if (!hasUpdate && !showCacheTool) return null;
 
   return (
     <div className="fixed bottom-24 left-1/2 z-[70] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 rounded-2xl border bg-background/95 p-3 shadow-lift backdrop-blur lg:bottom-6">
@@ -90,15 +110,15 @@ export function PwaUpdateNotice() {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">
-            {waitingWorker ? "New smoother app update is ready" : "App slow or stale?"}
+            {hasUpdate ? "App update ready — reload when safe" : "App slow or stale?"}
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {waitingWorker
-              ? "Tap update to refresh cached files and load the latest KKCC version."
+            {hasUpdate
+              ? "Finish your test or save your edits first. Updates never reload this page automatically."
               : "If refresh feels slow after an update, clear only KKCC app cache and reload."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {waitingWorker && (
+            {hasUpdate && (
               <Button
                 size="sm"
                 className="h-8 rounded-full"
@@ -119,14 +139,18 @@ export function PwaUpdateNotice() {
             </Button>
           </div>
         </div>
-        {!waitingWorker && (
+        {!hasUpdate && (
           <Button
             size="icon"
             variant="ghost"
             className="h-7 w-7 shrink-0"
             aria-label="Hide cache helper"
             onClick={() => {
-              window.localStorage.setItem(CACHE_HELPER_DISMISSED_KEY, "1");
+              try {
+                window.localStorage.setItem(CACHE_HELPER_DISMISSED_KEY, "1");
+              } catch {
+                /* optional preference */
+              }
               setShowCacheTool(false);
             }}
           >

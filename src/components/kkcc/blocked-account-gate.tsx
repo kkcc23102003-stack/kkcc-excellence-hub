@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Ban, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,42 +13,30 @@ type BlockStatus = {
 
 export function BlockedAccountGate() {
   const { configured, user, setUser } = useAuthUser();
-  const [status, setStatus] = useState<BlockStatus | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setStatus(null);
-
-    if (!configured || !user) return undefined;
-
-    void (async () => {
+  const { data: status } = useQuery<BlockStatus | null>({
+    queryKey: ["my-block-status", user?.id],
+    enabled: Boolean(configured && user?.id),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 0,
+    queryFn: async () => {
       try {
         const { data, error } = await supabase.rpc("get_my_block_status");
-        if (cancelled) return;
-        if (error) {
-          // The app can still run before the latest SQL is applied.
-          console.warn("[security] block status unavailable", error.message);
-          return;
-        }
+        if (error) return { is_blocked: false, reason: "", blocked_at: null };
         const row = Array.isArray(data) ? data[0] : data;
-        setStatus(
-          row
-            ? {
-                is_blocked: Boolean(row.is_blocked),
-                reason: String(row.reason ?? ""),
-                blocked_at: row.blocked_at ?? null,
-              }
-            : { is_blocked: false, reason: "", blocked_at: null },
-        );
-      } catch (error) {
-        if (!cancelled) console.warn("[security] block status unavailable", error);
+        return row
+          ? {
+              is_blocked: Boolean(row.is_blocked),
+              reason: String(row.reason ?? ""),
+              blocked_at: row.blocked_at ?? null,
+            }
+          : { is_blocked: false, reason: "", blocked_at: null };
+      } catch {
+        return { is_blocked: false, reason: "", blocked_at: null };
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [configured, user]);
+    },
+  });
 
   if (!status?.is_blocked) return null;
 

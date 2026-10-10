@@ -10,6 +10,7 @@ import { AppBuilderRuntime } from "./app-builder-runtime";
 import { ContentProtection } from "./content-protection";
 import { BlockedAccountGate } from "./blocked-account-gate";
 import { useAppControls } from "./app-controls-provider";
+import { SandboxPreviewBar } from "./sandbox-preview-bar";
 
 function MaintenanceNotice() {
   const controls = useAppControls();
@@ -44,6 +45,7 @@ export function SiteLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <SandboxPreviewBar />
       <SiteHeader />
       <AppBuilderRuntime position="top" />
       <main className="flex-1 pb-20 lg:pb-0">

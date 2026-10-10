@@ -683,13 +683,12 @@ export function AdminSecurityPage() {
                 ) : (
                   <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
                     <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
-                      <AlertTriangle className="h-4 w-4" /> Latest SQL health function not active
-                      yet
+                      <AlertTriangle className="h-4 w-4" /> Storage health check unavailable
                     </p>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                       Run the newest migration from Supabase SQL Editor:
-                      `supabase/migrations/20260929150000_security_app_controls_and_health.sql`.
-                      Controls below already work from defaults and saved site settings.
+                      `KKCC-Excellence-Hub-STORAGE-USAGE.sql`. Controls below already work from
+                      defaults and saved site settings.
                     </p>
                   </div>
                 )}

@@ -13,10 +13,13 @@ export function useLearningAccess() {
     enabled: Boolean(user),
     queryFn: () => fetchAccess(),
     retry: 1,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+    refetchOnWindowFocus: "always",
     refetchOnReconnect: "always",
-    refetchInterval: 15_000,
+    // Realtime + explicit invalidations handle changes; polling is a fallback.
+    // Authorization is still checked server-side on every protected operation.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   useEffect(() => {
     if (!user) return;

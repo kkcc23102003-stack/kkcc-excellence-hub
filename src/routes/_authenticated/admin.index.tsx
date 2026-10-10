@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout, PageHeader } from "@/components/kkcc/site-layout";
+import { AdminCommandBar } from "@/components/kkcc/admin-command-bar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,9 @@ export const Route = createFileRoute("/_authenticated/admin/")({
     <SiteLayout>
       <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold">Admin access required</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <p className="mx-auto mt-4 max-w-xl text-sm text-muted-foreground">
           This panel is protected by Supabase roles. Only users with <code>admin</code> in
           <code> public.user_roles</code> can edit the website.
@@ -134,9 +137,16 @@ function AdminCourses() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <AdminCommandBar />
         <div className="mb-4 flex flex-wrap justify-end gap-2">
           <Button asChild size="sm" className="rounded-full">
-            <Link to="/admin/tests">Write test questions</Link>
+            <Link to="/admin/analytics">Business dashboard</Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="rounded-full">
+            <Link to="/admin/tests">Test Builder & questions</Link>
+          </Button>
+          <Button asChild size="sm" className="rounded-full">
+            <Link to="/admin/syllabus">Syllabus Auto Builder</Link>
           </Button>
           <Button asChild size="sm" className="rounded-full">
             <Link to="/admin/exam-bank">Exam bank & syllabus</Link>
@@ -163,7 +173,7 @@ function AdminCourses() {
             <Link to="/admin/enquiries">Enquiries</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
-            <Link to="/admin/students">Student access</Link>
+            <Link to="/admin/students">Student access — Grant / Remove</Link>
           </Button>
           <Button asChild size="sm" className="rounded-full">
             <Link to="/admin/security">Security & app controls</Link>
@@ -178,7 +188,7 @@ function AdminCourses() {
             <Link to="/admin/vouchers">Amazon / Flipkart rewards</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
-            <Link to="/admin/storage">Storage</Link>
+            <Link to="/admin/storage">Storage usage</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
             <Link to="/admin/branding">Branding</Link>
